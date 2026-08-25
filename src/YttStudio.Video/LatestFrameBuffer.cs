@@ -42,15 +42,32 @@ internal sealed class LatestFrameBuffer
 
         lock (gate)
         {
-            index = frontIndex == 0 ? 1 : 0;
-            Slot slot = slots[index];
-            if (disposed || writingIndex >= 0 || slot.Readers > 0)
+            if (disposed || writingIndex >= 0)
             {
                 pixels = [];
                 stride = 0;
                 index = -1;
                 return false;
             }
+
+            index = -1;
+            for (int candidate = 0; candidate < slots.Length; candidate++)
+            {
+                if (candidate != frontIndex && slots[candidate].Readers == 0)
+                {
+                    index = candidate;
+                    break;
+                }
+            }
+
+            if (index < 0)
+            {
+                pixels = [];
+                stride = 0;
+                return false;
+            }
+
+            Slot slot = slots[index];
 
             stride = Align(width * 4, 64);
             int requiredLength = checked(stride * height);

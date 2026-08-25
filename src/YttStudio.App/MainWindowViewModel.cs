@@ -38,6 +38,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private Guid? lastSelectedCueId;
     private CueRowViewModel? selectedCueRow;
     private Guid? selectedStyleId;
+    private string selectedStyleName = string.Empty;
     private bool isInlineEditing;
     private string inlineText = string.Empty;
     private double inlineEditorLeft;
@@ -64,6 +65,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         AddStyleCommand = new DelegateCommand(AddStyle, () => editor is not null);
         DeleteStyleCommand = new AsyncCommand(DeleteSelectedStyleAsync,
             () => selectedStyleId is Guid id && id != Guid.Empty);
+        RenameStyleCommand = new DelegateCommand(RenameSelectedStyle,
+            () => editor is not null && selectedStyleId is Guid id && id != Guid.Empty);
+        SaveCueAsStyleCommand = new DelegateCommand(SaveSelectedCueAsStyle,
+            () => editor is not null && selectedStyleId is Guid id && id != Guid.Empty && SelectedFormat is not null &&
+                selectedCueIds.Count > 0);
+        ApplySelectedStyleCommand = new DelegateCommand(ApplySelectedStyle,
+            () => editor is not null && selectedStyleId is Guid id && selectedCueIds.Count > 0);
+        AlignLeftCommand = new DelegateCommand(() => AlignSelected("L"), () => selectedCueIds.Count > 1);
+        AlignCenterCommand = new DelegateCommand(() => AlignSelected("C"), () => selectedCueIds.Count > 1);
+        AlignRightCommand = new DelegateCommand(() => AlignSelected("R"), () => selectedCueIds.Count > 1);
+        AlignTopCommand = new DelegateCommand(() => AlignSelected("T"), () => selectedCueIds.Count > 1);
+        AlignMiddleCommand = new DelegateCommand(() => AlignSelected("M"), () => selectedCueIds.Count > 1);
+        AlignBottomCommand = new DelegateCommand(() => AlignSelected("B"), () => selectedCueIds.Count > 1);
+        DistributeHorizontalCommand = new DelegateCommand(() => DistributeSelected(horizontal: true),
+            () => selectedCueIds.Count > 2);
+        DistributeVerticalCommand = new DelegateCommand(() => DistributeSelected(horizontal: false),
+            () => selectedCueIds.Count > 2);
+        BringToFrontCommand = new DelegateCommand(() => MoveSelectionToZOrder(front: true),
+            () => selectedCueIds.Count > 0 && project is not null);
+        SendToBackCommand = new DelegateCommand(() => MoveSelectionToZOrder(front: false),
+            () => selectedCueIds.Count > 0 && project is not null);
         CommitInlineEditCommand = new DelegateCommand(CommitInlineEdit, () => IsInlineEditing);
         InitializeVideoSource();
         RenderFallbackFrame();
@@ -84,6 +106,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public DelegateCommand DuplicateCueCommand { get; }
     public DelegateCommand AddStyleCommand { get; }
     public AsyncCommand DeleteStyleCommand { get; }
+    public DelegateCommand RenameStyleCommand { get; }
+    public DelegateCommand SaveCueAsStyleCommand { get; }
+    public DelegateCommand ApplySelectedStyleCommand { get; }
+    public DelegateCommand AlignLeftCommand { get; }
+    public DelegateCommand AlignCenterCommand { get; }
+    public DelegateCommand AlignRightCommand { get; }
+    public DelegateCommand AlignTopCommand { get; }
+    public DelegateCommand AlignMiddleCommand { get; }
+    public DelegateCommand AlignBottomCommand { get; }
+    public DelegateCommand DistributeHorizontalCommand { get; }
+    public DelegateCommand DistributeVerticalCommand { get; }
+    public DelegateCommand BringToFrontCommand { get; }
+    public DelegateCommand SendToBackCommand { get; }
     public DelegateCommand CommitInlineEditCommand { get; }
     public ObservableCollection<CueRowViewModel> CueRows { get; } = [];
     public ObservableCollection<StyleOption> Styles { get; } = [];
@@ -91,6 +126,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public IReadOnlyCollection<Guid> SelectedCueIds => selectedCueIds;
     public Array AnchorOptions { get; } = Enum.GetValues<AnchorPoint>();
     public Array JustificationOptions { get; } = Enum.GetValues<Justification>();
+    public Array DirectionOptions { get; } = Enum.GetValues<TextDirection>();
+    public Array ScriptOffsetOptions { get; } = Enum.GetValues<ScriptOffset>();
     public Array FontOptions { get; } = Enum.GetValues<YtFont>();
     public Array EdgeOptions { get; } = Enum.GetValues<EdgeType>();
     public double[] SpeedOptions { get; } = [0.5, 1.0, 1.5, 2.0];
@@ -192,13 +229,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         get => selectedStyleId;
         set
         {
-            if (!SetField(ref selectedStyleId, value) || editor is null || selectedCueIds.Count == 0)
+            Guid selected = value ?? Guid.Empty;
+            if (!SetField(ref selectedStyleId, selected))
             {
                 return;
             }
 
-            editor.ApplyStyle(selectedCueIds, value == Guid.Empty ? null : value);
-            AfterMutation();
+            selectedStyleName = Styles.FirstOrDefault(style => style.Id == selected)?.Name ?? string.Empty;
+            OnPropertyChanged(nameof(SelectedStyleOption));
+            OnPropertyChanged(nameof(SelectedStyleName));
+            NotifyCommandStates();
         }
     }
 
@@ -208,17 +248,64 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         set => SelectedStyleId = value?.Id ?? Guid.Empty;
     }
 
-    public string SelectedText
+    /// <summary>Style assigned to every selected cue, or null when the selection is mixed.</summary>
+    public StyleOption? SelectedCueStyleOption
     {
-        get => SelectedCue?.Sections.FirstOrDefault()?.Text ?? string.Empty;
+        get
+        {
+            Guid? styleId = GetCommonCueStyleId();
+            return styleId.HasValue
+                ? Styles.FirstOrDefault(style => style.Id == styleId.Value)
+                : null;
+        }
         set
         {
-            Cue? cue = SelectedCue;
-            if (cue is not null && editor is not null && cue.Sections.Count > 0 && cue.Sections[0].Text != value)
+            if (value is null || editor is null || selectedCueIds.Count == 0)
             {
-                editor.SetText(cue.Id, 0, value ?? string.Empty);
-                AfterMutation(refreshRows: true);
+                return;
             }
+
+            editor.ApplyStyle(selectedCueIds, value.Id == Guid.Empty ? null : value.Id);
+            AfterMutation(refreshRows: true);
+        }
+    }
+
+    public string SelectedStyleName
+    {
+        get => selectedStyleName;
+        set => SetField(ref selectedStyleName, value ?? string.Empty);
+    }
+
+    public string SelectedText
+    {
+        get
+        {
+            string[] texts = selectedCueIds
+                .Select(id => project?.Cues[id]?.Sections.FirstOrDefault()?.Text)
+                .Where(text => text is not null)
+                .Select(text => text!)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            return texts.Length == 1 ? texts[0] : texts.Length == 0 ? string.Empty : "—";
+        }
+        set
+        {
+            if (editor is null || selectedCueIds.Count == 0 || value == "—")
+            {
+                return;
+            }
+
+            editor.BeginTransaction("텍스트 변경");
+            foreach (Guid id in selectedCueIds)
+            {
+                if (project?.Cues[id] is Cue cue && cue.Sections.Count > 0 && cue.Sections[0].Text != value)
+                {
+                    editor.SetText(id, 0, value ?? string.Empty);
+                }
+            }
+
+            editor.EndTransaction();
+            AfterMutation(refreshRows: true);
         }
     }
 
@@ -232,6 +319,34 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         get => SelectedCue?.PositionY ?? 90;
         set => ApplyPosition(null, value);
+    }
+
+    public string SelectedPositionXText
+    {
+        get => GetCommonCueValue(cue => cue.PositionX)?.ToString("0.##",
+            System.Globalization.CultureInfo.InvariantCulture) ?? "—";
+        set
+        {
+            if (double.TryParse(value, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double parsed))
+            {
+                ApplyPosition(parsed, null);
+            }
+        }
+    }
+
+    public string SelectedPositionYText
+    {
+        get => GetCommonCueValue(cue => cue.PositionY)?.ToString("0.##",
+            System.Globalization.CultureInfo.InvariantCulture) ?? "—";
+        set
+        {
+            if (double.TryParse(value, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double parsed))
+            {
+                ApplyPosition(null, parsed);
+            }
+        }
     }
 
     public AnchorPoint SelectedAnchor
@@ -253,10 +368,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public YtFont SelectedFont
+    public string SelectedAnchorDisplay
+        => GetCommonCueValue(cue => cue.Anchor)?.ToString() ?? "—";
+
+    public string SelectedJustificationDisplay
+        => GetCommonCueValue(cue => cue.Justify)?.ToString() ?? "—";
+
+    public YtFont? SelectedFont
     {
-        get => SelectedFormat?.Font ?? YtFont.Default;
-        set => ApplyFormat(new SectionFormatPatch { Font = value });
+        get => GetCommonFormat(format => format.Font);
+        set
+        {
+            if (value.HasValue)
+            {
+                ApplyFormat(new SectionFormatPatch { Font = value.Value });
+            }
+        }
     }
 
     public int SelectedSizePercent
@@ -265,33 +392,97 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         set => ApplyFormat(new SectionFormatPatch { SizePercent = Math.Max(75, value) });
     }
 
-    public bool SelectedBold
+    public double? SelectedSizePercentValue
     {
-        get => SelectedFormat?.Bold ?? false;
-        set => ApplyFormat(new SectionFormatPatch { Bold = value });
+        get
+        {
+            int? value = GetCommonFormat(format => format.SizePercent);
+            return value;
+        }
+        set
+        {
+            if (value.HasValue)
+            {
+                ApplyFormat(new SectionFormatPatch { SizePercent = (int)Math.Round(value.Value) });
+            }
+        }
     }
 
-    public bool SelectedItalic
+    public bool? SelectedBold
     {
-        get => SelectedFormat?.Italic ?? false;
-        set => ApplyFormat(new SectionFormatPatch { Italic = value });
+        get => GetCommonFormat(format => format.Bold);
+        set
+        {
+            if (value.HasValue)
+            {
+                ApplyFormat(new SectionFormatPatch { Bold = value.Value });
+            }
+        }
     }
 
-    public bool SelectedUnderline
+    public bool? SelectedItalic
     {
-        get => SelectedFormat?.Underline ?? false;
-        set => ApplyFormat(new SectionFormatPatch { Underline = value });
+        get => GetCommonFormat(format => format.Italic);
+        set
+        {
+            if (value.HasValue)
+            {
+                ApplyFormat(new SectionFormatPatch { Italic = value.Value });
+            }
+        }
     }
 
-    public EdgeType SelectedEdge
+    public bool? SelectedUnderline
     {
-        get => SelectedFormat?.Edge ?? EdgeType.Glow;
-        set => ApplyFormat(new SectionFormatPatch { Edge = value });
+        get => GetCommonFormat(format => format.Underline);
+        set
+        {
+            if (value.HasValue)
+            {
+                ApplyFormat(new SectionFormatPatch { Underline = value.Value });
+            }
+        }
+    }
+
+    public ScriptOffset? SelectedScriptOffset
+    {
+        get => GetCommonFormat(format => format.Offset);
+        set
+        {
+            if (value.HasValue)
+            {
+                ApplyFormat(new SectionFormatPatch { Offset = value.Value });
+            }
+        }
+    }
+
+    public bool? SelectedPack
+    {
+        get => GetCommonFormat(format => format.Pack);
+        set
+        {
+            if (value.HasValue)
+            {
+                ApplyFormat(new SectionFormatPatch { Pack = value.Value });
+            }
+        }
+    }
+
+    public EdgeType? SelectedEdge
+    {
+        get => GetCommonFormat(format => format.Edge);
+        set
+        {
+            if (value.HasValue)
+            {
+                ApplyFormat(new SectionFormatPatch { Edge = value.Value });
+            }
+        }
     }
 
     public string ForegroundHex
     {
-        get => ToHex(SelectedFormat?.Foreground ?? RgbaColor.White);
+        get => GetCommonFormat(format => format.Foreground) is RgbaColor color ? ToHex(color) : "—";
         set
         {
             if (TryParseColor(value, out RgbaColor color))
@@ -303,7 +494,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public string BackgroundHex
     {
-        get => ToHex(SelectedFormat?.Background ?? RgbaColor.Transparent);
+        get => GetCommonFormat(format => format.Background) is RgbaColor color ? ToHex(color) : "—";
         set
         {
             if (TryParseColor(value, out RgbaColor color))
@@ -313,13 +504,72 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    public string EdgeColorHex
+    {
+        get => GetCommonFormat(format => format.EdgeColor) is RgbaColor color ? ToHex(color) : "—";
+        set
+        {
+            if (TryParseColor(value, out RgbaColor color))
+            {
+                ApplyFormat(new SectionFormatPatch { EdgeColor = color });
+            }
+        }
+    }
+
+    public double? ForegroundOpacity
+    {
+        get => GetCommonFormat(format => (double)format.Foreground.Alpha);
+        set => ApplyColorOpacity(value, format => format.Foreground, (color, alpha) =>
+            new RgbaColor(color.Red, color.Green, color.Blue, alpha),
+            color => new SectionFormatPatch { Foreground = color });
+    }
+
+    public double? BackgroundOpacity
+    {
+        get => GetCommonFormat(format => (double)format.Background.Alpha);
+        set => ApplyColorOpacity(value, format => format.Background, (color, alpha) =>
+            new RgbaColor(color.Red, color.Green, color.Blue, alpha),
+            color => new SectionFormatPatch { Background = color });
+    }
+
+    public double? EdgeOpacity
+    {
+        get => GetCommonFormat(format => (double)format.EdgeColor.Alpha);
+        set => ApplyColorOpacity(value, format => format.EdgeColor, (color, alpha) =>
+            new RgbaColor(color.Red, color.Green, color.Blue, alpha),
+            color => new SectionFormatPatch { EdgeColor = color });
+    }
+
+    public TextDirection? SelectedDirection
+    {
+        get => GetCommonCueValue(cue => cue.Direction);
+        set
+        {
+            if (editor is not null && selectedCueIds.Count > 0 && value.HasValue)
+            {
+                editor.SetDirection(selectedCueIds, value.Value);
+                AfterMutation();
+            }
+        }
+    }
+
     public string SelectionSummary
         => selectedCueIds.Count switch
         {
             0 => "선택 없음",
             1 => "자막 1개 선택",
-            _ => $"자막 {selectedCueIds.Count}개 선택 · 공통값 편집은 전체 적용",
+            _ when HasMixedSelection => $"자막 {selectedCueIds.Count}개 선택 · 혼합 값은 — 로 표시 · 변경은 전체 적용",
+            _ => $"자막 {selectedCueIds.Count}개 선택 · 변경은 전체 적용",
         };
+
+    public bool HasMixedSelection
+        => selectedCueIds.Count > 1 &&
+            (HasDifferentCueValues(cue => cue.PositionX) ||
+             HasDifferentCueValues(cue => cue.PositionY) ||
+             HasDifferentCueValues(cue => cue.Anchor) ||
+             HasDifferentCueValues(cue => cue.Justify) ||
+             HasDifferentCueValues(cue => cue.Direction) ||
+             HasDifferentFormatValues());
 
     public bool IsInlineEditing
     {
@@ -367,6 +617,122 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    private IEnumerable<ResolvedFormat> SelectedFormats
+    {
+        get
+        {
+            if (project is null)
+            {
+                yield break;
+            }
+
+            foreach (Guid id in selectedCueIds)
+            {
+                if (project.Cues[id] is not Cue cue)
+                {
+                    continue;
+                }
+
+                foreach (Section section in cue.Sections)
+                {
+                    yield return FormatResolver.Resolve(
+                        project.GetStyle(section.StyleIdOverride ?? cue.StyleId).BaseFormat,
+                        section.Overrides);
+                }
+            }
+        }
+    }
+
+    private T? GetCommonFormat<T>(Func<ResolvedFormat, T> selector) where T : struct
+    {
+        T[] values = SelectedFormats.Select(selector).ToArray();
+        if (values.Length == 0)
+        {
+            return null;
+        }
+
+        T first = values[0];
+        return values.All(value => EqualityComparer<T>.Default.Equals(value, first)) ? first : null;
+    }
+
+    private T? GetCommonCueValue<T>(Func<Cue, T> selector) where T : struct
+    {
+        T[] values = selectedCueIds
+            .Select(id => project?.Cues[id])
+            .Where(cue => cue is not null)
+            .Select(cue => selector(cue!))
+            .ToArray();
+        if (values.Length == 0)
+        {
+            return null;
+        }
+
+        T first = values[0];
+        return values.All(value => EqualityComparer<T>.Default.Equals(value, first)) ? first : null;
+    }
+
+    private bool HasDifferentCueValues<T>(Func<Cue, T> selector) where T : struct
+    {
+        T[] values = selectedCueIds
+            .Select(id => project?.Cues[id])
+            .Where(cue => cue is not null)
+            .Select(cue => selector(cue!))
+            .Distinct()
+            .Take(2)
+            .ToArray();
+        return values.Length > 1;
+    }
+
+    private bool HasDifferentFormatValues()
+    {
+        ResolvedFormat? first = SelectedFormats.FirstOrDefault();
+        return first is not null && SelectedFormats.Skip(1).Any(format => format != first);
+    }
+
+    private Guid? GetCommonCueStyleId()
+    {
+        if (selectedCueIds.Count == 0)
+        {
+            return null;
+        }
+
+        Guid? first = null;
+        foreach (Guid id in selectedCueIds)
+        {
+            if (project?.Cues[id] is not Cue cue)
+            {
+                continue;
+            }
+
+            Guid value = cue.StyleId ?? Guid.Empty;
+            if (first is null)
+            {
+                first = value;
+            }
+            else if (first.Value != value)
+            {
+                return null;
+            }
+        }
+
+        return first;
+    }
+
+    private void ApplyColorOpacity(
+        double? value,
+        Func<ResolvedFormat, RgbaColor> selector,
+        Func<RgbaColor, byte, RgbaColor> colorFactory,
+        Func<RgbaColor, SectionFormatPatch> patchFactory)
+    {
+        if (!value.HasValue || SelectedFormat is not ResolvedFormat format)
+        {
+            return;
+        }
+
+        byte alpha = (byte)Math.Clamp(Math.Round(value.Value), 0, YttConstants.MaximumOpacity);
+        ApplyFormat(patchFactory(colorFactory(selector(format), alpha)));
+    }
+
     public void SelectCue(Guid cueId, bool toggle)
     {
         if (project?.Cues[cueId] is null)
@@ -385,6 +751,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         lastSelectedCueId = selectedCueIds.Contains(cueId) ? cueId : selectedCueIds.LastOrDefault();
+        if (selectedCueIds.Count == 0)
+        {
+            lastSelectedCueId = null;
+        }
         selectedCueRow = lastSelectedCueId is Guid selected
             ? CueRows.FirstOrDefault(row => row.Id == selected)
             : null;
@@ -396,6 +766,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public void SelectInRectangle(CanvasRect rectangle)
     {
         selectedCueIds.Clear();
+        lastSelectedCueId = null;
         foreach (CanvasCueItem item in CanvasItems.Where(item => Intersects(item.Bounds, rectangle)))
         {
             selectedCueIds.Add(item.Id);
@@ -521,6 +892,114 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         editor.EndTransaction();
         AfterMutation();
+    }
+
+    public void AlignSelected(string command)
+    {
+        if (command is not ("L" or "C" or "R" or "T" or "M" or "B"))
+        {
+            return;
+        }
+
+        CanvasCueItem[] items = CanvasItems.Where(item => selectedCueIds.Contains(item.Id)).ToArray();
+        CanvasCueItem? reference = items.FirstOrDefault(item => item.Id == lastSelectedCueId);
+        if (editor is null || items.Length < 2 || reference is null)
+        {
+            return;
+        }
+
+        bool horizontal = command is "L" or "C" or "R";
+        double target = command switch
+        {
+            "L" => reference.Bounds.Left,
+            "C" => reference.Bounds.Left + (reference.Bounds.Width / 2),
+            "R" => reference.Bounds.Right,
+            "T" => reference.Bounds.Top,
+            "M" => reference.Bounds.Top + (reference.Bounds.Height / 2),
+            _ => reference.Bounds.Bottom,
+        };
+
+        ApplyMeasuredMove(items, item =>
+        {
+            double current = horizontal
+                ? command switch
+                {
+                    "L" => item.Bounds.Left,
+                    "C" => item.Bounds.Left + (item.Bounds.Width / 2),
+                    _ => item.Bounds.Right,
+                }
+                : command switch
+                {
+                    "T" => item.Bounds.Top,
+                    "M" => item.Bounds.Top + (item.Bounds.Height / 2),
+                    _ => item.Bounds.Bottom,
+                };
+            return horizontal ? new CanvasPoint(target - current, 0) : new CanvasPoint(0, target - current);
+        });
+    }
+
+    public void DistributeSelected(bool horizontal)
+    {
+        CanvasCueItem[] items = CanvasItems.Where(item => selectedCueIds.Contains(item.Id))
+            .OrderBy(item => horizontal ? item.Bounds.Left : item.Bounds.Top)
+            .ToArray();
+        if (editor is null || items.Length < 3)
+        {
+            return;
+        }
+
+        double first = horizontal
+            ? items[0].Bounds.Left + (items[0].Bounds.Width / 2)
+            : items[0].Bounds.Top + (items[0].Bounds.Height / 2);
+        double last = horizontal
+            ? items[^1].Bounds.Left + (items[^1].Bounds.Width / 2)
+            : items[^1].Bounds.Top + (items[^1].Bounds.Height / 2);
+        double step = (last - first) / (items.Length - 1);
+        ApplyMeasuredMove(items, item =>
+        {
+            int index = Array.IndexOf(items, item);
+            double current = horizontal
+                ? item.Bounds.Left + (item.Bounds.Width / 2)
+                : item.Bounds.Top + (item.Bounds.Height / 2);
+            double target = first + (step * index);
+            return horizontal ? new CanvasPoint(target - current, 0) : new CanvasPoint(0, target - current);
+        });
+    }
+
+    private void MoveSelectionToZOrder(bool front)
+    {
+        if (editor is null || project is null || selectedCueIds.Count == 0)
+        {
+            return;
+        }
+
+        int boundary = front
+            ? project.Cues.Max(cue => cue.ZOrder)
+            : project.Cues.Min(cue => cue.ZOrder);
+        editor.SetZOrder(selectedCueIds, front ? boundary + 1 : boundary - 1);
+        AfterMutation();
+    }
+
+    private void ApplyMeasuredMove(IEnumerable<CanvasCueItem> items, Func<CanvasCueItem, CanvasPoint> deltaFactory)
+    {
+        if (editor is null)
+        {
+            return;
+        }
+
+        Dictionary<Guid, CanvasPoint> positions = [];
+        foreach (CanvasCueItem item in items)
+        {
+            CanvasPoint delta = deltaFactory(item);
+            positions[item.Id] = CanvasGeometry.ToYttPoint(item.Anchor.X + delta.X, item.Anchor.Y + delta.Y,
+                YttConstants.ReferenceWidth, YttConstants.ReferenceHeight);
+        }
+
+        if (positions.Count > 0)
+        {
+            editor.MoveCues(positions);
+            AfterMutation();
+        }
     }
 
     public Task SeekExactAsync(double milliseconds) => SeekAsync(milliseconds, exact: true);
@@ -773,9 +1252,58 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         RefreshRowsAndStyles();
         if (style is not null)
         {
-            selectedStyleId = style.Id;
-            OnPropertyChanged(nameof(SelectedStyleId));
+            SelectedStyleId = style.Id;
         }
+    }
+
+    private void RenameSelectedStyle()
+    {
+        if (editor is null || selectedStyleId is not Guid id || id == Guid.Empty)
+        {
+            return;
+        }
+
+        editor.RenameStyle(id, selectedStyleName);
+        RefreshRowsAndStyles();
+        AfterMutation(refreshRows: false);
+    }
+
+    private void SaveSelectedCueAsStyle()
+    {
+        if (editor is null || selectedStyleId is not Guid id || id == Guid.Empty ||
+            SelectedFormat is not ResolvedFormat format || SelectedCue is not Cue cue)
+        {
+            return;
+        }
+
+        editor.UpdateStyle(id, new SectionFormatPatch
+        {
+            Font = format.Font,
+            SizePercent = format.SizePercent,
+            Bold = format.Bold,
+            Italic = format.Italic,
+            Underline = format.Underline,
+            Offset = format.Offset,
+            Foreground = format.Foreground,
+            Background = format.Background,
+            SecondaryColor = format.SecondaryColor,
+            Edge = format.Edge,
+            EdgeColor = format.EdgeColor,
+            Pack = format.Pack,
+        }, cue.Anchor, cue.Justify);
+        RefreshRowsAndStyles();
+        AfterMutation();
+    }
+
+    private void ApplySelectedStyle()
+    {
+        if (editor is null || selectedStyleId is not Guid id || selectedCueIds.Count == 0)
+        {
+            return;
+        }
+
+        editor.ApplyStyle(selectedCueIds, id == Guid.Empty ? null : id);
+        AfterMutation(refreshRows: true);
     }
 
     private void CommitInlineEdit()
@@ -803,7 +1331,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         editor.DeleteStyle(id);
-        selectedStyleId = Guid.Empty;
+        SelectedStyleId = Guid.Empty;
         RefreshRowsAndStyles();
         AfterMutation(refreshRows: false);
     }
@@ -1001,9 +1529,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         CueRows.Clear();
         Styles.Clear();
-        Styles.Add(new StyleOption(Guid.Empty, "Default"));
+        Styles.Add(new StyleOption(Guid.Empty, project?.Styles.Default.Name ?? "Default"));
         if (project is null)
         {
+            selectedStyleId = Guid.Empty;
+            selectedStyleName = string.Empty;
             return;
         }
 
@@ -1018,7 +1548,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             Styles.Add(new StyleOption(style.Id, style.Name));
         }
 
+        if (selectedStyleId is not Guid id || !Styles.Any(style => style.Id == id))
+        {
+            selectedStyleId = Guid.Empty;
+        }
+
+        selectedStyleName = Styles.FirstOrDefault(style => style.Id == selectedStyleId)?.Name ?? string.Empty;
+
         OnPropertyChanged(nameof(HasProject));
+        OnPropertyChanged(nameof(SelectedStyleId));
+        OnPropertyChanged(nameof(SelectedStyleOption));
+        OnPropertyChanged(nameof(SelectedStyleName));
     }
 
     private void RefreshCanvasSelection()
@@ -1030,25 +1570,33 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private void NotifySelectionProperties()
     {
         OnPropertyChanged(nameof(SelectionSummary));
+        OnPropertyChanged(nameof(HasMixedSelection));
         OnPropertyChanged(nameof(SelectedText));
         OnPropertyChanged(nameof(SelectedPositionX));
         OnPropertyChanged(nameof(SelectedPositionY));
+        OnPropertyChanged(nameof(SelectedPositionXText));
+        OnPropertyChanged(nameof(SelectedPositionYText));
         OnPropertyChanged(nameof(SelectedAnchor));
+        OnPropertyChanged(nameof(SelectedAnchorDisplay));
         OnPropertyChanged(nameof(SelectedJustification));
+        OnPropertyChanged(nameof(SelectedJustificationDisplay));
+        OnPropertyChanged(nameof(SelectedDirection));
+        OnPropertyChanged(nameof(SelectedCueStyleOption));
         OnPropertyChanged(nameof(SelectedFont));
         OnPropertyChanged(nameof(SelectedSizePercent));
+        OnPropertyChanged(nameof(SelectedSizePercentValue));
         OnPropertyChanged(nameof(SelectedBold));
         OnPropertyChanged(nameof(SelectedItalic));
         OnPropertyChanged(nameof(SelectedUnderline));
+        OnPropertyChanged(nameof(SelectedScriptOffset));
+        OnPropertyChanged(nameof(SelectedPack));
         OnPropertyChanged(nameof(SelectedEdge));
         OnPropertyChanged(nameof(ForegroundHex));
+        OnPropertyChanged(nameof(ForegroundOpacity));
         OnPropertyChanged(nameof(BackgroundHex));
-        if (SelectedCue is Cue cue)
-        {
-            selectedStyleId = cue.StyleId ?? Guid.Empty;
-            OnPropertyChanged(nameof(SelectedStyleId));
-            OnPropertyChanged(nameof(SelectedStyleOption));
-        }
+        OnPropertyChanged(nameof(BackgroundOpacity));
+        OnPropertyChanged(nameof(EdgeColorHex));
+        OnPropertyChanged(nameof(EdgeOpacity));
 
         NotifyCommandStates();
     }
@@ -1066,6 +1614,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         DuplicateCueCommand.NotifyCanExecuteChanged();
         AddStyleCommand.NotifyCanExecuteChanged();
         DeleteStyleCommand.NotifyCanExecuteChanged();
+        RenameStyleCommand.NotifyCanExecuteChanged();
+        SaveCueAsStyleCommand.NotifyCanExecuteChanged();
+        ApplySelectedStyleCommand.NotifyCanExecuteChanged();
+        AlignLeftCommand.NotifyCanExecuteChanged();
+        AlignCenterCommand.NotifyCanExecuteChanged();
+        AlignRightCommand.NotifyCanExecuteChanged();
+        AlignTopCommand.NotifyCanExecuteChanged();
+        AlignMiddleCommand.NotifyCanExecuteChanged();
+        AlignBottomCommand.NotifyCanExecuteChanged();
+        DistributeHorizontalCommand.NotifyCanExecuteChanged();
+        DistributeVerticalCommand.NotifyCanExecuteChanged();
+        BringToFrontCommand.NotifyCanExecuteChanged();
+        SendToBackCommand.NotifyCanExecuteChanged();
     }
 
     private void NotifyVideoState()

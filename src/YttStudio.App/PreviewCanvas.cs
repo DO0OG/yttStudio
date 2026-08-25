@@ -190,6 +190,14 @@ public sealed class PreviewCanvas : Control
             }
 
             movePreview = viewModel.PreviewCanvasMove(deltaX, deltaY, altPressed);
+            CanvasCueItem? coordinateCue = viewModel.CanvasItems.LastOrDefault(item => item.Selected);
+            if (coordinateCue is not null)
+            {
+                ToolTip.SetTip(this,
+                    $"ah {coordinateCue.Anchor.X + movePreview.DeltaX:F1} · av {coordinateCue.Anchor.Y + movePreview.DeltaY:F1}");
+                ToolTip.SetIsOpen(this, true);
+            }
+
             InvalidateVisual();
         }
         else if (selectingRange)
@@ -221,6 +229,7 @@ public sealed class PreviewCanvas : Control
         draggingCue = false;
         selectingRange = false;
         movePreview = null;
+        ToolTip.SetIsOpen(this, false);
         e.Pointer.Capture(null);
         InvalidateVisual();
     }

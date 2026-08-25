@@ -26,8 +26,10 @@ public sealed class MpvVideoSource : IVideoSource
     private readonly MpvRenderUpdateCallback renderUpdateCallback;
     private nint renderContext;
     private Exception? renderFailure;
+    private Task? disposeTask;
     private VideoInfo info = new(0, 0, TimeSpan.Zero, 0);
     private double positionSeconds;
+    private string? requestedPath;
     private long sequenceNumber;
     private bool playing;
     private bool stopping;
@@ -72,7 +74,7 @@ public sealed class MpvVideoSource : IVideoSource
         {
             if (renderThread?.IsAlive == true)
             {
-                stopping = true;
+                Volatile.Write(ref stopping, true);
                 renderSignal.Set();
                 renderThread.Join();
             }
@@ -117,19 +119,30 @@ public sealed class MpvVideoSource : IVideoSource
 
     public async Task LoadAsync(string path, CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
+        ThrowIfStopping();
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (!File.Exists(path))
         {
             throw new FileNotFoundException("Video file was not found.", path);
         }
 
-        frames.BeginSeek();
-        InvokeCommand("loadfile", Path.GetFullPath(path), "replace");
+        string fullPath = Path.GetFullPath(path);
+        lock (controlGate)
+        {
+            ThrowIfStoppingLocked();
+            Volatile.Write(ref requestedPath, fullPath);
+            Volatile.Write(ref info, new VideoInfo(0, 0, TimeSpan.Zero, 0));
+            Volatile.Write(ref positionSeconds, 0);
+            Volatile.Write(ref playing, false);
+            frames.BeginSeek();
+            InvokeCommand("loadfile", fullPath, "replace");
+        }
+
         DateTime deadline = DateTime.UtcNow.AddSeconds(15);
         do
         {
             cancellationToken.ThrowIfCancellationRequested();
+            ThrowIfStopping();
             PollState(null);
             VideoInfo current = Info;
             if (current.Width > 0 && current.Height > 0 && current.Duration > TimeSpan.Zero)
@@ -158,18 +171,24 @@ public sealed class MpvVideoSource : IVideoSource
 
     public Task SeekAsync(TimeSpan position, bool exact = true, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
+        ThrowIfStopping();
         cancellationToken.ThrowIfCancellationRequested();
-        frames.BeginSeek();
         string mode = exact ? "absolute+exact" : "absolute+keyframes";
-        InvokeCommand("seek", Math.Max(0, position.TotalSeconds).ToString("R", CultureInfo.InvariantCulture), mode);
-        Volatile.Write(ref positionSeconds, Math.Max(0, position.TotalSeconds));
+        double targetSeconds = Math.Max(0, position.TotalSeconds);
+        lock (controlGate)
+        {
+            ThrowIfStoppingLocked();
+            frames.BeginSeek();
+            InvokeCommand("seek", targetSeconds.ToString("R", CultureInfo.InvariantCulture), mode);
+            Volatile.Write(ref positionSeconds, targetSeconds);
+        }
+
         return Task.CompletedTask;
     }
 
     public void StepFrame(int delta)
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
+        ThrowIfStopping();
         if (delta == 0)
         {
             return;
@@ -185,7 +204,7 @@ public sealed class MpvVideoSource : IVideoSource
 
     public void SetSpeed(double speed)
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
+        ThrowIfStopping();
         if (speed is < 0.25 or > 2.0)
         {
             throw new ArgumentOutOfRangeException(nameof(speed), "Playback speed must be from 0.25 through 2.0.");
@@ -196,38 +215,69 @@ public sealed class MpvVideoSource : IVideoSource
 
     public bool TryLockLatestFrame(out VideoFrameLock frame)
     {
-        if (disposed)
+        lock (controlGate)
         {
-            frame = default;
-            return false;
-        }
+            if (stopping || disposed)
+            {
+                frame = default;
+                return false;
+            }
 
-        return frames.TryLockLatestFrame(out frame);
+            return frames.TryLockLatestFrame(out frame);
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (disposed)
-        {
-            return;
-        }
-
-        disposed = true;
-        await stateTimer.DisposeAsync().ConfigureAwait(false);
-
-        // SPEC §8.4 [API]: detach callback, join RenderThread, then destroy the mpv core.
-        stopping = true;
-        renderSignal.Set();
-        await Task.Run(renderThread.Join).ConfigureAwait(false);
-        frames.Dispose();
+        TaskCompletionSource<object?>? starter = null;
+        Task task;
         lock (controlGate)
         {
-            native.TerminateDestroy(mpvHandle);
+            if (disposeTask is null)
+            {
+                Volatile.Write(ref stopping, true);
+                Volatile.Write(ref disposed, true);
+                TaskCompletionSource<object?> completion = new(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                disposeTask = completion.Task;
+                starter = completion;
+            }
+
+            task = disposeTask!;
         }
 
-        renderSignal.Dispose();
-        renderReady.Dispose();
-        native.Dispose();
+        if (starter is not null)
+        {
+            await CompleteDisposeAsync(starter).ConfigureAwait(false);
+        }
+
+        await task.ConfigureAwait(false);
+    }
+
+    private async Task CompleteDisposeAsync(TaskCompletionSource<object?> completion)
+    {
+        try
+        {
+            await stateTimer.DisposeAsync().ConfigureAwait(false);
+
+            // SPEC §8.4 [API]: detach callback, join RenderThread, then destroy the mpv core.
+            renderSignal.Set();
+            await Task.Run(renderThread.Join).ConfigureAwait(false);
+            frames.Dispose();
+            lock (controlGate)
+            {
+                native.TerminateDestroy(mpvHandle);
+            }
+
+            renderSignal.Dispose();
+            renderReady.Dispose();
+            native.Dispose();
+            completion.SetResult(null);
+        }
+        catch (Exception exception)
+        {
+            completion.SetException(exception);
+        }
     }
 
     private void RenderLoop()
@@ -239,21 +289,49 @@ public sealed class MpvVideoSource : IVideoSource
             while (true)
             {
                 renderSignal.WaitOne();
-                if (stopping)
+                if (Volatile.Read(ref stopping))
                 {
                     break;
                 }
 
                 RenderLatestFrame();
             }
-
-            native.RenderContextSetUpdateCallback(renderContext, 0, 0);
-            native.RenderContextFree(renderContext);
-            renderContext = 0;
         }
         catch (Exception exception)
         {
             renderFailure = exception;
+        }
+        finally
+        {
+            Exception? cleanupFailure = null;
+            nint context = renderContext;
+            if (context != 0)
+            {
+                try
+                {
+                    native.RenderContextSetUpdateCallback(context, 0, 0);
+                }
+                catch (Exception exception)
+                {
+                    cleanupFailure = exception;
+                }
+
+                try
+                {
+                    native.RenderContextFree(context);
+                }
+                catch (Exception exception)
+                {
+                    cleanupFailure ??= exception;
+                }
+                finally
+                {
+                    renderContext = 0;
+                }
+            }
+
+            // Preserve the render-loop failure if cleanup also fails.
+            renderFailure ??= cleanupFailure;
             renderReady.Set();
         }
     }
@@ -360,38 +438,48 @@ public sealed class MpvVideoSource : IVideoSource
 
     private void PollState(object? state)
     {
-        if (disposed)
+        lock (controlGate)
         {
-            return;
-        }
+            if (Volatile.Read(ref stopping) || Volatile.Read(ref disposed))
+            {
+                return;
+            }
 
         try
         {
+            string? expectedPath = Volatile.Read(ref requestedPath);
+            string? loadedPath = ReadStringProperty("path");
+            if (expectedPath is not null && !PathsEqual(expectedPath, loadedPath))
+            {
+                return;
+            }
+
             double? position = ReadDoubleProperty("playback-time");
-            if (position.HasValue)
-            {
-                Volatile.Write(ref positionSeconds, position.Value);
-            }
+                if (position.HasValue)
+                {
+                    Volatile.Write(ref positionSeconds, position.Value);
+                }
 
-            long? paused = ReadInt64Property("pause");
-            if (paused.HasValue)
-            {
-                Volatile.Write(ref playing, paused.Value == 0);
-            }
+                long? paused = ReadInt64Property("pause");
+                if (paused.HasValue)
+                {
+                    Volatile.Write(ref playing, paused.Value == 0);
+                }
 
-            int width = checked((int)(ReadInt64Property("width") ?? 0));
-            int height = checked((int)(ReadInt64Property("height") ?? 0));
-            double duration = ReadDoubleProperty("duration") ?? 0;
-            double nominalFps = ReadDoubleProperty("estimated-vf-fps") ??
-                ReadDoubleProperty("container-fps") ?? 0;
-            if (width > 0 && height > 0 && duration > 0)
-            {
-                Volatile.Write(ref info, new VideoInfo(width, height, TimeSpan.FromSeconds(duration), nominalFps));
+                int width = checked((int)(ReadInt64Property("width") ?? 0));
+                int height = checked((int)(ReadInt64Property("height") ?? 0));
+                double duration = ReadDoubleProperty("duration") ?? 0;
+                double nominalFps = ReadDoubleProperty("estimated-vf-fps") ??
+                    ReadDoubleProperty("container-fps") ?? 0;
+                if (width > 0 && height > 0 && duration > 0)
+                {
+                    Volatile.Write(ref info, new VideoInfo(width, height, TimeSpan.FromSeconds(duration), nominalFps));
+                }
             }
-        }
-        catch when (!disposed)
-        {
-            // Metadata may be unavailable while a file is opening or closing.
+            catch when (!Volatile.Read(ref stopping) && !Volatile.Read(ref disposed))
+            {
+                // Metadata may be unavailable while a file is opening or closing.
+            }
         }
     }
 
@@ -399,16 +487,20 @@ public sealed class MpvVideoSource : IVideoSource
     {
         using Utf8String nativeName = new(name);
         using Utf8String nativeValue = new(value);
-        Check(native.SetOptionString(mpvHandle, nativeName.Pointer, nativeValue.Pointer), $"set option {name}");
+        lock (controlGate)
+        {
+            ThrowIfStoppingLocked();
+            Check(native.SetOptionString(mpvHandle, nativeName.Pointer, nativeValue.Pointer), $"set option {name}");
+        }
     }
 
     private void SetProperty(string name, string value)
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
         using Utf8String nativeName = new(name);
         using Utf8String nativeValue = new(value);
         lock (controlGate)
         {
+            ThrowIfStoppingLocked();
             Check(native.SetPropertyString(mpvHandle, nativeName.Pointer, nativeValue.Pointer), $"set property {name}");
         }
     }
@@ -419,6 +511,7 @@ public sealed class MpvVideoSource : IVideoSource
         double value = 0;
         lock (controlGate)
         {
+            ThrowIfStoppingLocked();
             int result = native.GetProperty(mpvHandle, nativeName.Pointer, MpvFormatDouble, (nint)(&value));
             return result >= 0 ? value : null;
         }
@@ -430,6 +523,7 @@ public sealed class MpvVideoSource : IVideoSource
         long value = 0;
         lock (controlGate)
         {
+            ThrowIfStoppingLocked();
             int result = native.GetProperty(mpvHandle, nativeName.Pointer, MpvFormatInt64, (nint)(&value));
             if (result < 0 && name == "pause")
             {
@@ -445,30 +539,28 @@ public sealed class MpvVideoSource : IVideoSource
     private string? ReadStringProperty(string name)
     {
         using Utf8String nativeName = new(name);
-        nint value;
         lock (controlGate)
         {
-            value = native.GetPropertyString(mpvHandle, nativeName.Pointer);
-        }
+            ThrowIfStoppingLocked();
+            nint value = native.GetPropertyString(mpvHandle, nativeName.Pointer);
+            if (value == 0)
+            {
+                return null;
+            }
 
-        if (value == 0)
-        {
-            return null;
-        }
-
-        try
-        {
-            return Marshal.PtrToStringUTF8(value);
-        }
-        finally
-        {
-            native.Free(value);
+            try
+            {
+                return Marshal.PtrToStringUTF8(value);
+            }
+            finally
+            {
+                native.Free(value);
+            }
         }
     }
 
     private void InvokeCommand(params string[] arguments)
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
         nint[] strings = new nint[arguments.Length];
         nint array = 0;
         try
@@ -487,6 +579,7 @@ public sealed class MpvVideoSource : IVideoSource
             Marshal.WriteIntPtr(array, arguments.Length * nint.Size, 0);
             lock (controlGate)
             {
+                ThrowIfStoppingLocked();
                 Check(native.Command(mpvHandle, array), $"command {arguments[0]}");
             }
         }
@@ -507,6 +600,21 @@ public sealed class MpvVideoSource : IVideoSource
         }
     }
 
+    private void ThrowIfStopping()
+    {
+        lock (controlGate)
+        {
+            ThrowIfStoppingLocked();
+        }
+    }
+
+    private void ThrowIfStoppingLocked()
+    {
+        ObjectDisposedException.ThrowIf(
+            Volatile.Read(ref stopping) || Volatile.Read(ref disposed),
+            this);
+    }
+
     private void Check(int result, string operation)
     {
         if (result < 0)
@@ -517,6 +625,19 @@ public sealed class MpvVideoSource : IVideoSource
 
     private static string GetApiVersionText(ulong version)
         => $"client API {version >> 16}.{version & 0xffff}";
+
+    private static bool PathsEqual(string expectedPath, string? loadedPath)
+    {
+        if (string.IsNullOrWhiteSpace(loadedPath))
+        {
+            return false;
+        }
+
+        StringComparison comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        return string.Equals(Path.GetFullPath(expectedPath), Path.GetFullPath(loadedPath), comparison);
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct MpvRenderParam(int Type, nint Data);

@@ -37,9 +37,14 @@
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
-          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
-            <Button Content="+ 추가" Command="{Binding AddStyleCommand}" />
-            <Button Content="삭제" Command="{Binding DeleteStyleCommand}" />
+          <StackPanel Grid.Row="2" Spacing="5" Margin="0,8,0,0">
+            <TextBox Text="{Binding SelectedStyleName, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="스타일 이름" />
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Button Content="+ 추가" Command="{Binding AddStyleCommand}" />
+              <Button Content="이름 변경" Command="{Binding RenameStyleCommand}" />
+              <Button Content="삭제" Command="{Binding DeleteStyleCommand}" />
+            </StackPanel>
+            <Button Content="선택 큐 형식 저장" Command="{Binding SaveCueAsStyleCommand}" />
           </StackPanel>
         </Grid>
       </Border>
@@ -63,6 +68,22 @@
                 <ContextMenu>
                   <MenuItem Header="복제" Command="{Binding DuplicateCueCommand}" />
                   <MenuItem Header="삭제" Command="{Binding DeleteCueCommand}" />
+                  <Separator />
+                  <MenuItem Header="선택 스타일 적용" Command="{Binding ApplySelectedStyleCommand}" />
+                  <MenuItem Header="맨 앞으로" Command="{Binding BringToFrontCommand}" />
+                  <MenuItem Header="맨 뒤로" Command="{Binding SendToBackCommand}" />
+                  <MenuItem Header="정렬">
+                    <MenuItem Header="왼쪽 맞춤" Command="{Binding AlignLeftCommand}" />
+                    <MenuItem Header="가운데 맞춤" Command="{Binding AlignCenterCommand}" />
+                    <MenuItem Header="오른쪽 맞춤" Command="{Binding AlignRightCommand}" />
+                    <MenuItem Header="위쪽 맞춤" Command="{Binding AlignTopCommand}" />
+                    <MenuItem Header="세로 가운데 맞춤" Command="{Binding AlignMiddleCommand}" />
+                    <MenuItem Header="아래쪽 맞춤" Command="{Binding AlignBottomCommand}" />
+                    <Separator />
+                    <MenuItem Header="가로 균등 분배" Command="{Binding DistributeHorizontalCommand}" />
+                    <MenuItem Header="세로 균등 분배" Command="{Binding DistributeVerticalCommand}" />
+                  </MenuItem>
+                  <MenuItem Header="정렬·스타일은 속성 패널에서도 적용할 수 있습니다." IsEnabled="False" />
                   <Separator />
                   <MenuItem Header="회전 — YTT 포맷 미지원" IsEnabled="False" />
                   <MenuItem Header="자유 스케일 — YTT 포맷 미지원" IsEnabled="False" />
@@ -138,14 +159,28 @@
               <StackPanel Spacing="6" Margin="0,6,0,0">
                 <TextBlock Text="앵커 포인트 (ap)" />
                 <vm:AnchorPicker HorizontalAlignment="Left" />
-                <Grid ColumnDefinitions="Auto,*,Auto,*" ColumnSpacing="5">
-                  <TextBlock Grid.Column="0" Text="X" VerticalAlignment="Center" />
-                  <TextBox Grid.Column="1" Text="{Binding SelectedPositionX}" />
+                  <Grid ColumnDefinitions="Auto,*,Auto,*" ColumnSpacing="5">
+                    <TextBlock Grid.Column="0" Text="X" VerticalAlignment="Center" />
+                  <TextBox Grid.Column="1" Text="{Binding SelectedPositionXText}" />
                   <TextBlock Grid.Column="2" Text="Y" VerticalAlignment="Center" />
-                  <TextBox Grid.Column="3" Text="{Binding SelectedPositionY}" />
-                </Grid>
+                  <TextBox Grid.Column="3" Text="{Binding SelectedPositionYText}" />
+                  </Grid>
+                <TextBlock Text="{Binding SelectedAnchorDisplay}" Foreground="#AAA" />
                 <TextBlock Text="박스 내부 정렬 (ju)" />
                 <vm:JustificationPicker />
+                <TextBlock Text="{Binding SelectedJustificationDisplay}" Foreground="#AAA" />
+                <StackPanel Orientation="Horizontal" Spacing="3">
+                  <Button Content="좌" Command="{Binding AlignLeftCommand}" />
+                  <Button Content="중" Command="{Binding AlignCenterCommand}" />
+                  <Button Content="우" Command="{Binding AlignRightCommand}" />
+                  <Button Content="상" Command="{Binding AlignTopCommand}" />
+                  <Button Content="중" Command="{Binding AlignMiddleCommand}" />
+                  <Button Content="하" Command="{Binding AlignBottomCommand}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="3">
+                  <Button Content="가로 균등" Command="{Binding DistributeHorizontalCommand}" />
+                  <Button Content="세로 균등" Command="{Binding DistributeVerticalCommand}" />
+                </StackPanel>
                 <TextBlock Text="여러 줄일 때 적용됨" FontSize="11" Foreground="#AAA" />
               </StackPanel>
             </Expander>
@@ -155,21 +190,34 @@
                 <TextBlock Text="텍스트 (더블클릭 편집 대상)" />
                 <TextBox Text="{Binding SelectedText}" AcceptsReturn="True" MinHeight="54" />
                 <TextBlock Text="스타일" />
-                <ComboBox ItemsSource="{Binding Styles}" SelectedItem="{Binding SelectedStyleOption}" />
+                <ComboBox ItemsSource="{Binding Styles}" SelectedItem="{Binding SelectedCueStyleOption}" />
+                <TextBlock Text="스타일 목록 선택과 큐 적용은 분리되어 있습니다." FontSize="11" Foreground="#AAA" />
+                <TextBlock Text="문자 방향" />
+                <ComboBox ItemsSource="{Binding DirectionOptions}" SelectedItem="{Binding SelectedDirection}" />
                 <TextBlock Text="폰트 · YTT 고정 8종" />
                 <ComboBox ItemsSource="{Binding FontOptions}" SelectedItem="{Binding SelectedFont}" />
                 <TextBlock Text="크기 % (하한 75, 슬라이더 권장 상한 200)" />
-                <NumericUpDown Minimum="75" Maximum="1000" Value="{Binding SelectedSizePercent}" />
+                <Slider Minimum="75" Maximum="200" Value="{Binding SelectedSizePercentValue}" />
+                <NumericUpDown Minimum="75" Maximum="1000" Value="{Binding SelectedSizePercentValue}" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                  <CheckBox Content="B" IsChecked="{Binding SelectedBold}" />
-                  <CheckBox Content="I" IsChecked="{Binding SelectedItalic}" />
-                  <CheckBox Content="U" IsChecked="{Binding SelectedUnderline}" />
+                  <CheckBox Content="B" IsThreeState="True" IsChecked="{Binding SelectedBold}" />
+                  <CheckBox Content="I" IsThreeState="True" IsChecked="{Binding SelectedItalic}" />
+                  <CheckBox Content="U" IsThreeState="True" IsChecked="{Binding SelectedUnderline}" />
                 </StackPanel>
+                <TextBlock Text="문자 오프셋" />
+                <ComboBox ItemsSource="{Binding ScriptOffsetOptions}" SelectedItem="{Binding SelectedScriptOffset}" />
+                <CheckBox Content="Pack" IsThreeState="True" IsChecked="{Binding SelectedPack}" />
                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="4">
                   <TextBlock Grid.Row="0" Grid.Column="0" Text="전경" VerticalAlignment="Center" />
                   <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding ForegroundHex}" />
                   <TextBlock Grid.Row="1" Grid.Column="0" Text="배경" VerticalAlignment="Center" />
                   <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding BackgroundHex}" />
+                </Grid>
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="4">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="전경 불투명도" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding ForegroundOpacity}" />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="배경 불투명도" VerticalAlignment="Center" />
+                  <NumericUpDown Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding BackgroundOpacity}" />
                 </Grid>
               </StackPanel>
             </Expander>
@@ -177,6 +225,8 @@
             <Expander Header="엣지 / 그림자" IsExpanded="True">
               <StackPanel Spacing="6" Margin="0,6,0,0">
                 <ComboBox ItemsSource="{Binding EdgeOptions}" SelectedItem="{Binding SelectedEdge}" />
+                <TextBox Text="{Binding EdgeColorHex}" PlaceholderText="#RRGGBBAA" />
+                <NumericUpDown Minimum="0" Maximum="255" Value="{Binding EdgeOpacity}" />
                 <TextBlock Text="호환성: PC 중심 · 검증일 2026-08-25" FontSize="11" Foreground="#AAA"
                            ToolTip.Tip="SPEC §5.8 관찰 기준, 2026-08-25 검증" />
               </StackPanel>

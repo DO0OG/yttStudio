@@ -80,6 +80,14 @@ public sealed class DocumentEditor
     public void SetJustification(IEnumerable<Guid> cueIds, Justification justification)
         => ExecuteForCues("내부 정렬 변경", cueIds, cue => new SetJustificationCommand(cue, justification));
 
+    /// <summary>Changes text progression direction of selected cues.</summary>
+    public void SetDirection(IEnumerable<Guid> cueIds, TextDirection direction)
+        => ExecuteForCues("텍스트 방향 변경", cueIds, cue => new SetDirectionCommand(cue, direction));
+
+    /// <summary>Changes drawing order of selected cues.</summary>
+    public void SetZOrder(IEnumerable<Guid> cueIds, int zOrder)
+        => ExecuteForCues("그리기 순서 변경", cueIds, cue => new SetZOrderCommand(cue, zOrder));
+
     /// <summary>Changes cue time bounds and track.</summary>
     public void SetTiming(Guid cueId, TimeSpan start, TimeSpan end, int track)
     {
@@ -143,6 +151,18 @@ public sealed class DocumentEditor
     {
         StylePreset style = GetMutableStyle(styleId);
         Execute(new RenameStyleCommand(style, NormalizeStyleName(name)));
+    }
+
+    /// <summary>Updates selected fields of a style preset.</summary>
+    public void UpdateStyle(
+        Guid styleId,
+        SectionFormatPatch patch,
+        AnchorPoint? defaultAnchor = null,
+        Justification? defaultJustify = null)
+    {
+        ArgumentNullException.ThrowIfNull(patch);
+        StylePreset style = GetMutableStyle(styleId);
+        Execute(new UpdateStyleCommand(style, patch, defaultAnchor, defaultJustify));
     }
 
     /// <summary>Deletes a style while freezing its resolved appearance into section overrides.</summary>
@@ -325,6 +345,22 @@ public sealed class DocumentEditor
         if (patch.Pack.HasValue) target.Pack = patch.Pack;
     }
 
+    private static void ApplyPatch(SectionFormat target, SectionFormatPatch patch)
+    {
+        if (patch.Font.HasValue) target.Font = patch.Font.Value;
+        if (patch.SizePercent.HasValue) target.SizePercent = Math.Max(75, patch.SizePercent.Value);
+        if (patch.Bold.HasValue) target.Bold = patch.Bold.Value;
+        if (patch.Italic.HasValue) target.Italic = patch.Italic.Value;
+        if (patch.Underline.HasValue) target.Underline = patch.Underline.Value;
+        if (patch.Offset.HasValue) target.Offset = patch.Offset.Value;
+        if (patch.Foreground.HasValue) target.Foreground = patch.Foreground.Value;
+        if (patch.Background.HasValue) target.Background = patch.Background.Value;
+        if (patch.SecondaryColor.HasValue) target.SecondaryColor = patch.SecondaryColor.Value;
+        if (patch.Edge.HasValue) target.Edge = patch.Edge.Value;
+        if (patch.EdgeColor.HasValue) target.EdgeColor = patch.EdgeColor.Value;
+        if (patch.Pack.HasValue) target.Pack = patch.Pack.Value;
+    }
+
     private static Cue CloneCue(Cue source)
     {
         Cue copy = new(Guid.NewGuid())
@@ -440,6 +476,26 @@ public sealed class DocumentEditor
         public bool TryMergeWith(IUndoableCommand previous) => false;
     }
 
+    private sealed class SetDirectionCommand(Cue cue, TextDirection direction) : IUndoableCommand
+    {
+        private readonly TextDirection oldValue = cue.Direction;
+        public string Label => "텍스트 방향 변경";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [cue.Id];
+        public void Execute() => cue.Direction = direction;
+        public void Undo() => cue.Direction = oldValue;
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+    }
+
+    private sealed class SetZOrderCommand(Cue cue, int zOrder) : IUndoableCommand
+    {
+        private readonly int oldValue = cue.ZOrder;
+        public string Label => "그리기 순서 변경";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [cue.Id];
+        public void Execute() => cue.ZOrder = zOrder;
+        public void Undo() => cue.ZOrder = oldValue;
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+    }
+
     private sealed class SetTimingCommand(
         CueCollection cues,
         Cue cue,
@@ -492,6 +548,97 @@ public sealed class DocumentEditor
         public void Execute() => style.Name = name;
         public void Undo() => style.Name = oldName;
         public bool TryMergeWith(IUndoableCommand previous) => false;
+    }
+
+    private sealed class UpdateStyleCommand(
+        StylePreset style,
+        SectionFormatPatch patch,
+        AnchorPoint? defaultAnchor,
+        Justification? defaultJustify) : IUndoableCommand
+    {
+        private readonly SectionFormatSnapshot oldBaseFormat = SectionFormatSnapshot.Capture(style.BaseFormat);
+        private readonly AnchorPoint oldDefaultAnchor = style.DefaultAnchor;
+        private readonly Justification oldDefaultJustify = style.DefaultJustify;
+
+        public string Label => "스타일 업데이트";
+        public IReadOnlyCollection<Guid> AffectedCueIds => [];
+
+        public void Execute()
+        {
+            ApplyPatch(style.BaseFormat, patch);
+            if (defaultAnchor.HasValue)
+            {
+                style.DefaultAnchor = defaultAnchor.Value;
+            }
+
+            if (defaultJustify.HasValue)
+            {
+                style.DefaultJustify = defaultJustify.Value;
+            }
+        }
+
+        public void Undo()
+        {
+            oldBaseFormat.Restore(style.BaseFormat);
+            style.DefaultAnchor = oldDefaultAnchor;
+            style.DefaultJustify = oldDefaultJustify;
+        }
+
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+    }
+
+    private sealed class SectionFormatSnapshot
+    {
+        private readonly YtFont font;
+        private readonly int sizePercent;
+        private readonly bool bold;
+        private readonly bool italic;
+        private readonly bool underline;
+        private readonly ScriptOffset offset;
+        private readonly RgbaColor foreground;
+        private readonly RgbaColor background;
+        private readonly RgbaColor secondaryColor;
+        private readonly EdgeType edge;
+        private readonly RgbaColor edgeColor;
+        private readonly bool pack;
+
+        private SectionFormatSnapshot(SectionFormat source)
+        {
+            font = source.Font;
+            sizePercent = source.SizePercent;
+            bold = source.Bold;
+            italic = source.Italic;
+            underline = source.Underline;
+            offset = source.Offset;
+            foreground = source.Foreground;
+            background = source.Background;
+            secondaryColor = source.SecondaryColor;
+            edge = source.Edge;
+            edgeColor = source.EdgeColor;
+            pack = source.Pack;
+        }
+
+        public static SectionFormatSnapshot Capture(SectionFormat source)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+            return new SectionFormatSnapshot(source);
+        }
+
+        public void Restore(SectionFormat target)
+        {
+            target.Font = font;
+            target.SizePercent = sizePercent;
+            target.Bold = bold;
+            target.Italic = italic;
+            target.Underline = underline;
+            target.Offset = offset;
+            target.Foreground = foreground;
+            target.Background = background;
+            target.SecondaryColor = secondaryColor;
+            target.Edge = edge;
+            target.EdgeColor = edgeColor;
+            target.Pack = pack;
+        }
     }
 
     private sealed class DeleteStyleCommand : IUndoableCommand
