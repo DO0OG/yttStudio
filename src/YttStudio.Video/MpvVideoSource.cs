@@ -35,7 +35,9 @@ public sealed class MpvVideoSource : IVideoSource
     private bool stopping;
     private bool disposed;
 
-    private MpvVideoSource(MpvNativeLibrary native)
+    // Instantiated through TryCreate so probing and initialisation failures are reported
+    // rather than thrown from a constructor. Internal keeps it out of the public API.
+    internal MpvVideoSource(MpvNativeLibrary native)
     {
         this.native = native;
         mpvHandle = native.Create();

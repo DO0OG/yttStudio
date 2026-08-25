@@ -276,6 +276,9 @@ public sealed class TimelineControl : Control
                         (int)Math.Round((point.Y - dragStart.Y) / TrackHeight,
                             MidpointRounding.AwayFromZero));
                     break;
+                default:
+                    // DragMode.None means no timeline drag is in progress.
+                    break;
             }
 
             InvalidateVisual();

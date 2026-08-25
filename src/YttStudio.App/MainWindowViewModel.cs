@@ -887,6 +887,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 case 'B':
                     editor.SetAnchor(id, AnchorPoint.BottomCenter, 50, 90);
                     break;
+                default:
+                    // Only the four shortcuts in SPEC §9.4 (3) reach this method.
+                    break;
             }
         }
 
