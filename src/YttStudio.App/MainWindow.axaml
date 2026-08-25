@@ -4,35 +4,199 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:YttStudio.App"
         mc:Ignorable="d"
-        d:DesignWidth="1120"
-        d:DesignHeight="760"
+        d:DesignWidth="1440"
+        d:DesignHeight="900"
         x:Class="YttStudio.App.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Width="1120"
-        Height="760"
-        MinWidth="720"
-        MinHeight="520"
-        Title="YttStudio — M1 Renderer">
-  <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="16" RowSpacing="12">
-    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
-      <Button Content="열기 (.ytt / .ass)" Command="{Binding OpenCommand}" />
-      <Button Content="YTT 저장" Command="{Binding SaveCommand}" IsEnabled="{Binding HasProject}" />
-      <CheckBox Content="체커보드 배경" IsChecked="{Binding UseCheckerboard}" VerticalAlignment="Center" />
-    </StackPanel>
-
-    <Border Grid.Row="1" Background="#202020" BorderBrush="#555" BorderThickness="1">
-      <Image Source="{Binding PreviewImage}" Stretch="Uniform" />
-    </Border>
-
-    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-      <TextBlock Grid.Column="0" Text="시간" VerticalAlignment="Center" />
-      <Slider Grid.Column="1"
-              Minimum="0"
-              Maximum="{Binding MaximumMilliseconds}"
-              Value="{Binding PositionMilliseconds}" />
-      <TextBlock Grid.Column="2" Text="{Binding PositionDisplay}" Width="92" TextAlignment="Right" />
+        Width="1440"
+        Height="900"
+        MinWidth="1024"
+        MinHeight="700"
+        Title="YttStudio — M2 영상 파이프라인 + 편집 캔버스">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="10" RowSpacing="8">
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="6">
+      <Button Grid.Column="0" Content="자막 열기" Command="{Binding OpenSubtitleCommand}" />
+      <Button Grid.Column="1" Content="영상 열기" Command="{Binding OpenVideoCommand}" />
+      <Button Grid.Column="2" Content="YTT 저장" Command="{Binding SaveCommand}" />
+      <Button Grid.Column="3" Content="Undo" Command="{Binding UndoCommand}" />
+      <Button Grid.Column="4" Content="Redo" Command="{Binding RedoCommand}" />
+      <TextBlock Grid.Column="5" Text="{Binding VideoStatus}" VerticalAlignment="Center" Margin="10,0" />
+      <CheckBox Grid.Column="6" Content="체커보드 배경" IsChecked="{Binding UseCheckerboard}" />
     </Grid>
 
-    <TextBlock Grid.Row="3" Text="{Binding Status}" TextWrapping="Wrap" />
+    <Grid Grid.Row="1" ColumnDefinitions="210,*,280" ColumnSpacing="8">
+      <Border Grid.Column="0" BorderBrush="#444" BorderThickness="1" Padding="8">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <TextBlock Grid.Row="0" Text="스타일 프리셋" FontWeight="Bold" Margin="0,0,0,8" />
+          <ListBox Grid.Row="1"
+                   ItemsSource="{Binding Styles}"
+                   SelectedItem="{Binding SelectedStyleOption}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:StyleOption">
+                <TextBlock Text="{Binding Name}" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
+            <Button Content="+ 추가" Command="{Binding AddStyleCommand}" />
+            <Button Content="삭제" Command="{Binding DeleteStyleCommand}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <Grid Grid.Column="1" RowDefinitions="Auto,3*,Auto,Auto,*,2*" RowSpacing="6">
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4">
+          <Button Content="영상" IsEnabled="True" />
+          <Button Content="YouTube 일반" IsEnabled="False" ToolTip.Tip="측정 대기 중" />
+          <Button Content="극장" IsEnabled="False" ToolTip.Tip="측정 대기 중" />
+          <Button Content="전체화면" IsEnabled="False" ToolTip.Tip="측정 대기 중" />
+          <Button Content="모바일" IsEnabled="False" ToolTip.Tip="측정 대기 중" />
+          <TextBlock Text="VideoFrame 모드 · 나머지 측정 대기 중" VerticalAlignment="Center" Margin="8,0" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Background="#111" BorderBrush="#555" BorderThickness="1" ClipToBounds="True">
+          <Grid>
+            <Image Source="{Binding VideoFrameImage}" Stretch="Uniform" />
+            <Image Source="{Binding SubtitleImage}" Stretch="Uniform" IsHitTestVisible="False" />
+            <vm:PreviewCanvas>
+              <vm:PreviewCanvas.ContextMenu>
+                <ContextMenu>
+                  <MenuItem Header="복제" Command="{Binding DuplicateCueCommand}" />
+                  <MenuItem Header="삭제" Command="{Binding DeleteCueCommand}" />
+                  <Separator />
+                  <MenuItem Header="회전 — YTT 포맷 미지원" IsEnabled="False" />
+                  <MenuItem Header="자유 스케일 — YTT 포맷 미지원" IsEnabled="False" />
+                </ContextMenu>
+              </vm:PreviewCanvas.ContextMenu>
+            </vm:PreviewCanvas>
+            <Canvas IsVisible="{Binding IsInlineEditing}" IsHitTestVisible="{Binding IsInlineEditing}">
+              <StackPanel Canvas.Left="{Binding InlineEditorLeft}"
+                          Canvas.Top="{Binding InlineEditorTop}"
+                          Width="{Binding InlineEditorWidth}"
+                          Orientation="Horizontal"
+                          Spacing="4">
+                <TextBox Text="{Binding InlineText}" AcceptsReturn="True" MinWidth="120" />
+                <Button Content="적용" Command="{Binding CommitInlineEditCommand}" />
+              </StackPanel>
+            </Canvas>
+          </Grid>
+        </Border>
+
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="6">
+          <Button Grid.Column="0" Content="◀" Command="{Binding StepBackCommand}" />
+          <Button Grid.Column="1" Content="{Binding PlayPauseLabel}" Command="{Binding PlayPauseCommand}" />
+          <Button Grid.Column="2" Content="▶" Command="{Binding StepForwardCommand}" />
+          <Slider Grid.Column="3" Minimum="0" Maximum="{Binding MaximumMilliseconds}"
+                  Value="{Binding PositionMilliseconds}" />
+          <TextBlock Grid.Column="4" Text="{Binding PositionDisplay}" Width="92" TextAlignment="Right"
+                     VerticalAlignment="Center" />
+          <ComboBox Grid.Column="5" ItemsSource="{Binding SpeedOptions}" SelectedItem="{Binding PlaybackSpeed}"
+                    Width="72" />
+        </Grid>
+
+        <TextBlock Grid.Row="3" Text="타임라인 · Ctrl+휠 확대 · 블록 몸통 이동 / 좌우 끝 트림"
+                   Foreground="#AAA" />
+        <vm:TimelineControl Grid.Row="4" />
+
+        <Border Grid.Row="5" BorderBrush="#444" BorderThickness="1">
+          <Grid RowDefinitions="Auto,*">
+            <Grid Grid.Row="0" ColumnDefinitions="34,92,92,72,54,80,*" Background="#292929">
+              <TextBlock Grid.Column="0" Text="#" />
+              <TextBlock Grid.Column="1" Text="시작(ms)" />
+              <TextBlock Grid.Column="2" Text="끝(ms)" />
+              <TextBlock Grid.Column="3" Text="길이" />
+              <TextBlock Grid.Column="4" Text="Track" />
+              <TextBlock Grid.Column="5" Text="스타일" />
+              <TextBlock Grid.Column="6" Text="텍스트" />
+            </Grid>
+            <ListBox Grid.Row="1" ItemsSource="{Binding CueRows}" SelectedItem="{Binding SelectedCueRow}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:CueRowViewModel">
+                  <Grid ColumnDefinitions="34,92,92,72,54,80,*">
+                    <TextBlock Grid.Column="0" Text="{Binding Number}" VerticalAlignment="Center" />
+                    <TextBox Grid.Column="1" Text="{Binding StartMilliseconds}" />
+                    <TextBox Grid.Column="2" Text="{Binding EndMilliseconds}" />
+                    <TextBlock Grid.Column="3" Text="{Binding DurationMilliseconds}" VerticalAlignment="Center" />
+                    <TextBox Grid.Column="4" Text="{Binding Track}" />
+                    <TextBlock Grid.Column="5" Text="{Binding Style}" VerticalAlignment="Center" />
+                    <TextBox Grid.Column="6" Text="{Binding Text}" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
+        </Border>
+      </Grid>
+
+      <Border Grid.Column="2" BorderBrush="#444" BorderThickness="1" Padding="8">
+        <ScrollViewer>
+          <StackPanel Spacing="8">
+            <TextBlock Text="속성" FontWeight="Bold" />
+            <TextBlock Text="{Binding SelectionSummary}" Foreground="#AAA" TextWrapping="Wrap" />
+
+            <Expander Header="위치 &amp; 정렬" IsExpanded="True">
+              <StackPanel Spacing="6" Margin="0,6,0,0">
+                <TextBlock Text="앵커 포인트 (ap)" />
+                <vm:AnchorPicker HorizontalAlignment="Left" />
+                <Grid ColumnDefinitions="Auto,*,Auto,*" ColumnSpacing="5">
+                  <TextBlock Grid.Column="0" Text="X" VerticalAlignment="Center" />
+                  <TextBox Grid.Column="1" Text="{Binding SelectedPositionX}" />
+                  <TextBlock Grid.Column="2" Text="Y" VerticalAlignment="Center" />
+                  <TextBox Grid.Column="3" Text="{Binding SelectedPositionY}" />
+                </Grid>
+                <TextBlock Text="박스 내부 정렬 (ju)" />
+                <vm:JustificationPicker />
+                <TextBlock Text="여러 줄일 때 적용됨" FontSize="11" Foreground="#AAA" />
+              </StackPanel>
+            </Expander>
+
+            <Expander Header="텍스트" IsExpanded="True">
+              <StackPanel Spacing="6" Margin="0,6,0,0">
+                <TextBlock Text="텍스트 (더블클릭 편집 대상)" />
+                <TextBox Text="{Binding SelectedText}" AcceptsReturn="True" MinHeight="54" />
+                <TextBlock Text="스타일" />
+                <ComboBox ItemsSource="{Binding Styles}" SelectedItem="{Binding SelectedStyleOption}" />
+                <TextBlock Text="폰트 · YTT 고정 8종" />
+                <ComboBox ItemsSource="{Binding FontOptions}" SelectedItem="{Binding SelectedFont}" />
+                <TextBlock Text="크기 % (하한 75, 슬라이더 권장 상한 200)" />
+                <NumericUpDown Minimum="75" Maximum="1000" Value="{Binding SelectedSizePercent}" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <CheckBox Content="B" IsChecked="{Binding SelectedBold}" />
+                  <CheckBox Content="I" IsChecked="{Binding SelectedItalic}" />
+                  <CheckBox Content="U" IsChecked="{Binding SelectedUnderline}" />
+                </StackPanel>
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="4">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="전경" VerticalAlignment="Center" />
+                  <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding ForegroundHex}" />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="배경" VerticalAlignment="Center" />
+                  <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding BackgroundHex}" />
+                </Grid>
+              </StackPanel>
+            </Expander>
+
+            <Expander Header="엣지 / 그림자" IsExpanded="True">
+              <StackPanel Spacing="6" Margin="0,6,0,0">
+                <ComboBox ItemsSource="{Binding EdgeOptions}" SelectedItem="{Binding SelectedEdge}" />
+                <TextBlock Text="호환성: PC 중심 · 검증일 2026-08-25" FontSize="11" Foreground="#AAA"
+                           ToolTip.Tip="SPEC §5.8 관찰 기준, 2026-08-25 검증" />
+              </StackPanel>
+            </Expander>
+
+            <Border Background="#252525" Padding="8">
+              <TextBlock Text="가라오케 · 효과 · 고급: M3/M4/M5 범위" Foreground="#888" TextWrapping="Wrap" />
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+      <TextBlock Grid.Column="0" Text="{Binding Status}" TextWrapping="Wrap" />
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+        <Button Content="+ 현재 시각에 큐" Command="{Binding AddCueCommand}" />
+        <Button Content="복제" Command="{Binding DuplicateCueCommand}" />
+        <Button Content="삭제" Command="{Binding DeleteCueCommand}" />
+      </StackPanel>
+    </Grid>
   </Grid>
 </Window>

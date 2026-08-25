@@ -50,4 +50,13 @@ public static class YttConstants
 
     // SPEC §7.5 [PRODUCT]: underline thickness is one sixteenth of the font size.
     public const double UnderlineThicknessFactor = 1.0 / 16.0;
+
+    // SPEC §9.3 [PRODUCT]: canvas snapping uses an eight-pixel default threshold.
+    public const double DefaultSnapThresholdPixels = 8.0;
+
+    // SPEC §9.3 [PRODUCT]: the default editor safe area is five percent on each edge.
+    public const double DefaultSafeAreaPercent = 5.0;
+
+    // SPEC §13 [PRODUCT]: undo and redo history retains at most 200 operations.
+    public const int MaximumUndoDepth = 200;
 }
