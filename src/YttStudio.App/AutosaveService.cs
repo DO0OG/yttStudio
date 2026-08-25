@@ -4,13 +4,13 @@ using YttStudio.Core.Project;
 namespace YttStudio.App;
 
 /// <summary>
-/// Periodically writes a recovery copy of the open project.
-/// SPEC §12: autosave runs every 60 seconds into <c>%TEMP%/YttStudio/autosave/</c> and must
-/// never touch the undo stack, so it only reads the model and serialises it.
+/// 열려 있는 프로젝트의 복구본을 주기적으로 기록한다.
+/// 자동 저장은 60초마다 <c>%TEMP%/YttStudio/autosave/</c> 에 기록하며
+/// 실행 취소 기록을 건드리지 않는다. 모델을 읽어 직렬화만 한다.
 /// </summary>
 public sealed class AutosaveService : IAsyncDisposable
 {
-    // SPEC §12 [PRODUCT]: autosave cadence is fixed at 60 seconds.
+    // [PRODUCT] 자동 저장 주기는 60초로 고정한다.
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(60);
 
     private const int MaxRetainedSnapshots = 5;
@@ -31,16 +31,16 @@ public sealed class AutosaveService : IAsyncDisposable
         this.onError = onError;
     }
 
-    /// <summary>Gets the directory holding recovery snapshots.</summary>
+    /// <summary>복구 스냅샷을 보관하는 디렉터리를 가져온다.</summary>
     public static string AutosaveDirectory { get; } =
         Path.Combine(Path.GetTempPath(), "YttStudio", "autosave");
 
-    /// <summary>Starts the background timer. Repeat calls are ignored.</summary>
+    /// <summary>백그라운드 타이머를 시작한다. 반복 호출은 무시한다.</summary>
     public void Start() => loop ??= RunAsync(cancellation.Token);
 
     /// <summary>
-    /// Returns the newest recovery snapshot, or <c>null</c> when none exists.
-    /// A snapshot surviving on disk means the previous run did not shut down cleanly.
+    /// 가장 최근 복구 스냅샷을 돌려준다. 없으면 <c>null</c> 이다.
+    /// 디스크에 남은 스냅샷은 직전 실행이 정상 종료하지 않았다는 뜻이다.
     /// </summary>
     public static string? FindLatestSnapshot()
     {
@@ -55,7 +55,7 @@ public sealed class AutosaveService : IAsyncDisposable
             .FirstOrDefault();
     }
 
-    /// <summary>Removes every snapshot. Called after a clean save or a completed recovery.</summary>
+    /// <summary>모든 스냅샷을 제거한다. 정상 저장이나 복구 완료 후 호출한다.</summary>
     public static void ClearSnapshots()
     {
         if (!Directory.Exists(AutosaveDirectory))
@@ -70,7 +70,7 @@ public sealed class AutosaveService : IAsyncDisposable
     }
 
     /// <summary>
-    /// Writes one snapshot immediately and returns its path, or <c>null</c> when no project is open.
+    /// 스냅샷 하나를 즉시 기록하고 경로를 돌려준다. 열린 프로젝트가 없으면 <c>null</c> 이다.
     /// </summary>
     public string? WriteSnapshot()
     {
@@ -110,7 +110,7 @@ public sealed class AutosaveService : IAsyncDisposable
         }
         catch (IOException)
         {
-            // A snapshot still held by another process is not worth failing over.
+            // 다른 프로세스가 잡고 있는 스냅샷 때문에 실패시킬 이유는 없다.
         }
         catch (UnauthorizedAccessException)
         {
@@ -135,7 +135,7 @@ public sealed class AutosaveService : IAsyncDisposable
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
                 {
-                    // Autosave failure must never interrupt editing; surface it and keep going.
+                    // 자동 저장 실패가 편집을 끊으면 안 된다. 알리기만 하고 계속 진행한다.
                     onError($"autosave failed: {ex.Message}");
                 }
             }

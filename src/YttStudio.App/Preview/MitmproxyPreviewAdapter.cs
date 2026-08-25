@@ -1,26 +1,26 @@
 namespace YttStudio.App.Preview;
 
 /// <summary>
-/// Provides the optional mitmproxy script used to preview subtitles in a real browser.
+/// 실제 브라우저에서 자막을 확인할 때 쓰는 선택적 mitmproxy 스크립트를 제공한다.
 ///
-/// The adapter only discovers the copied script asset and validates the subtitle path. It does
-/// not bundle mitmproxy, launch a process, install a root certificate, or mutate browser proxy
-/// settings. A preview failure therefore cannot affect editing or export.
+/// 어댑터는 복사된 스크립트 에셋을 찾고 자막 경로를 검증할 뿐이다.
+/// mitmproxy 를 번들하거나 프로세스를 띄우거나 루트 인증서를 설치하거나 브라우저 프록시
+/// 설정을 바꾸지 않는다. 따라서 프리뷰 실패가 편집이나 내보내기에 영향을 주지 않는다.
 /// </summary>
 public sealed class MitmproxyPreviewAdapter : IExternalPlayerPreview
 {
     /// <summary>
-    /// Relative path of the script asset copied beside the App executable.
+    /// 실행 파일 옆에 복사되는 스크립트 에셋의 상대 경로다.
     /// </summary>
     public const string ScriptAssetRelativePath = "Preview/Assets/mitmproxy_script.py";
 
     /// <summary>
-    /// Environment variable read by the script for the subtitle file path.
+    /// 스크립트가 자막 파일 경로를 읽는 환경변수다.
     /// </summary>
     public const string SubtitleEnvironmentVariable = "YTTSTUDIO_SUBTITLE_FILE";
 
     /// <summary>
-    /// Names of the two mitmproxy hooks supplied by the asset.
+    /// 에셋이 제공하는 두 mitmproxy 훅의 이름이다.
     /// </summary>
     public static IReadOnlyList<string> HookNames { get; } =
         ["ensure_subtitle_selector", "apply_custom_subtitles"];
@@ -47,10 +47,10 @@ public sealed class MitmproxyPreviewAdapter : IExternalPlayerPreview
             "On Windows, Fiddler Classic can be used instead of mitmproxy. Configure its proxy " +
             "and HTTPS certificate manually, then restore the previous settings when finished.");
 
-    /// <summary>Gets the last script path returned by <see cref="Prepare"/>.</summary>
+    /// <summary><see cref="Prepare"/> 가 마지막으로 돌려준 스크립트 경로를 가져온다.</summary>
     public string? ScriptPath => preparedScriptPath;
 
-    /// <summary>Gets the last subtitle path returned by <see cref="Prepare"/>.</summary>
+    /// <summary><see cref="Prepare"/> 가 마지막으로 돌려준 자막 경로를 가져온다.</summary>
     public string? SubtitlePath => preparedSubtitlePath;
 
     /// <inheritdoc />

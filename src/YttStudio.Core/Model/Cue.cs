@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 
 namespace YttStudio.Core;
 
-/// <summary>Represents one timed subtitle cue.</summary>
+/// <summary>시각 정보를 가진 자막 큐 하나다.</summary>
 public sealed class Cue
 {
     private readonly List<Section> sections = [];
@@ -60,7 +60,7 @@ public sealed class Cue
     }
 }
 
-/// <summary>Represents one independently formatted span inside a cue.</summary>
+/// <summary>큐 안에서 독립적으로 서식이 적용되는 구간 하나다.</summary>
 public sealed class Section
 {
     public string Text { get; internal set; } = string.Empty;

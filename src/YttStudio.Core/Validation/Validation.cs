@@ -3,7 +3,7 @@ using YttStudio.Core.Editing;
 
 namespace YttStudio.Core.Validation;
 
-/// <summary>Severity of a project validation issue.</summary>
+/// <summary>프로젝트 검증 문제의 심각도다.</summary>
 public enum IssueSeverity
 {
     Info,
@@ -11,7 +11,7 @@ public enum IssueSeverity
     Error,
 }
 
-/// <summary>One validation finding and its optional cue target.</summary>
+/// <summary>검증 결과 하나와 선택적 대상 큐다.</summary>
 public sealed record ValidationIssue(
     IssueSeverity Severity,
     string Code,
@@ -19,7 +19,7 @@ public sealed record ValidationIssue(
     Guid? CueId,
     bool HasAutoFix);
 
-/// <summary>Stable validation rule identifiers from SPEC §11.</summary>
+/// <summary>안정적인 검증 규칙 식별자다.</summary>
 public static class ValidationCodes
 {
     public const string E001 = "E001";
@@ -42,8 +42,8 @@ public static class ValidationCodes
 }
 
 /// <summary>
-/// Optional measured inputs for validation rules whose answer cannot be inferred from the Core
-/// model (for example renderer box bounds and effect usage).
+/// Core 모델만으로 판단할 수 없는 검증 규칙을 위한 선택적 측정 입력이다.
+/// 모델만으로는 알 수 없는 값이다. 예를 들어 렌더 박스 경계와 효과 사용량이다.
 /// </summary>
 public sealed record ValidationMetrics
 {
@@ -79,7 +79,7 @@ public sealed record ValidationMetrics
     };
 }
 
-/// <summary>Inputs supplied by export/render callers to the validator.</summary>
+/// <summary>내보내기와 렌더 호출자가 검증기에 제공하는 입력이다.</summary>
 public sealed class ValidationContext
 {
     public ValidationContext() { }
@@ -105,7 +105,7 @@ public sealed class ValidationContext
         => new(project) { GzipXmlSizeBytes = gzipXmlSizeBytes, VideoDuration = duration };
 }
 
-/// <summary>Runs the Core validation rules in SPEC §11.</summary>
+/// <summary>유튜브 제약 검증 규칙을 실행한다.</summary>
 public class DocumentValidator
 {
     private const string W101Message =
@@ -357,10 +357,10 @@ public class DocumentValidator
     private static bool Overlaps(Cue left, Cue right) => left.Start < right.End && right.Start < left.End;
 }
 
-/// <summary>Compatibility alias for callers that prefer the shorter validator name.</summary>
+/// <summary>짧은 검증기 이름을 선호하는 호출자를 위한 호환 별칭이다.</summary>
 public sealed class Validator : DocumentValidator { }
 
-/// <summary>Static convenience entry points for validation and W101 calculation.</summary>
+/// <summary>검증과 W101 계산을 위한 정적 편의 진입점이다.</summary>
 public static class ValidationService
 {
     public static IReadOnlyList<ValidationIssue> Validate(SubtitleProject project, ValidationContext? context = null)

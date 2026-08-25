@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace YttStudio.Video;
 
-/// <summary>Provides callback-rendered libmpv playback without native child-window embedding.</summary>
+/// <summary>네이티브 자식 창을 붙이지 않고 콜백 렌더링으로 libmpv 재생을 제공한다.</summary>
 public sealed class MpvVideoSource : IVideoSource
 {
     private const int MpvFormatFlag = 3;
@@ -35,8 +35,8 @@ public sealed class MpvVideoSource : IVideoSource
     private bool stopping;
     private bool disposed;
 
-    // Instantiated through TryCreate so probing and initialisation failures are reported
-    // rather than thrown from a constructor. Internal keeps it out of the public API.
+    // TryCreate 를 통해 생성해 탐색과 초기화 실패를 보고할 수 있게 한다.
+    // 생성자에서 던지지 않는다. internal 이라 공개 API 에는 드러나지 않는다.
     internal MpvVideoSource(MpvNativeLibrary native)
     {
         this.native = native;
@@ -49,7 +49,7 @@ public sealed class MpvVideoSource : IVideoSource
 
         try
         {
-            // SPEC §8.1 [API]: callback rendering is mandatory; no native window handle is assigned.
+            // [API] 콜백 렌더링이 필수다. 네이티브 창 핸들을 붙이지 않는다.
             SetOption("vo", "libmpv");
             SetOption("audio-display", "no");
             SetOption("keep-open", "yes");
@@ -96,11 +96,11 @@ public sealed class MpvVideoSource : IVideoSource
     public string LibraryPath => native.LoadedPath;
 
     /// <summary>
-    /// Gets a one-line description of the loaded native library for crash reports (SPEC §18).
+    /// 크래시 보고서에 쓸 네이티브 라이브러리 설명 한 줄을 가져온다.
     /// </summary>
     public string CrashMetadata { get; private set; } = string.Empty;
 
-    /// <summary>Creates a libmpv source when probing finds a compatible native library.</summary>
+    /// <summary>탐색으로 호환되는 네이티브 라이브러리를 찾으면 libmpv 소스를 만든다.</summary>
     public static bool TryCreate(out MpvVideoSource? source, out string diagnostic)
     {
         if (!MpvNativeLibrary.TryLoad(out MpvNativeLibrary? library, out diagnostic))
@@ -111,8 +111,8 @@ public sealed class MpvVideoSource : IVideoSource
 
         try
         {
-            // SPEC §18: gate on the client API version before touching the render API, so an
-            // unsupported build fails with an actionable message instead of crashing later.
+            // render API 를 건드리기 전에 client API 버전을 검사한다. 그래야
+            // 지원하지 않는 빌드가 나중에 크래시하지 않고 조치 가능한 메시지로 실패한다.
             uint apiVersion = (uint)library!.ClientApiVersion();
             if (!MpvCompatibility.IsSupported(apiVersion))
             {
@@ -123,7 +123,7 @@ public sealed class MpvVideoSource : IVideoSource
             }
 
             source = new MpvVideoSource(library);
-            // SPEC §18: the libmpv build must be recoverable from a crash report.
+            // 크래시 보고서에서 libmpv 빌드를 되짚을 수 있어야 한다.
             source.CrashMetadata = MpvCompatibility.DescribeForCrashLog(apiVersion, library.LoadedPath);
             diagnostic = $"{diagnostic}; version {source.LibraryVersion}";
             return true;
@@ -280,7 +280,7 @@ public sealed class MpvVideoSource : IVideoSource
         {
             await stateTimer.DisposeAsync().ConfigureAwait(false);
 
-            // SPEC §8.4 [API]: detach callback, join RenderThread, then destroy the mpv core.
+            // [API] 콜백 해제, RenderThread 조인, mpv 코어 파괴 순서를 지킨다.
             renderSignal.Set();
             await Task.Run(renderThread.Join).ConfigureAwait(false);
             frames.Dispose();
@@ -350,7 +350,7 @@ public sealed class MpvVideoSource : IVideoSource
                 }
             }
 
-            // Preserve the render-loop failure if cleanup also fails.
+            // 정리 과정도 실패하면 원래의 렌더 루프 실패를 보존한다.
             renderFailure ??= cleanupFailure;
             renderReady.Set();
         }
@@ -370,7 +370,7 @@ public sealed class MpvVideoSource : IVideoSource
 
     private unsafe void RenderLatestFrame()
     {
-        // SPEC §8.2 [API]: this thread calls mpv_render_* only. The callback merely sets renderSignal.
+        // [API] 이 스레드는 mpv_render_* 만 호출한다. 콜백은 renderSignal 만 설정한다.
         if ((native.RenderContextUpdate(renderContext) & RenderUpdateFrame) == 0)
         {
             return;
@@ -405,7 +405,7 @@ public sealed class MpvVideoSource : IVideoSource
                 parameters[4] = default;
                 Check(native.RenderContextRender(renderContext, (nint)parameters), "mpv_render_context_render(sw)");
 
-                // MPV SW "bgr0" leaves the fourth byte unspecified; Avalonia expects opaque BGRA.
+                // mpv SW 의 "bgr0" 은 네 번째 바이트를 정의하지 않는다. Avalonia 는 불투명 BGRA 를 기대한다.
                 for (int row = 0; row < height; row++)
                 {
                     int rowOffset = row * stride;
@@ -431,7 +431,7 @@ public sealed class MpvVideoSource : IVideoSource
 
     private void OnRenderUpdate(nint context)
     {
-        // SPEC §8.2 [API]: the libmpv callback is signal-only. Do not call any mpv API here.
+        // [API] libmpv 콜백은 신호 전용이다. 여기서 어떤 mpv API 도 호출하지 마라.
         renderSignal.Set();
     }
 
@@ -451,7 +451,7 @@ public sealed class MpvVideoSource : IVideoSource
             }
             catch
             {
-                // A UI subscriber must not terminate the dedicated native render thread.
+                // UI 구독자가 전용 네이티브 렌더 스레드를 끝내면 안 된다.
             }
         }
     }
@@ -498,7 +498,7 @@ public sealed class MpvVideoSource : IVideoSource
             }
             catch when (!Volatile.Read(ref stopping) && !Volatile.Read(ref disposed))
             {
-                // Metadata may be unavailable while a file is opening or closing.
+                // 파일을 열거나 닫는 동안에는 메타데이터가 없을 수 있다.
             }
         }
     }

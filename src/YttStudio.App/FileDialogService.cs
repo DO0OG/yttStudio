@@ -11,15 +11,15 @@ public interface IFileDialogService
     Task<string?> SaveYttAsync(string? suggestedName);
     Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "삭제");
 
-    /// <summary>Picks an existing <c>.yttproj</c> package to open (SPEC §12).</summary>
+    /// <summary>열 <c>.yttproj</c> 패키지를 고른다.</summary>
     Task<string?> OpenProjectAsync();
 
-    /// <summary>Picks a destination for a <c>.yttproj</c> package (SPEC §12).</summary>
+    /// <summary><c>.yttproj</c> 패키지를 저장할 위치를 고른다.</summary>
     Task<string?> SaveProjectAsync(string? suggestedName);
 
     /// <summary>
-    /// Relinks a project whose recorded video path no longer resolves.
-    /// SPEC §12: the package stores only the path, so a broken link must be recoverable.
+    /// 기록된 영상 경로를 더 이상 찾을 수 없는 프로젝트를 다시 연결한다.
+    /// 패키지는 경로만 저장하므로 끊어진 연결을 복구할 수 있어야 한다.
     /// </summary>
     Task<string?> RelinkVideoAsync(string missingPath);
 }

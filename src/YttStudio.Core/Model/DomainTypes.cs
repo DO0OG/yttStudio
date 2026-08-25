@@ -1,6 +1,6 @@
 namespace YttStudio.Core;
 
-/// <summary>Identifies the point on a subtitle box fixed to its screen position.</summary>
+/// <summary>자막 박스에서 화면 좌표에 고정되는 지점을 식별한다.</summary>
 public enum AnchorPoint
 {
     TopLeft = 0,
@@ -14,7 +14,7 @@ public enum AnchorPoint
     BottomRight = 8,
 }
 
-/// <summary>Controls text alignment inside a subtitle box.</summary>
+/// <summary>자막 박스 내부의 텍스트 정렬을 제어한다.</summary>
 public enum Justification
 {
     Left = 0,
@@ -22,7 +22,7 @@ public enum Justification
     Center = 2,
 }
 
-/// <summary>Controls the print and progression direction of subtitle text.</summary>
+/// <summary>자막 텍스트의 인쇄 방향과 진행 방향을 제어한다.</summary>
 public enum TextDirection
 {
     Horizontal,
@@ -33,7 +33,7 @@ public enum TextDirection
     RotatedRightToLeft,
 }
 
-/// <summary>Identifies one of the eight fonts supported by YTT.</summary>
+/// <summary>YTT 가 지원하는 여덟 폰트 중 하나를 식별한다.</summary>
 public enum YtFont
 {
     Default = 0,
@@ -46,7 +46,7 @@ public enum YtFont
     SmallCaps = 7,
 }
 
-/// <summary>Identifies the YTT edge or shadow treatment.</summary>
+/// <summary>YTT 의 엣지 또는 그림자 처리를 식별한다.</summary>
 public enum EdgeType
 {
     None = 0,
@@ -56,7 +56,7 @@ public enum EdgeType
     SoftShadow = 4,
 }
 
-/// <summary>Identifies normal, subscript, or superscript placement.</summary>
+/// <summary>보통과 아래첨자와 위첨자 배치를 식별한다.</summary>
 public enum ScriptOffset
 {
     Subscript = 0,
@@ -64,7 +64,7 @@ public enum ScriptOffset
     Superscript = 2,
 }
 
-/// <summary>Identifies a section's role in YTT ruby layout.</summary>
+/// <summary>YTT 루비 배치에서 섹션의 역할을 식별한다.</summary>
 public enum RubyRole
 {
     None,
@@ -73,7 +73,7 @@ public enum RubyRole
     Below,
 }
 
-/// <summary>Stores a platform-neutral, non-premultiplied RGBA color.</summary>
+/// <summary>플랫폼 중립적이고 프리멀티플라이하지 않은 RGBA 색을 담는다.</summary>
 public readonly record struct RgbaColor
 {
     public RgbaColor(byte red, byte green, byte blue, byte alpha = YttConstants.MaximumOpacity)
@@ -89,20 +89,20 @@ public readonly record struct RgbaColor
     public byte Blue { get; }
     public byte Alpha { get; }
 
-    /// <summary>Gets the safe YTT white used by default.</summary>
+    /// <summary>기본으로 쓰는 안전한 YTT 흰색을 가져온다.</summary>
     public static RgbaColor White { get; } = new(254, 254, 254, YttConstants.MaximumOpacity);
 
-    /// <summary>Gets transparent black.</summary>
+    /// <summary>투명한 검정을 가져온다.</summary>
     public static RgbaColor Transparent { get; } = new(0, 0, 0, 0);
 
-    /// <summary>Gets the default secondary karaoke color.</summary>
+    /// <summary>가라오케 보조 색 기본값을 가져온다.</summary>
     public static RgbaColor SecondaryDefault { get; } = new(180, 180, 180, YttConstants.MaximumOpacity);
 
-    /// <summary>Gets the default YTT edge color.</summary>
+    /// <summary>YTT 엣지 색 기본값을 가져온다.</summary>
     public static RgbaColor EdgeDefault { get; } = new(34, 34, 34, YttConstants.MaximumOpacity);
 }
 
-/// <summary>Contains a complete, inheritable subtitle section format.</summary>
+/// <summary>상속 가능한 완전한 자막 섹션 서식을 담는다.</summary>
 public sealed class SectionFormat
 {
     public YtFont Font { get; internal set; } = YtFont.Default;
@@ -119,7 +119,7 @@ public sealed class SectionFormat
     public bool Pack { get; internal set; }
 }
 
-/// <summary>Contains explicit section overrides; null means inherit from the selected style.</summary>
+/// <summary>명시적 섹션 재정의를 담는다. null 은 선택한 스타일에서 상속한다는 뜻이다.</summary>
 public sealed class SectionOverrides
 {
     public YtFont? Font { get; internal set; }
@@ -135,7 +135,7 @@ public sealed class SectionOverrides
     public RgbaColor? EdgeColor { get; internal set; }
     public bool? Pack { get; internal set; }
 
-    /// <summary>Gets whether this object contains no explicit values.</summary>
+    /// <summary>이 객체에 명시적 값이 하나도 없는지 가져온다.</summary>
     public bool IsEmpty => Font is null && SizePercent is null && Bold is null && Italic is null &&
         Underline is null && Offset is null && Foreground is null && Background is null &&
         SecondaryColor is null && Edge is null && EdgeColor is null && Pack is null;
@@ -173,7 +173,7 @@ public sealed class SectionOverrides
     };
 }
 
-/// <summary>Describes explicit format values to apply without exposing domain setters.</summary>
+/// <summary>도메인 setter 를 노출하지 않고 적용할 명시적 서식 값을 기술한다.</summary>
 public sealed record SectionFormatPatch
 {
     public YtFont? Font { get; init; }
@@ -190,7 +190,7 @@ public sealed record SectionFormatPatch
     public bool? Pack { get; init; }
 }
 
-/// <summary>Contains the fully resolved format consumed by rendering and export.</summary>
+/// <summary>렌더와 내보내기가 사용하는 완전히 해석된 서식을 담는다.</summary>
 public sealed record ResolvedFormat
 {
     public ResolvedFormat(
@@ -235,7 +235,7 @@ public sealed record ResolvedFormat
     public bool Pack { get; }
 }
 
-/// <summary>Resolves nullable section overrides against a complete base format.</summary>
+/// <summary>nullable 섹션 재정의를 완전한 기준 서식에 대해 해석한다.</summary>
 public static class FormatResolver
 {
     public static ResolvedFormat Resolve(SectionFormat baseFormat, SectionOverrides overrides)

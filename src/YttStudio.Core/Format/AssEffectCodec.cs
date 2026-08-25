@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace YttStudio.Core.Format;
 
-/// <summary>Encodes the M3 effect model as the pinned converter's ASS tags.</summary>
+/// <summary>효과 모델을 고정된 변환기의 ASS 태그로 인코딩한다.</summary>
 internal static partial class AssEffectCodec
 {
     private static readonly string[] EffectNames = ["fad", "fade", "move", "t", "ytshake", "ytchroma", "ytkt"];
@@ -151,7 +151,7 @@ internal static partial class AssEffectCodec
                     tags.Append(')');
                     break;
                 default:
-                    // Effect kinds without an ASS representation contribute no tag.
+                    // ASS 표현이 없는 효과 종류는 태그를 만들지 않는다.
                     break;
             }
         }

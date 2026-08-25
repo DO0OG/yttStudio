@@ -8,7 +8,7 @@ using System.Globalization;
 
 namespace YttStudio.App;
 
-/// <summary>Provides the M2 track timeline with scrub, zoom, move, and edge trim gestures.</summary>
+/// <summary>스크럽과 확대와 이동과 끝 트림 제스처를 갖춘 트랙 타임라인을 제공한다.</summary>
 public sealed class TimelineControl : Control
 {
     private const double HeaderWidth = 64;
@@ -277,7 +277,7 @@ public sealed class TimelineControl : Control
                             MidpointRounding.AwayFromZero));
                     break;
                 default:
-                    // DragMode.None means no timeline drag is in progress.
+                    // DragMode.None 은 진행 중인 타임라인 드래그가 없다는 뜻이다.
                     break;
             }
 

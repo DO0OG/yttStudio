@@ -1,7 +1,7 @@
 namespace YttStudio.Video;
 
-/// <summary>Provides scoped read access to a latest-frame buffer.</summary>
-/// <remarks>SPEC §8.3: this stack-only value is used only by TryLockLatestFrame.</remarks>
+/// <summary>최신 프레임 버퍼에 범위가 한정된 읽기 접근을 제공한다.</summary>
+/// <remarks>스택 전용 값이며 TryLockLatestFrame 에서만 쓴다.</remarks>
 public readonly ref struct VideoFrameLock : IDisposable
 {
     private readonly Action? release;
@@ -24,28 +24,28 @@ public readonly ref struct VideoFrameLock : IDisposable
         this.release = release;
     }
 
-    /// <summary>Gets BGRA8888 premultiplied pixel bytes.</summary>
+    /// <summary>BGRA8888 프리멀티플라이드 픽셀 바이트를 가져온다.</summary>
     public ReadOnlySpan<byte> Pixels { get; }
 
-    /// <summary>Gets the frame width in pixels.</summary>
+    /// <summary>프레임 너비를 픽셀로 가져온다.</summary>
     public int Width { get; }
 
-    /// <summary>Gets the frame height in pixels.</summary>
+    /// <summary>프레임 높이를 픽셀로 가져온다.</summary>
     public int Height { get; }
 
-    /// <summary>Gets the row stride in bytes.</summary>
+    /// <summary>행 스트라이드를 바이트로 가져온다.</summary>
     public int Stride { get; }
 
-    /// <summary>Gets the source timestamp.</summary>
+    /// <summary>원본 타임스탬프를 가져온다.</summary>
     public TimeSpan Timestamp { get; }
 
-    /// <summary>Gets the monotonically increasing frame sequence.</summary>
+    /// <summary>단조 증가하는 프레임 일련번호를 가져온다.</summary>
     public long SequenceNumber { get; }
 
-    /// <summary>Releases the read lock.</summary>
+    /// <summary>읽기 잠금을 해제한다.</summary>
     public void Dispose()
     {
-        // M2 (SPEC §8.3-8.4) supplies the double-buffer release callback.
+        // 더블 버퍼 해제 콜백은 영상 파이프라인이 제공한다.
         release?.Invoke();
     }
 }

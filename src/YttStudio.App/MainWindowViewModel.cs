@@ -62,8 +62,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public MainWindowViewModel(IFileDialogService dialogs)
     {
         this.dialogs = dialogs;
-        // SPEC §16 M5: every visible string resolves through the localizer so a language
-        // switch re-reads the whole view without rebuilding it.
+        // 모든 표시 문자열은 로컬라이저를 거친다. 그래야 언어를
+        // 전환하면 화면을 다시 만들지 않고도 전체 바인딩을 다시 읽는다.
         Loc.LanguageChanged += OnLanguageChanged;
         renderer = new SkiaSubtitleRenderer(new BundledFontResolver(
             message => Serilog.Log.Information("{FontResolution}", message)));
@@ -132,12 +132,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
-    /// Gets the string table bound by every view element as <c>{Binding Loc[Key]}</c>.
-    /// SPEC §16 M5 ships Korean, English and Japanese.
+    /// 모든 뷰 요소가 <c>{Binding Loc[Key]}</c> 로 바인딩하는 문자열 테이블을 가져온다.
+    /// 한국어와 영어와 일본어를 제공한다.
     /// </summary>
     public Localizer Loc { get; } = new();
 
-    /// <summary>Gets the pattern used by search and replace (SPEC §16 M5).</summary>
+    /// <summary>검색과 치환에 쓰는 패턴을 가져온다.</summary>
     public string SearchPattern
     {
         get => searchPattern;
@@ -154,7 +154,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    /// <summary>Gets the replacement text applied by <see cref="ReplaceAllCommand"/>.</summary>
+    /// <summary><see cref="ReplaceAllCommand"/> 가 적용할 치환 텍스트를 가져온다.</summary>
     public string ReplacementText
     {
         get => replacementText;
@@ -170,7 +170,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    /// <summary>Gets whether <see cref="SearchPattern"/> is treated as a regular expression.</summary>
+    /// <summary><see cref="SearchPattern"/> 을 정규식으로 다루는지 가져온다.</summary>
     public bool UseRegex
     {
         get => useRegex;
@@ -186,7 +186,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    /// <summary>Gets whether search is case sensitive.</summary>
+    /// <summary>검색이 대소문자를 구분하는지 가져온다.</summary>
     public bool MatchCase
     {
         get => matchCase;
@@ -202,7 +202,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    /// <summary>Gets the bulk time shift in milliseconds. Negative values move cues earlier.</summary>
+    /// <summary>일괄 시간 이동량을 밀리초로 가져온다. 음수는 큐를 앞으로 당긴다.</summary>
     public double ShiftMilliseconds
     {
         get => shiftMilliseconds;
@@ -218,11 +218,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    /// <summary>Gets the selectable ruby roles (SPEC §5.4 <c>rb</c>).</summary>
+    /// <summary>선택 가능한 루비 역할을 가져온다.</summary>
     public IReadOnlyList<RubyRole> RubyRoles { get; } =
         [RubyRole.None, RubyRole.Base, RubyRole.Above, RubyRole.Below];
 
-    /// <summary>Gets or sets the ruby role of the first section of the selected cue.</summary>
+    /// <summary>선택한 큐 첫 섹션의 루비 역할을 가져오거나 설정한다.</summary>
     public RubyRole? SelectedRubyRole
     {
         get => FirstSelectedSection()?.Ruby;
@@ -245,7 +245,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    /// <summary>Gets or sets the ruby text of the first section of the selected cue.</summary>
+    /// <summary>선택한 큐 첫 섹션의 루비 텍스트를 가져오거나 설정한다.</summary>
     public string? SelectedRubyText
     {
         get => FirstSelectedSection()?.RubyText;
@@ -269,7 +269,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>
-    /// Gets or sets the drag snap threshold in pixels (SPEC §9.3, default 8).
+    /// 드래그 스냅 임계값을 픽셀로 가져오거나 설정한다. 기본값은 8 이다.
     /// </summary>
     public double SnapThreshold
     {
@@ -300,11 +300,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private Section? FirstSelectedSection() => SingleSelectedCue()?.Sections[0];
 
-    /// <summary>Gets the selectable languages in display order.</summary>
+    /// <summary>선택 가능한 언어를 표시 순서대로 가져온다.</summary>
     public IReadOnlyList<AppLanguage> Languages { get; } =
         [AppLanguage.Korean, AppLanguage.English, AppLanguage.Japanese];
 
-    /// <summary>Gets or sets the active language.</summary>
+    /// <summary>활성 언어를 가져오거나 설정한다.</summary>
     public AppLanguage Language
     {
         get => Loc.Language;
@@ -313,7 +313,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void OnLanguageChanged()
     {
-        // An indexer binding only refreshes when the indexer itself is invalidated.
+        // 인덱서 바인딩은 인덱서 자체가 무효화될 때만 갱신된다.
         OnPropertyChanged("Item[]");
         OnPropertyChanged(nameof(Loc));
         OnPropertyChanged(nameof(Language));
@@ -556,7 +556,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         set => SelectedStyleId = value?.Id ?? Guid.Empty;
     }
 
-    /// <summary>Style assigned to every selected cue, or null when the selection is mixed.</summary>
+    /// <summary>선택한 모든 큐에 적용된 스타일이다. 선택이 섞여 있으면 null 이다.</summary>
     public StyleOption? SelectedCueStyleOption
     {
         get
@@ -1442,7 +1442,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                     editor.SetAnchor(id, AnchorPoint.BottomCenter, 50, 90);
                     break;
                 default:
-                    // Only the four shortcuts in SPEC §9.4 (3) reach this method.
+                    // 화면 기준 정렬 단축키 네 개만 이 메서드에 도달한다.
                     break;
             }
         }
@@ -1608,8 +1608,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (autosave is not null)
         {
             autosave.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            // A clean shutdown must leave no snapshot behind, or the next launch
-            // would offer a recovery that is not actually needed.
+            // 정상 종료는 스냅샷을 남기지 않아야 한다. 남기면 다음 실행에서
+            // 필요하지도 않은 복구를 제안하게 된다.
             AutosaveService.ClearSnapshots();
         }
 
@@ -1692,7 +1692,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         await LoadVideoAsync(path);
     }
 
-    /// <summary>Loads a video into the shared source. Shared by the open command and project relink.</summary>
+    /// <summary>공유 소스에 영상을 불러온다. 열기 명령과 프로젝트 재연결이 함께 쓴다.</summary>
     private async Task LoadVideoAsync(string path)
     {
         if (videoSource is null)
@@ -1720,7 +1720,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    /// <summary>Replaces every match across cue text through the editor so the edit stays undoable.</summary>
+    /// <summary>편집기를 거쳐 큐 텍스트의 모든 일치를 치환해 되돌릴 수 있게 한다.</summary>
     private void ReplaceAll()
     {
         if (editor is null || string.IsNullOrEmpty(searchPattern))
@@ -1741,12 +1741,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (ArgumentException exception)
         {
-            // An invalid regular expression is user input, not a crash.
+            // 잘못된 정규식은 사용자 입력이지 크래시 사유가 아니다.
             Status = $"{Loc["UseRegex"]} — {exception.Message}";
         }
     }
 
-    /// <summary>Shifts cue timings in bulk. The editor clamps so no cue starts before 1 ms (SPEC §5.5).</summary>
+    /// <summary>큐 타이밍을 일괄 이동한다. 편집기가 어떤 큐도 1 ms 이전에 시작하지 않도록 보정한다.</summary>
     private void ShiftTimes(bool selectedOnly)
     {
         if (editor is null || project is null)
@@ -1764,7 +1764,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         AfterMutation(refreshRows: true);
     }
 
-    /// <summary>Opens a <c>.yttproj</c> package (SPEC §12), relinking a missing video if needed.</summary>
+    /// <summary><c>.yttproj</c> 패키지를 열고 필요하면 사라진 영상을 다시 연결한다.</summary>
     private async Task OpenProjectAsync()
     {
         string? path = await dialogs.OpenProjectAsync();
@@ -1776,7 +1776,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         await LoadProjectPackageAsync(path, clearSnapshots: true);
     }
 
-    /// <summary>Saves the open project as a <c>.yttproj</c> package (SPEC §12).</summary>
+    /// <summary>열려 있는 프로젝트를 <c>.yttproj</c> 패키지로 저장한다.</summary>
     private async Task SaveProjectAsync()
     {
         if (project is null)
@@ -1796,7 +1796,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             ProjectPackage.Save(project, path, RenderThumbnailPng());
             projectPath = path;
             unsavedChanges = false;
-            // A clean save invalidates any crash snapshot.
+            // 정상 저장은 크래시 스냅샷을 무효화한다.
             AutosaveService.ClearSnapshots();
             Status = $"{Loc["SaveProject"]}: {path}";
         }
@@ -1812,7 +1812,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             ProjectPackageReadResult result = ProjectPackage.Read(path);
             project = result.Project;
-            // SPEC §12: package load is an undo-free context, so the editor starts fresh.
+            // 패키지 로드는 undo 를 만들지 않는 문맥이므로 편집기를 새로 시작한다.
             editor = new DocumentEditor(project);
             projectPath = clearSnapshots ? path : null;
             sourcePath = path;
@@ -1842,8 +1842,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>
-    /// SPEC §12: the package stores only the video path, so a broken link must be recoverable
-    /// rather than silently leaving the project without video.
+    /// 패키지는 영상 경로만 저장하므로 끊어진 연결을 복구할 수 있어야 하고
+    /// 조용히 영상 없는 프로젝트로 두지 않는다.
     /// </summary>
     private async Task RelinkVideoIfMissingAsync()
     {
@@ -1870,8 +1870,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>
-    /// Offers to restore a snapshot left behind by an unclean shutdown (SPEC §12).
-    /// Recovery never clears the undo stack of a live document because it runs at startup.
+    /// 비정상 종료가 남긴 스냅샷의 복구를 제안한다.
+    /// 시작 시점에 실행되므로 작업 중인 문서의 실행 취소 기록을 지우지 않는다.
     /// </summary>
     public async Task OfferCrashRecoveryAsync()
     {
@@ -1892,11 +1892,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         await LoadProjectPackageAsync(snapshot, clearSnapshots: false);
-        // The recovered document is unsaved by definition.
+        // 복구된 문서는 정의상 저장되지 않은 상태다.
         unsavedChanges = true;
     }
 
-    /// <summary>Renders the current frame as a thumbnail, or <c>null</c> when nothing is drawn yet.</summary>
+    /// <summary>현재 프레임을 썸네일로 렌더한다. 아직 그릴 것이 없으면 <c>null</c> 이다.</summary>
     private byte[]? RenderThumbnailPng()
     {
         if (project is null)
@@ -1927,7 +1927,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (Exception exception)
         {
-            // A thumbnail is cosmetic; never block a save over it, and never fabricate one.
+            // 썸네일은 부가 정보다. 이것 때문에 저장을 막지 말고, 가짜로 만들지도 마라.
             Serilog.Log.Warning("{ThumbnailFailure}", exception.Message);
             return null;
         }
@@ -2307,7 +2307,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void AfterMutation(bool refreshRows = false)
     {
-        // SPEC §12: autosave only writes when there is something to recover.
+        // 자동 저장은 복구할 내용이 있을 때만 기록한다.
         unsavedChanges = true;
         if (refreshRows)
         {

@@ -4,7 +4,7 @@ using YttStudio.Core;
 
 namespace YttStudio.Render;
 
-/// <summary>Provides deterministic karaoke preview calculations shared by the renderer and tests.</summary>
+/// <summary>렌더러와 테스트가 함께 쓰는 결정적 가라오케 미리보기 계산을 제공한다.</summary>
 public static class KaraokePreview
 {
     private static readonly TimeSpan FadeTransitionDuration = TimeSpan.FromMilliseconds(500);
@@ -22,7 +22,7 @@ public static class KaraokePreview
     private const int KatakanaEnd = 0x30FA;
     private const ulong CharacterIndexMix = 0x9E3779B97F4A7C15UL;
 
-    /// <summary>Gets the last karaoke settings effect, if the cue has one.</summary>
+    /// <summary>큐에 있다면 마지막 가라오케 설정 효과를 가져온다.</summary>
     public static KaraokeSettings? GetSettings(Cue cue)
     {
         ArgumentNullException.ThrowIfNull(cue);
@@ -30,8 +30,8 @@ public static class KaraokePreview
     }
 
     /// <summary>
-    /// Gets the effective preview type. Cues with offsets but no explicit settings retain the
-    /// legacy Simple preview behavior.
+    /// 실효 미리보기 타입을 가져온다. 오프셋만 있고 설정이 없는 큐는
+    /// 기존 Simple 미리보기 동작을 유지한다.
     /// </summary>
     public static KaraokeType GetType(Cue cue)
     {
@@ -42,7 +42,7 @@ public static class KaraokePreview
                 : KaraokeType.None);
     }
 
-    /// <summary>Determines whether a section has reached its karaoke start offset.</summary>
+    /// <summary>섹션이 가라오케 시작 오프셋에 도달했는지 판단한다.</summary>
     public static bool IsSung(Cue cue, Section section, TimeSpan time)
     {
         ArgumentNullException.ThrowIfNull(cue);
@@ -57,11 +57,11 @@ public static class KaraokePreview
     }
 
     /// <summary>
-    /// Gets the deterministic Fade progress for a section in the range 0..1.
+    /// 섹션의 결정적 페이드 진행률을 0..1 범위로 가져온다.
     /// </summary>
     /// <remarks>
-    /// SPEC §7.6 [PRODUCT]: the editor preview uses a named 500 ms transition at each karaoke
-    /// boundary, matching the upstream FadeKaraokeType's fade-in window.
+    /// [PRODUCT] 편집기 미리보기는 각 가라오케 경계에서 500 ms 전환을 쓴다.
+    /// upstream 의 FadeKaraokeType 페이드인 구간과 맞춘다.
     /// </remarks>
     public static double GetFadeProgress(Cue cue, Section section, TimeSpan time)
     {
@@ -88,7 +88,7 @@ public static class KaraokePreview
         return (elapsed - offset).TotalMilliseconds / FadeTransitionDuration.TotalMilliseconds;
     }
 
-    /// <summary>Resolves a section's preview color for the cue's effective karaoke type.</summary>
+    /// <summary>큐의 실효 가라오케 타입에 맞춰 섹션의 미리보기 색을 해석한다.</summary>
     public static RgbaColor ResolveColor(Cue cue, Section section, ResolvedFormat format, TimeSpan time)
     {
         ArgumentNullException.ThrowIfNull(cue);
@@ -111,7 +111,7 @@ public static class KaraokePreview
             : format.Foreground;
     }
 
-    /// <summary>Gets the cursor text, using the upstream underscore fallback when unspecified.</summary>
+    /// <summary>커서 텍스트를 가져온다. 지정하지 않으면 upstream 의 밑줄 기본값을 쓴다.</summary>
     public static string GetCursorText(KaraokeSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -119,9 +119,9 @@ public static class KaraokePreview
     }
 
     /// <summary>
-    /// Gets the cursor animation frame index for a cue-relative elapsed time. A single
-    /// <see cref="KaraokeSettings.CursorText"/> is intentionally stable across frames because
-    /// the editor model stores one cursor frame; the interval still defines its frame cadence.
+    /// 큐 기준 경과 시간에 대한 커서 애니메이션 프레임 인덱스를 가져온다.
+    /// <see cref="KaraokeSettings.CursorText"/> 는 프레임 간 의도적으로 고정된다.
+    /// 편집기 모델은 커서 프레임 하나만 저장하고 간격 값이 프레임 주기를 정한다.
     /// </summary>
     public static long GetCursorFrameIndex(TimeSpan elapsed, TimeSpan? interval)
     {
@@ -137,13 +137,13 @@ public static class KaraokePreview
     }
 
     /// <summary>
-    /// Replaces only supported unsung-script characters with deterministic characters from the
-    /// same script. The cue identifier, frame index, and character index all participate in the
-    /// seed so scrubbing the same frame reproduces the same glitch.
+    /// 지원되는 미창 구간 문자만 같은 스크립트의 결정적 문자로 바꾼다.
+    /// 큐 식별자와 프레임 인덱스와 문자 인덱스가 모두 시드에 참여하므로
+    /// 같은 프레임으로 되감으면 같은 글리치가 재현된다.
     /// </summary>
     /// <remarks>
-    /// SPEC §7.6 [PRODUCT]: Latin, Hangul, Hiragana, Katakana, and Han characters are kept in
-    /// their source script; punctuation and unsupported symbols remain unchanged.
+    /// [PRODUCT] 라틴과 한글과 히라가나와 가타카나와 한자는
+    /// 원래 스크립트 안에서 유지하고, 문장부호와 미지원 기호는 바꾸지 않는다.
     /// </remarks>
     public static string GetGlitchedText(Cue cue, string text, long frameIndex)
     {

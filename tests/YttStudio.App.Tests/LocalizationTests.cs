@@ -5,8 +5,8 @@ public sealed class LocalizationTests
     [Fact]
     public void EveryKeyHasAllThreeLanguages()
     {
-        // The three shipped languages must all be filled in. A blank entry would render as an
-        // empty label rather than failing loudly, so it is asserted here instead.
+        // 제공하는 세 언어가 모두 채워져야 한다. 빈 항목은
+        // 빈 라벨로 조용히 렌더되므로 여기서 단언으로 잡는다.
         List<string> incomplete = [];
         foreach (string key in Localizer.Keys)
         {
@@ -37,7 +37,7 @@ public sealed class LocalizationTests
     [Fact]
     public void UnknownKeyReturnsTheKeyItself()
     {
-        // A missing entry has to be visible in the UI, not silently blank.
+        // 누락된 항목은 조용히 비는 대신 UI 에 드러나야 한다.
         Localizer localizer = new();
 
         Assert.Equal("NoSuchKey", localizer["NoSuchKey"]);
@@ -46,7 +46,7 @@ public sealed class LocalizationTests
     [Fact]
     public void ChangingLanguageRaisesIndexerNotification()
     {
-        // Indexer bindings only refresh when the owner invalidates "Item[]".
+        // 인덱서 바인딩은 소유자가 "Item[]" 을 무효화할 때만 갱신된다.
         Localizer localizer = new();
         List<string?> changed = [];
         localizer.PropertyChanged += (_, e) => changed.Add(e.PropertyName);

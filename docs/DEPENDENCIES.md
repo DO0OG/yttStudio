@@ -1,6 +1,6 @@
 # DEPENDENCIES.md
 
-의존성 고정(pin) 기록. **`master` 추종 금지** — 비공개 포맷의 버그 우회를 외부 프로젝트에 의존하므로, pin이 없으면 SPEC §5의 의미가 시간에 따라 조용히 바뀐다.
+의존성 고정(pin) 기록. **`master` 추종 금지** — 비공개 포맷의 버그 우회를 외부 프로젝트에 의존하므로, pin이 없으면 포맷 규칙의 의미가 시간에 따라 조용히 바뀐다.
 
 ---
 
@@ -15,20 +15,20 @@ project used:     YTSubConverter.Shared (netstandard2.0)
 commit:           c460cca (2747267 + ReadLine 전달 수정)
 upstream base:    b186a40bc21e58a8c9651cf616cbb5e80425dfc6  (2026-07-27, PR #144 from s0hv)
 verified date:    2026-08-25
-verified by:      SPEC v1.1 검증 (docs/YTT-VERIFICATION.md) + M1 빌드·테스트
+verified by:      포맷 규칙 검증 (docs/YTT-VERIFICATION.md) + M1 빌드·테스트
 local patches:    1건 — 아래 참조
 ```
 
 ### 로컬 패치 1: `ap`와 독립적인 `ju`
 
-**왜 필요한가:** YTT 포맷에서 `<wp ap>`와 `<ws ju>`는 독립이지만(SPEC §5.3),
+**왜 필요한가:** YTT 포맷에서 `<wp ap>`와 `<ws ju>`는 독립이지만,
 pin된 upstream은 `WriteWindowStyle()`이 `ju`를 `AnchorPoint`에서 파생시키고
 `ReadWindowStyle()`은 `ju`를 아예 읽지 않는다. 그래서 `ap=7` + `ju=0` 같은 조합을
 표현할 수도 왕복시킬 수도 없었다. 근거는 `docs/YTT-VERIFICATION.md` V-13.
 
-SPEC §2.1 F4와 §9.4가 `ju`를 독립 컨트롤로 요구하는데, SPEC §2.2의
+편집기는 `ju`를 독립 컨트롤로 노출해야 하는데,
 "사용자가 설정할 수 있는데 결과물에 반영이 안 되는 게 최악"이라는 원칙상
-제한을 그냥 받아들일 수 없었다. §10.2/§17.3이 head writer 복제를 금지하므로
+제한을 그냥 받아들일 수 없었다. head writer 복제가 금지되어 있으므로
 우회 대신 upstream을 고쳤다.
 
 **변경 내용** (`YTSubConverter.Shared`, 23 insertions / 3 deletions, 커밋 2개):
@@ -72,7 +72,7 @@ upstream을 올릴 때 반드시 순서대로:
 1. upstream 변경 로그 확인 (특히 `YttDocument.cs`, `mitmproxy_script.py`, `ytt.ytt`)
 2. YTT golden test 전체 실행 → 출력 diff 검토
 3. 실제 YouTube 업로드 수동 QA (PC / iOS / Android)
-4. SPEC §5 변경점 검토 — 규칙이 바뀌었으면 `docs/YTT-VERIFICATION.md` 갱신
+4. 포맷 규칙 변경점 검토 — 규칙이 바뀌었으면 `docs/YTT-VERIFICATION.md` 갱신
 5. 이 파일의 commit / verified date 갱신
 6. 위 5단계 결과를 PR 본문에 요약
 
@@ -115,7 +115,7 @@ FAIL 항목이 없으므로 .NET 8 + Avalonia 11 fallback 비용 산정은 필�
 
 ---
 
-## libmpv (네이티브, §18 M5 결정)
+## libmpv (네이티브, M5 결정)
 
 libmpv는 .NET self-contained 런타임에 자동으로 들어가는 관리 코드가 아니다. 따라서
 배포 패키지의 앱 바이너리와 별도로 배치·서명·고지해야 한다. 아래 결정은 **배포
@@ -183,7 +183,7 @@ M5 배포 정책은 다음처럼 고정한다.
 ### M2 렌더 결정과 OS별 fallback
 
 - **libmpv 렌더 백엔드:** `MPV_RENDER_API_TYPE_SW`; `hwdec=no`. 근거는
-  `docs/PERFORMANCE.md`이며, CPU readback이 필요한 §8.1 airspace 경로에서 GPU
+  `docs/PERFORMANCE.md`이며, CPU readback이 필요한 airspace 경로에서 GPU
   readback보다 측정 비용이 낮았다.
 - **Windows:** libmpv는 SW 경로를 사용하므로 libmpv 자체의 GPU/OpenGL 드라이버를
   요구하지 않는다. Avalonia/Skia의 GL 초기화는 호스트 드라이버에 의존한다. 현재
@@ -243,7 +243,7 @@ crash 수집은 **미구현**이다.
 
 ---
 
-## §18 네이티브 배포 전략 (M5 확정)
+## 네이티브 배포 전략 (M5 확정)
 
 ### 지원 아키텍처
 
@@ -324,14 +324,14 @@ libmpv client-api=2.0 path=... os=... arch=...
 
 | 도구 | 용도 | 정책 |
 |---|---|---|
-| mitmproxy | 실제 플레이어 프리뷰 (§14) | 번들 금지. 미설치 시 다운로드 안내만. 스크립트는 upstream `mitmproxy_script.py`와 동기화 |
+| mitmproxy | 실제 플레이어 프리뷰 | 번들 금지. 미설치 시 다운로드 안내만. 스크립트는 upstream `mitmproxy_script.py`와 동기화 |
 | Fiddler Classic | 위의 Windows 대안 | 안내만 |
 | Aegisub | `.ass` 편집 | 안내만 |
 | yt-dlp | 기존 `.ytt` 수집 (`--write-subs --sub-format=srv3`) | 안내만 |
 
 ---
 
-## 번들 폰트 (§7.5.1)
+## 번들 폰트
 
 미리보기 정확도를 위해 앱에 포함하는 폰트. 재배포 가능한 라이선스만.
 

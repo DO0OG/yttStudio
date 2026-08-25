@@ -2,20 +2,20 @@ using System.Text.RegularExpressions;
 
 namespace YttStudio.Core.Editing;
 
-/// <summary>Controls how subtitle text is searched.</summary>
+/// <summary>자막 텍스트 검색 방식을 제어한다.</summary>
 public sealed record TextSearchOptions
 {
-    /// <summary>Gets or sets whether the pattern is interpreted as a regular expression.</summary>
+    /// <summary>패턴을 정규식으로 해석할지 가져오거나 설정한다.</summary>
     public bool UseRegex { get; init; }
 
-    /// <summary>Gets or sets whether literal and regular-expression matching is case-sensitive.</summary>
+    /// <summary>리터럴과 정규식 일치가 대소문자를 구분하는지 가져오거나 설정한다.</summary>
     public bool CaseSensitive { get; init; }
 }
 
-/// <summary>Describes one match within a subtitle section.</summary>
+/// <summary>자막 섹션 안의 일치 하나를 기술한다.</summary>
 public sealed record TextSearchMatch
 {
-    /// <summary>Initializes a match description.</summary>
+    /// <summary>일치 정보를 초기화한다.</summary>
     public TextSearchMatch(int index, int length, string value)
     {
         if (index < 0)
@@ -34,26 +34,26 @@ public sealed record TextSearchMatch
         Value = value;
     }
 
-    /// <summary>Gets the zero-based UTF-16 index of the match.</summary>
+    /// <summary>일치의 0 기반 UTF-16 인덱스를 가져온다.</summary>
     public int Index { get; }
 
-    /// <summary>Gets the UTF-16 length of the match.</summary>
+    /// <summary>일치의 UTF-16 길이를 가져온다.</summary>
     public int Length { get; }
 
-    /// <summary>Gets the matched text.</summary>
+    /// <summary>일치한 텍스트를 가져온다.</summary>
     public string Value { get; }
 
-    /// <summary>Gets the exclusive zero-based UTF-16 end index of the match.</summary>
+    /// <summary>일치의 0 기반 UTF-16 끝 인덱스를 가져온다. 끝은 포함하지 않는다.</summary>
     public int End => checked(Index + Length);
 
-    /// <summary>Gets the zero-based UTF-16 start index of the match.</summary>
+    /// <summary>일치의 0 기반 UTF-16 시작 인덱스를 가져온다.</summary>
     public int Start => Index;
 }
 
-/// <summary>Contains all matches found in one subtitle section.</summary>
+/// <summary>자막 섹션 하나에서 찾은 모든 일치를 담는다.</summary>
 public sealed record TextSearchResult
 {
-    /// <summary>Initializes a per-section search result.</summary>
+    /// <summary>섹션별 검색 결과를 초기화한다.</summary>
     public TextSearchResult(
         Guid cueId,
         int sectionIndex,
@@ -73,26 +73,26 @@ public sealed record TextSearchResult
         Matches = matches.ToArray();
     }
 
-    /// <summary>Gets the owning cue identifier.</summary>
+    /// <summary>소유 큐 식별자를 가져온다.</summary>
     public Guid CueId { get; }
 
-    /// <summary>Gets the zero-based section index inside the owning cue.</summary>
+    /// <summary>소유 큐 안에서의 0 기반 섹션 인덱스를 가져온다.</summary>
     public int SectionIndex { get; }
 
-    /// <summary>Gets the section text at the time of the search.</summary>
+    /// <summary>검색 시점의 섹션 텍스트를 가져온다.</summary>
     public string Text { get; }
 
-    /// <summary>Gets the non-overlapping matches in section order.</summary>
+    /// <summary>겹치지 않는 일치를 섹션 순서로 가져온다.</summary>
     public IReadOnlyList<TextSearchMatch> Matches { get; }
 
-    /// <summary>Gets the number of matches in this section.</summary>
+    /// <summary>이 섹션의 일치 개수를 가져온다.</summary>
     public int MatchCount => Matches.Count;
 }
 
-/// <summary>Searches subtitle section text without mutating the project.</summary>
+/// <summary>프로젝트를 바꾸지 않고 자막 섹션 텍스트를 검색한다.</summary>
 public static class TextSearch
 {
-    /// <summary>Searches every <see cref="Section.Text"/> value in cue and section order.</summary>
+    /// <summary>큐와 섹션 순서로 모든 <see cref="Section.Text"/> 값을 검색한다.</summary>
     public static IReadOnlyList<TextSearchResult> Search(
         SubtitleProject project,
         string pattern,
@@ -119,7 +119,7 @@ public static class TextSearch
         return results;
     }
 
-    /// <summary>Searches every section using explicit regex and case-sensitivity flags.</summary>
+    /// <summary>정규식과 대소문자 구분 플래그를 명시해 모든 섹션을 검색한다.</summary>
     public static IReadOnlyList<TextSearchResult> Search(
         SubtitleProject project,
         string pattern,
@@ -131,14 +131,14 @@ public static class TextSearch
             CaseSensitive = caseSensitive,
         });
 
-    /// <summary>Alias for <see cref="Search(SubtitleProject, string, TextSearchOptions?)"/>.</summary>
+    /// <summary><see cref="Search(SubtitleProject, string, TextSearchOptions?)"/> 의 별칭이다.</summary>
     public static IReadOnlyList<TextSearchResult> Find(
         SubtitleProject project,
         string pattern,
         TextSearchOptions? options = null)
         => Search(project, pattern, options);
 
-    /// <summary>Alias for <see cref="Search(SubtitleProject, string, bool, bool)"/>.</summary>
+    /// <summary><see cref="Search(SubtitleProject, string, bool, bool)"/> 의 별칭이다.</summary>
     public static IReadOnlyList<TextSearchResult> Find(
         SubtitleProject project,
         string pattern,
@@ -169,8 +169,8 @@ public static class TextSearch
                     continue;
                 }
 
-                // Compute every replacement before DocumentEditor executes any command. This keeps
-                // invalid replacement templates and regex timeouts from partially mutating a project.
+                // DocumentEditor 가 커맨드를 실행하기 전에 모든 치환을 계산한다. 그래야
+                // 잘못된 치환 템플릿이나 정규식 타임아웃이 프로젝트를 일부만 바꾸는 일이 없다.
                 string nextText = matcher.Replace(text, replacement, matches);
                 plans.Add(new TextReplacementPlan(cue.Id, section, nextText, matches.Count));
             }

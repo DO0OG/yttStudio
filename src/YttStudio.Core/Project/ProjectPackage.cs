@@ -7,24 +7,24 @@ using YttStudio.Core.Project.Migrations;
 
 namespace YttStudio.Core.Project;
 
-/// <summary>Reads and writes the versioned <c>.yttproj</c> project package.</summary>
+/// <summary>버전이 있는 <c>.yttproj</c> 프로젝트 패키지를 읽고 쓴다.</summary>
 /// <remarks>
-/// A package always contains <c>manifest.json</c>, <c>project.json</c>, and
-/// <c>thumbnail.png</c>. A missing thumbnail is represented by a zero-byte entry;
-/// the package writer never invents image data.
+/// 패키지에는 항상 <c>manifest.json</c> 과 <c>project.json</c> 과
+/// <c>thumbnail.png</c> 가 들어간다. 썸네일이 없으면 0 바이트 항목으로 표현하며
+/// 패키지 작성기는 이미지 데이터를 지어내지 않는다.
 /// </remarks>
 public static class ProjectPackage
 {
-    /// <summary>Current project JSON and manifest schema version.</summary>
+    /// <summary>현재 프로젝트 JSON 과 매니페스트 스키마 버전이다.</summary>
     public const int CurrentSchemaVersion = 2;
 
-    /// <summary>The manifest entry name.</summary>
+    /// <summary>매니페스트 항목 이름이다.</summary>
     public const string ManifestEntryName = "manifest.json";
 
-    /// <summary>The project JSON entry name.</summary>
+    /// <summary>프로젝트 JSON 항목 이름이다.</summary>
     public const string ProjectEntryName = "project.json";
 
-    /// <summary>The optional-image entry name (the entry itself is always present).</summary>
+    /// <summary>선택적 이미지 항목 이름이다. 항목 자체는 항상 존재한다.</summary>
     public const string ThumbnailEntryName = "thumbnail.png";
 
     private const long MaximumManifestBytes = 64 * 1024;
@@ -33,10 +33,10 @@ public static class ProjectPackage
 
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
-    /// <summary>Saves a project package to a writable stream.</summary>
-    /// <param name="project">The project to serialize.</param>
-    /// <param name="destination">The destination stream.</param>
-    /// <param name="thumbnailPng">Caller-provided PNG bytes, or <see langword="null"/> for an empty entry.</param>
+    /// <summary>프로젝트 패키지를 쓰기 가능한 스트림에 저장한다.</summary>
+    /// <param name="project">직렬화할 프로젝트다.</param>
+    /// <param name="destination">대상 스트림이다.</param>
+    /// <param name="thumbnailPng">호출자가 준 PNG 바이트다. 빈 항목이면 <see langword="null"/> 이다.</param>
     public static void Save(SubtitleProject project, Stream destination, byte[]? thumbnailPng = null)
     {
         ArgumentNullException.ThrowIfNull(project);
@@ -65,14 +65,14 @@ public static class ProjectPackage
         using ZipArchive archive = new(destination, ZipArchiveMode.Create, leaveOpen: true);
         WriteEntry(archive, ManifestEntryName, manifest);
         WriteEntry(archive, ProjectEntryName, projectJson);
-        // SPEC §12 [CONTRACT]: thumbnail.png is required, but no fake image may be generated.
+        // [CONTRACT] thumbnail.png 항목은 필수지만 가짜 이미지를 만들어서는 안 된다.
         WriteEntry(archive, ThumbnailEntryName, thumbnailPng ?? []);
     }
 
-    /// <summary>Saves a project package to a file path.</summary>
-    /// <param name="project">The project to serialize.</param>
-    /// <param name="filePath">The output file path.</param>
-    /// <param name="thumbnailPng">Caller-provided PNG bytes, or <see langword="null"/> for an empty entry.</param>
+    /// <summary>프로젝트 패키지를 파일 경로에 저장한다.</summary>
+    /// <param name="project">직렬화할 프로젝트다.</param>
+    /// <param name="filePath">출력 파일 경로다.</param>
+    /// <param name="thumbnailPng">호출자가 준 PNG 바이트다. 빈 항목이면 <see langword="null"/> 이다.</param>
     public static void Save(SubtitleProject project, string filePath, byte[]? thumbnailPng = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
@@ -80,14 +80,14 @@ public static class ProjectPackage
         Save(project, stream, thumbnailPng);
     }
 
-    /// <summary>Loads the project model from a package stream.</summary>
-    /// <param name="source">A readable package stream.</param>
-    /// <returns>A newly created project model; no undo stack is involved.</returns>
+    /// <summary>패키지 스트림에서 프로젝트 모델을 불러온다.</summary>
+    /// <param name="source">읽을 수 있는 패키지 스트림이다.</param>
+    /// <returns>새로 만들어진 프로젝트 모델이다. 실행 취소 기록은 만들지 않는다.</returns>
     public static SubtitleProject Load(Stream source) => Read(source).Project;
 
-    /// <summary>Loads the project model from a package file.</summary>
-    /// <param name="filePath">The package file path.</param>
-    /// <returns>A newly created project model; no undo stack is involved.</returns>
+    /// <summary>패키지 파일에서 프로젝트 모델을 불러온다.</summary>
+    /// <param name="filePath">패키지 파일 경로다.</param>
+    /// <returns>새로 만들어진 프로젝트 모델이다. 실행 취소 기록은 만들지 않는다.</returns>
     public static SubtitleProject Load(string filePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
@@ -95,9 +95,9 @@ public static class ProjectPackage
         return Load(stream);
     }
 
-    /// <summary>Loads a package and exposes its thumbnail and migration metadata.</summary>
-    /// <param name="source">A readable package stream.</param>
-    /// <returns>The newly created model and package metadata.</returns>
+    /// <summary>패키지를 불러오고 썸네일과 마이그레이션 메타데이터를 노출한다.</summary>
+    /// <param name="source">읽을 수 있는 패키지 스트림이다.</param>
+    /// <returns>새로 만들어진 모델과 패키지 메타데이터다.</returns>
     public static ProjectPackageReadResult Read(Stream source)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -172,9 +172,9 @@ public static class ProjectPackage
         return new ProjectPackageReadResult(project, thumbnailBytes, sourceVersion);
     }
 
-    /// <summary>Loads a package and exposes its thumbnail and migration metadata.</summary>
-    /// <param name="filePath">The package file path.</param>
-    /// <returns>The newly created model and package metadata.</returns>
+    /// <summary>패키지를 불러오고 썸네일과 마이그레이션 메타데이터를 노출한다.</summary>
+    /// <param name="filePath">패키지 파일 경로다.</param>
+    /// <returns>새로 만들어진 모델과 패키지 메타데이터다.</returns>
     public static ProjectPackageReadResult Read(string filePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
@@ -182,7 +182,7 @@ public static class ProjectPackage
         return Read(stream);
     }
 
-    /// <summary>Alias for <see cref="Read(Stream)"/> for callers that prefer an open operation.</summary>
+    /// <summary>열기 동작을 선호하는 호출자를 위한 <see cref="Read(Stream)"/> 별칭이다.</summary>
     public static ProjectPackageReadResult Open(Stream source) => Read(source);
 
     internal static JsonSerializerOptions SerializationOptions => JsonOptions;
@@ -302,7 +302,7 @@ public static class ProjectPackage
     }
 }
 
-/// <summary>Result of opening a project package, including non-model package metadata.</summary>
+/// <summary>프로젝트 패키지를 연 결과다. 모델 외 패키지 메타데이터를 포함한다.</summary>
 public sealed class ProjectPackageReadResult
 {
     internal ProjectPackageReadResult(SubtitleProject project, byte[] thumbnailPng, int sourceSchemaVersion)
@@ -312,19 +312,19 @@ public sealed class ProjectPackageReadResult
         SourceSchemaVersion = sourceSchemaVersion;
     }
 
-    /// <summary>Gets the newly created project model.</summary>
+    /// <summary>새로 만들어진 프로젝트 모델을 가져온다.</summary>
     public SubtitleProject Project { get; }
 
-    /// <summary>Gets the caller-provided thumbnail bytes, or an empty array when no thumbnail was saved.</summary>
+    /// <summary>호출자가 준 썸네일 바이트를 가져온다. 저장된 썸네일이 없으면 빈 배열이다.</summary>
     public byte[] ThumbnailPng { get; }
 
-    /// <summary>Gets the schema version declared by the package manifest.</summary>
+    /// <summary>패키지 매니페스트가 선언한 스키마 버전을 가져온다.</summary>
     public int SourceSchemaVersion { get; }
 
-    /// <summary>Gets whether the package passed through a migration.</summary>
+    /// <summary>패키지가 마이그레이션을 거쳤는지 가져온다.</summary>
     public bool WasMigrated => SourceSchemaVersion != ProjectPackage.CurrentSchemaVersion;
 
-    /// <summary>Gets the schema version after migration.</summary>
+    /// <summary>마이그레이션 후 스키마 버전을 가져온다.</summary>
     public int SchemaVersion => ProjectPackage.CurrentSchemaVersion;
 }
 

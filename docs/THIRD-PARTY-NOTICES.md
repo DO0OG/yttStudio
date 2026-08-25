@@ -24,7 +24,7 @@ licenses/
 
 libmpv는 앱과 정적으로 합쳐졌다고 가정하지 않는다. 정식 패키지는 교체 가능한
 동적 sidecar를 제공하고, 해당 sidecar의 빌드 식별자와 source correspondence를
-같이 고지한다. 정확한 파일명과 위치는 [`DEPENDENCIES.md`](DEPENDENCIES.md) §18을
+같이 고지한다. 정확한 파일명과 위치는 [`DEPENDENCIES.md`](DEPENDENCIES.md) 의 배포 전략 절을
 따른다.
 
 ## 고지 목록

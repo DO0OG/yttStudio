@@ -2,7 +2,7 @@ using System.Collections.Specialized;
 
 namespace YttStudio.Core;
 
-/// <summary>Stores cues by identity and maintains a start-time-sorted lookup index.</summary>
+/// <summary>큐를 식별자로 저장하고 시작 시각 정렬 조회 인덱스를 유지한다.</summary>
 public sealed class CueCollection : IReadOnlyCollection<Cue>, INotifyCollectionChanged
 {
     private readonly Dictionary<Guid, Cue> byId = [];
@@ -18,7 +18,7 @@ public sealed class CueCollection : IReadOnlyCollection<Cue>, INotifyCollectionC
 
     public event NotifyCollectionChangedEventHandler? CollectionChanged;
 
-    /// <summary>Returns cues active at the half-open interval Start &lt;= time &lt; End.</summary>
+    /// <summary>Start &lt;= time &lt; End 반개구간에서 활성인 큐를 돌려준다.</summary>
     public IReadOnlyList<Cue> GetActiveAt(TimeSpan time)
     {
         int upperBound = FindFirstStartingAfter(time);
@@ -36,7 +36,7 @@ public sealed class CueCollection : IReadOnlyCollection<Cue>, INotifyCollectionC
         return active;
     }
 
-    /// <summary>Advances the cached active set and reports cues that entered or exited.</summary>
+    /// <summary>캐시된 활성 큐 집합을 진행시키고 진입하거나 이탈한 큐를 알린다.</summary>
     public ActiveSetDelta AdvanceTo(TimeSpan time)
     {
         if (advanceTime is null || time < advanceTime)
@@ -196,7 +196,7 @@ public sealed class CueCollection : IReadOnlyCollection<Cue>, INotifyCollectionC
     }
 }
 
-/// <summary>Describes changes to the active cue set since the previous advance.</summary>
+/// <summary>직전 진행 이후 활성 큐 집합의 변화를 기술한다.</summary>
 public sealed class ActiveSetDelta
 {
     public ActiveSetDelta(IReadOnlyList<Cue> entered, IReadOnlyList<Cue> exited, IReadOnlyList<Cue> active)

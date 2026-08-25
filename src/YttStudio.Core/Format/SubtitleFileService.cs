@@ -11,7 +11,7 @@ using ModelSection = YttStudio.Core.Section;
 
 namespace YttStudio.Core.Format;
 
-/// <summary>Imports and exports the M1 subtitle formats through the pinned converter.</summary>
+/// <summary>고정된 변환기를 통해 자막 형식을 가져오고 내보낸다.</summary>
 public sealed partial class SubtitleFileService
 {
     private static readonly HashSet<string> SupportedAssTags = new(StringComparer.OrdinalIgnoreCase)
@@ -22,7 +22,7 @@ public sealed partial class SubtitleFileService
         "ytvert", "ytdir", "ytpack", "ytshake", "ytchroma", "ytkt",
     };
 
-    /// <summary>Imports a .ytt, .srv3, or .ass document.</summary>
+    /// <summary>.ytt 나 .srv3 나 .ass 문서를 가져온다.</summary>
     public ImportResult Import(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -35,7 +35,7 @@ public sealed partial class SubtitleFileService
         };
     }
 
-    /// <summary>Exports a project to .ytt, .srv3, or .ass using upstream Save methods.</summary>
+    /// <summary>upstream 의 Save 메서드로 프로젝트를 .ytt 나 .srv3 나 .ass 로 내보낸다.</summary>
     public void Export(SubtitleProject project, string path)
     {
         ArgumentNullException.ThrowIfNull(project);
@@ -56,8 +56,8 @@ public sealed partial class SubtitleFileService
         {
             case ".ytt":
             case ".srv3":
-                // SPEC §5.1/§5.9 [UPSTREAM]: Save owns preprocessing, pool IDs, dummy items, and head order.
-                // 근거: YttDocument.Save()/WriteHead(), docs/YTT-VERIFICATION.md.
+                // [UPSTREAM] 전처리와 풀 ID 와 더미 항목과 head 순서는 모두 Save 가 소유한다.
+                // 근거: YttDocument.Save()/WriteHead(), docs/YTT-VERIFICATION.md
                 new YttDocument(assDocument).Save(path);
                 break;
             case ".ass":
@@ -131,7 +131,7 @@ public sealed partial class SubtitleFileService
             }
             else
             {
-                // SPEC §10.2 [UPSTREAM]: effects enter through ASS and YttDocument.Save owns XML.
+                // [UPSTREAM] 효과는 ASS 를 거쳐 들어가고 XML 조립은 YttDocument.Save 가 맡는다.
                 new YttDocument(new AssDocument(effectsPath)).Save(path);
             }
         }
@@ -168,8 +168,8 @@ public sealed partial class SubtitleFileService
             cue.PositionX = YttMath.ToYttCoordinate(position.X, document.VideoDimensions.Width);
             cue.PositionY = YttMath.ToYttCoordinate(position.Y, document.VideoDimensions.Height);
 
-            // A ruby group spans four sections, so the index advances by more than one.
-            // A while loop keeps that advance explicit instead of mutating a for counter.
+            // 루비 그룹은 네 섹션에 걸쳐 있어 인덱스가 한 칸 넘게 전진한다.
+            // while 루프로 두어야 for 카운터를 변경하지 않고 전진량이 드러난다.
             int sectionIndex = 0;
             while (sectionIndex < line.Sections.Count)
             {
@@ -309,8 +309,8 @@ public sealed partial class SubtitleFileService
         return new SectionFormat
         {
             Font = ToModelFont(style.Font),
-            // SPEC §6.5 [UPSTREAM]: Default is 100%; all ASS styles are relative to its line height.
-            // 근거: AssDocument.cs style.Scale calculation, docs/YTT-VERIFICATION.md.
+            // [UPSTREAM] Default 스타일이 100% 기준이며 모든 ASS 스타일은 그 줄 높이에 상대적이다.
+            // 근거: AssDocument.cs 의 style.Scale 계산, docs/YTT-VERIFICATION.md
             SizePercent = Math.Max(75, checked((int)Math.Round(style.LineHeight / defaultLineHeight * 100))),
             Bold = style.Bold,
             Italic = style.Italic,
@@ -451,8 +451,8 @@ public sealed partial class SubtitleFileService
 
     private static Color ToExternalColor(RgbaColor color)
     {
-        // SPEC §5.7 [UPSTREAM]: 255 alpha is stripped on upload; YttDocument also normalizes it.
-        // 근거: YttDocument.LimitColors(), docs/YTT-VERIFICATION.md.
+        // [UPSTREAM] 알파 255 는 업로드 시 제거된다. YttDocument 도 이를 정규화한다.
+        // 근거: YttDocument.LimitColors(), docs/YTT-VERIFICATION.md
         byte alpha = Math.Min(color.Alpha, YttConstants.MaximumOpacity);
         bool pureWhite = color.Red == byte.MaxValue && color.Green == byte.MaxValue && color.Blue == byte.MaxValue;
         byte red = pureWhite ? YttConstants.MaximumOpacity : color.Red;

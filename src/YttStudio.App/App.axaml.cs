@@ -23,8 +23,8 @@ public partial class App : Application
             desktop.MainWindow = window;
             desktop.ShutdownRequested += (_, _) => mainViewModel.Dispose();
 
-            // SPEC §12: a snapshot left on disk means the previous run did not shut down
-            // cleanly. Offer recovery once the window exists to host a dialog.
+            // 디스크에 남은 스냅샷은 직전 실행이 정상 종료하지 않았다는 뜻이다.
+            // 대화상자를 띄울 창이 준비되면 복구를 제안한다.
             MainWindowViewModel viewModel = mainViewModel;
             window.Opened += async (_, _) => await viewModel.OfferCrashRecoveryAsync();
         }

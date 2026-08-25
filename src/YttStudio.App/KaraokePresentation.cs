@@ -6,13 +6,13 @@ using YttStudio.Core;
 
 namespace YttStudio.App;
 
-/// <summary>Provides the user-facing name for one supported karaoke effect mode.</summary>
+/// <summary>지원되는 가라오케 효과 모드 하나의 사용자 표시 이름을 제공한다.</summary>
 public sealed record KaraokeTypeOption(KaraokeType Value, string Name)
 {
     public override string ToString() => Name;
 }
 
-/// <summary>Exposes one karaoke section to the editor view without mutating the domain model.</summary>
+/// <summary>도메인 모델을 바꾸지 않고 가라오케 섹션 하나를 편집기 뷰에 노출한다.</summary>
 public sealed class KaraokeSectionViewModel : INotifyPropertyChanged
 {
     private readonly MainWindowViewModel owner;

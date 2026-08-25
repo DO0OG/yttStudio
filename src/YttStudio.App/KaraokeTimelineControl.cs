@@ -9,7 +9,7 @@ using YttStudio.Core;
 
 namespace YttStudio.App;
 
-/// <summary>Draws karaoke chips and the cue-relative timing bar for the selected cue.</summary>
+/// <summary>선택한 큐의 가라오케 칩과 큐 기준 타이밍 바를 그린다.</summary>
 public sealed class KaraokeTimelineControl : Control
 {
     private const double ChipRowTop = 8;

@@ -3,7 +3,7 @@ namespace YttStudio.Video.Tests;
 public sealed class MpvCompatibilityTests
 {
     [Theory]
-    // SPEC §18: the gate accepts libmpv 2.0 and newer and rejects anything older.
+    // libmpv 2.0 이상만 통과시키고 그보다 낮으면 거부한다.
     [InlineData(2u << 16, true)]
     [InlineData((2u << 16) | 5u, true)]
     [InlineData(3u << 16, true)]
@@ -25,7 +25,7 @@ public sealed class MpvCompatibilityTests
     {
         string message = MpvCompatibility.DescribeUnsupported(1u << 16, "/opt/libmpv.so");
 
-        // An actionable failure says what was found, what is required, and where it came from.
+        // 조치 가능한 실패 메시지는 발견한 값과 요구 값과 출처를 함께 알려준다.
         Assert.Contains("1.0", message, StringComparison.Ordinal);
         Assert.Contains("2.0", message, StringComparison.Ordinal);
         Assert.Contains("/opt/libmpv.so", message, StringComparison.Ordinal);
@@ -34,7 +34,7 @@ public sealed class MpvCompatibilityTests
     [Fact]
     public void CrashMetadataCarriesVersionAndPath()
     {
-        // SPEC §18 requires the libmpv version to be recoverable from a crash report.
+        // 크래시 보고서에서 libmpv 버전을 되짚을 수 있어야 한다.
         string line = MpvCompatibility.DescribeForCrashLog(2u << 16, "/opt/libmpv.so");
 
         Assert.Contains("client-api=2.0", line, StringComparison.Ordinal);

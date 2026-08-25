@@ -8,7 +8,7 @@ using YttStudio.Core.Editing;
 
 namespace YttStudio.App;
 
-/// <summary>Draws selection, anchor, safe-area, and snap overlays above the composed video.</summary>
+/// <summary>합성된 영상 위에 선택과 앵커와 세이프 에어리어와 스냅 오버레이를 그린다.</summary>
 public sealed class PreviewCanvas : Control
 {
     private static readonly Pen SelectionPen = new(Brushes.DeepSkyBlue, 2,

@@ -3,7 +3,7 @@ using YttStudio.Core;
 
 namespace YttStudio.Render;
 
-/// <summary>Computes deterministic subtitle geometry without drawing pixels.</summary>
+/// <summary>픽셀을 그리지 않고 결정적인 자막 기하를 계산한다.</summary>
 public sealed class SubtitleLayoutEngine
 {
     private readonly IFontResolver fontResolver;
@@ -13,7 +13,7 @@ public sealed class SubtitleLayoutEngine
         this.fontResolver = fontResolver ?? throw new ArgumentNullException(nameof(fontResolver));
     }
 
-    /// <summary>Measures and positions one cue using the seven-step SPEC §7.4 algorithm.</summary>
+    /// <summary>일곱 단계 레이아웃 알고리즘으로 큐 하나를 측정하고 배치한다.</summary>
     public CueLayout LayoutCue(PlayerViewport viewport, SubtitleProject project, Cue cue, RenderOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(project);

@@ -1,6 +1,6 @@
 namespace YttStudio.App;
 
-/// <summary>Languages the editor ships with (SPEC 16 M5 localisation).</summary>
+/// <summary>편집기가 제공하는 언어다.</summary>
 public enum AppLanguage
 {
     Korean,
@@ -8,10 +8,10 @@ public enum AppLanguage
     Japanese,
 }
 
-/// <summary>One string in every shipped language.</summary>
+/// <summary>제공하는 모든 언어의 문자열 하나다.</summary>
 public sealed record LocalizedText(string Korean, string English, string Japanese)
 {
-    /// <summary>Gets the text for <paramref name="language"/>.</summary>
+    /// <summary><paramref name="language"/> 에 해당하는 문자열을 가져온다.</summary>
     public string For(AppLanguage language) => language switch
     {
         AppLanguage.English => English,
@@ -21,8 +21,8 @@ public sealed record LocalizedText(string Korean, string English, string Japanes
 }
 
 /// <summary>
-/// In-memory string table. Kept as code rather than .resx so a missing key is a plain
-/// dictionary lookup and the three languages stay side by side in one place.
+/// 메모리 문자열 테이블이다. .resx 대신 코드로 두어 누락된 키가 평범한
+/// 딕셔너리 조회로 드러나고 세 언어가 한 곳에 나란히 놓인다.
 /// </summary>
 public sealed class Localizer : System.ComponentModel.INotifyPropertyChanged
 {
@@ -85,7 +85,7 @@ public sealed class Localizer : System.ComponentModel.INotifyPropertyChanged
         ["CharOffset"] = new("문자 오프셋", "Character Offset", "文字オフセット"),
         ["Pack"] = new("Pack", "Pack", "Pack"),
         ["CompatPcNote"] = new("호환성: PC 중심 · 검증일 2026-08-25", "Compatibility: PC-focused - verified 2026-08-25", "互換性: PC 中心・検証日 2026-08-25"),
-        ["CompatSpecNote"] = new("SPEC §5.8 관찰 기준, 2026-08-25 검증", "Per SPEC 5.8 observation, verified 2026-08-25", "SPEC 5.8 の観察基準・2026-08-25 検証"),
+        ["CompatSpecNote"] = new("플랫폼 호환성 관찰 기준, 2026-08-25 검증", "Platform compatibility observation, verified 2026-08-25", "プラットフォーム互換性の観察基準・2026-08-25 検証"),
         ["Effects"] = new("효과", "Effects", "エフェクト"),
         ["EffectMove"] = new("이동 · 시작점에서 끝점까지 선형 보간", "Move - linear interpolation from start to end", "移動・始点から終点まで線形補間"),
         ["EffectFade"] = new("페이드 · 시작/종료 알파", "Fade - start/end alpha", "フェード・開始/終了アルファ"),
@@ -147,16 +147,16 @@ public sealed class Localizer : System.ComponentModel.INotifyPropertyChanged
 
     private AppLanguage language = AppLanguage.Korean;
 
-    /// <summary>Raised when <see cref="Language"/> changes so views re-read every binding.</summary>
+    /// <summary><see cref="Language"/> 가 바뀔 때 발생해 뷰가 모든 바인딩을 다시 읽게 한다.</summary>
     public event Action? LanguageChanged;
 
     /// <summary>
-    /// Raised with the <c>Item[]</c> indexer name. An indexer binding only re-evaluates when
-    /// the owner invalidates the indexer, so a language switch must announce it here.
+    /// <c>Item[]</c> 인덱서 이름으로 발생한다. 인덱서 바인딩은
+    /// 소유자가 인덱서를 무효화할 때만 다시 평가되므로 언어 전환이 여기서 알려야 한다.
     /// </summary>
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 
-    /// <summary>Gets or sets the active language.</summary>
+    /// <summary>활성 언어를 가져오거나 설정한다.</summary>
     public AppLanguage Language
     {
         get => language;
@@ -176,16 +176,16 @@ public sealed class Localizer : System.ComponentModel.INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Looks up <paramref name="key"/> in the active language. An unknown key returns the key
-    /// itself so a missing entry shows up in the UI instead of rendering an empty label.
+    /// 활성 언어에서 <paramref name="key"/> 를 찾는다. 모르는 키는
+    /// 키 자체를 돌려주어 누락 항목이 빈 라벨 대신 UI 에 드러나게 한다.
     /// </summary>
     public string this[string key] =>
         Table.TryGetValue(key, out LocalizedText? text) ? text.For(language) : key;
 
-    /// <summary>Gets every key in the table. Tests use this to assert full coverage.</summary>
+    /// <summary>테이블의 모든 키를 가져온다. 테스트가 전수 확인에 사용한다.</summary>
     public static IReadOnlyCollection<string> Keys => (IReadOnlyCollection<string>)Table.Keys;
 
-    /// <summary>Gets the entry for <paramref name="key"/>, or null when absent.</summary>
+    /// <summary><paramref name="key"/> 항목을 가져온다. 없으면 null 이다.</summary>
     public static LocalizedText? Find(string key) =>
         Table.TryGetValue(key, out LocalizedText? text) ? text : null;
 }

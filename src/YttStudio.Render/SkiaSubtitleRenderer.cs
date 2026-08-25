@@ -3,7 +3,7 @@ using YttStudio.Core;
 
 namespace YttStudio.Render;
 
-/// <summary>Measures and renders YTT subtitle cues on a headless Skia canvas.</summary>
+/// <summary>헤드리스 Skia 캔버스에서 YTT 자막 큐를 측정하고 렌더한다.</summary>
 public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
 {
     private readonly IFontResolver fontResolver;
@@ -85,7 +85,7 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
             .ToArray();
     }
 
-    /// <summary>Returns complete numeric layout data for diagnostics and deterministic tests.</summary>
+    /// <summary>진단과 결정적 테스트를 위한 완전한 수치 레이아웃 데이터를 돌려준다.</summary>
     public IReadOnlyList<CueLayout> MeasureLayout(
         PlayerViewport viewport,
         SubtitleProject project,
@@ -167,7 +167,7 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
                         canvas.DrawText(blob, run.Origin.X + offset, run.Origin.Y + offset, resources.Edge);
                         break;
                     default:
-                        // EdgeType.None draws no edge pass. SPEC §5.4: one pen carries one et.
+                        // EdgeType.None 은 엣지를 그리지 않는다. 하나의 pen 은 하나의 et 만 가진다.
                         break;
                 }
             });
@@ -233,8 +233,8 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
             return;
         }
 
-        // The model currently stores one cursor string. The interval still determines the
-        // upstream-compatible frame cadence, even though there are no alternate strings yet.
+        // 모델은 현재 커서 문자열 하나만 저장한다. 간격 값은 여전히
+        // upstream 과 호환되는 프레임 주기를 결정한다. 아직 대체 문자열은 없다.
         _ = KaraokePreview.GetCursorFrameIndex(time - layout.Cue.Start, settings.CursorInterval);
         foreach (LineLayout line in layout.Lines)
         {
@@ -405,7 +405,7 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
 
     private static SKColor ToSkColor(RgbaColor color)
     {
-        // SPEC §7.5 [UPSTREAM]: model alpha 254 represents fully opaque YTT output.
+        // [UPSTREAM] 모델 알파 254 가 YTT 출력에서 완전 불투명을 뜻한다.
         byte yttAlpha = Math.Min(color.Alpha, YttConstants.MaximumOpacity);
         byte alpha = checked((byte)Math.Round(yttAlpha * 255.0 / YttConstants.MaximumOpacity));
         return new SKColor(color.Red, color.Green, color.Blue, alpha);

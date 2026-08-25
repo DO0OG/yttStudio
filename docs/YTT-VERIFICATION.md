@@ -20,7 +20,7 @@ YTT/SRV3 비공개 포맷 규칙의 근거 기록.
 
 ## V-01. `<head>` 직렬화 순서 = wp → ws → pen
 
-**결론: `[UPSTREAM]` 확정. SPEC v1.0이 옳았고, 2차 리뷰의 지적은 틀렸다.**
+**결론: `[UPSTREAM]` 확정. 기존 기술이 옳았고, 2차 리뷰의 지적은 틀렸다.**
 
 `YTSubConverter.Shared/Formats/YttDocument.cs:670-694`:
 
@@ -60,7 +60,7 @@ private void WriteHead(XmlWriter writer, ...)
 
 > The elements in the `<head>` *must* appear in order of increasing ID's or YouTube will renumber them, causing them to be assigned to the wrong `<body>` elements.
 
-문자 그대로 읽으면 `<head>` 전체에서 ID가 증가해야 하지만, 실제 writer 출력은 `wp0..wpN, ws0..wsM, pen0..penK`로 **각 풀마다 0부터 다시 시작**한다. 즉 전역 증가가 아니다. 따라서 이 규칙은 **타입별 풀 내부 규칙**으로 읽어야 하며, v1.0 SPEC의 기술("각 풀 내에서 id는 엄격히 증가")이 upstream 주석보다 정확하다.
+문자 그대로 읽으면 `<head>` 전체에서 ID가 증가해야 하지만, 실제 writer 출력은 `wp0..wpN, ws0..wsM, pen0..penK`로 **각 풀마다 0부터 다시 시작**한다. 즉 전역 증가가 아니다. 따라서 이 규칙은 **타입별 풀 내부 규칙**으로 읽어야 하며, "각 풀 내에서 id는 엄격히 증가"가 upstream 주석보다 정확하다.
 
 **미검증:** 순서를 어겼을 때 실제로 YouTube가 재번호를 매기는지는 `[EMPIRICAL]` 미확인. upstream 주석에만 근거한다. 그러나 YttStudio는 writer에 위임하므로 실무상 위험 없음.
 
@@ -68,7 +68,7 @@ private void WriteHead(XmlWriter writer, ...)
 
 ## V-02. 각 풀의 `id=0` 더미 항목
 
-**결론: `[UPSTREAM]` 확정. SPEC v1.0이 옳았고, 2차 리뷰의 지적은 틀렸다.**
+**결론: `[UPSTREAM]` 확정. 기존 기술이 옳았고, 2차 리뷰의 지적은 틀렸다.**
 
 V-01에 인용한 코드 주석이 명시적이다: *"we write a dummy (unused) item for **each of the lists**"*. `WriteWindowPosition(writer, 0, ...)`, `WriteWindowStyle(writer, 0, ...)`, `WritePen(writer, 0, ...)` 세 번 모두 호출된다.
 
@@ -127,7 +127,7 @@ private static int GetYouTubeFontScale(float realScale)
 
 ## V-05. `Save()` 전처리 파이프라인 실제 구성
 
-**결론: `[UPSTREAM]` 확정. SPEC v1.0의 목록은 항목은 맞았으나 구조가 부정확했다.**
+**결론: `[UPSTREAM]` 확정. 기존 목록은 항목은 맞았으나 구조가 부정확했다.**
 
 `YttDocument.cs:92-113` 실제 코드:
 
@@ -173,7 +173,7 @@ public override void Save(TextWriter textWriter)
 
 **`YttDocument.cs`에는 `Layer` 참조가 단 한 곳도 없다.** 즉 Layer는 ASS 왕복에서만 살아남고, `.ytt`로 나갈 때 소실된다. YTT의 그리기 순서는 `<body>` 안 `<p>` 등장 순서로만 결정된다.
 
-→ SPEC의 `Cue.Layer`를 "Track(편집 조직)"과 "ZOrder(그리기 순서)"로 분리해야 한다는 리뷰 항목 11의 지적은 **옳다**.
+→ `Cue.Layer`를 "Track(편집 조직)"과 "ZOrder(그리기 순서)"로 분리해야 한다는 리뷰 항목 11의 지적은 **옳다**.
 
 ---
 
@@ -190,7 +190,7 @@ public override void Save(TextWriter textWriter)
 따라서:
 - 측정 대상은 **JSON3로 변환된 파일의 압축 크기**이지 YTT XML의 gzip 크기가 아니다.
 - upstream에 재사용할 수 있는 estimator 코드가 없다.
-- SPEC v1.0의 "gzip(XML) × 8 ÷ 초"는 **정확한 측정이 아니라 근사치**로 표현해야 한다. 리뷰 항목 5의 지적은 **옳다**.
+- "gzip(XML) × 8 ÷ 초"는 **정확한 측정이 아니라 근사치**로 표현해야 한다. 리뷰 항목 5의 지적은 **옳다**.
 
 ---
 
@@ -216,7 +216,7 @@ line 130: def request(flow) -> None
 1. `ensure_subtitle_selector` — 자막 트랙이 없는 영상의 HTML 응답에서 `ytInitialPlayerResponse`를 찾아 `"Preview"`라는 이름의 더미 caption track을 주입한다. 이게 없으면 자막 없는 영상에서는 CC 버튼 자체가 안 뜬다.
 2. `apply_custom_subtitles` — `/api/timedtext` 요청을 로컬 파일로 응답한다.
 
-SPEC v1.0 §14는 2번만 기술했다. **정정 필요.**
+기존 기술은 2번만 다뤘다. **정정 필요.**
 
 `ytInitialPlayerResponse` regex는 YouTube의 HTML/JS 구조에 의존하므로 언제든 깨질 수 있다 → graceful failure 필수.
 
@@ -249,15 +249,15 @@ Bitmap / Graphics / Brush / Pen / Image / Icon  →  0건
 
 사용 타입은 전부 **`System.Drawing.Primitives`** 소속이며 이는 공유 프레임워크의 일부로 모든 플랫폼에서 동작한다. Windows 전용인 것은 `System.Drawing.Common`(Bitmap/Graphics 계열)인데 `Shared`는 참조하지 않는다.
 
-**결론: .NET 10 크로스플랫폼 전환에 `System.Drawing` 관련 걸림돌 없음.** SPEC v1.1 초안의 경고는 과했으며 정정했다.
+**결론: .NET 10 크로스플랫폼 전환에 `System.Drawing` 관련 걸림돌 없음.** 초안의 경고는 과했으며 정정했다.
 
-어댑터 레이어(§6.4)는 유지한다 — 크로스플랫폼이 아니라 도메인 모델을 외부 라이브러리 타입에서 분리하기 위해서다.
+어댑터 레이어는 유지한다 — 크로스플랫폼이 아니라 도메인 모델을 외부 라이브러리 타입에서 분리하기 위해서다.
 
 ---
 
 ## V-10. `ref struct`의 제네릭 인자 제한
 
-**결론: `[API]` 확정. 리뷰 항목 3의 지적은 옳다. SPEC v1.0은 컴파일되지 않는 코드였다.**
+**결론: `[API]` 확정. 리뷰 항목 3의 지적은 옳다. 기존 설계는 컴파일되지 않는 코드였다.**
 
 - C# 13 이전: `ref struct`는 제네릭 타입 인자로 사용 불가.
 - C# 13 이후: 제네릭 파라미터 쪽에 `allows ref struct` anti-constraint가 선언된 경우에만 가능.
@@ -279,7 +279,7 @@ Bitmap / Graphics / Brush / Pen / Image / Icon  →  0건
 - *"there must be no lock or wait dependency from the render thread to a thread using other libmpv functions"* — 위반 시 deadlock
 - OpenGL 백엔드: GL context가 호출 스레드에서 current여야 하고 render context 생성 시와 동일해야 함. 아니면 undefined behavior
 
-SPEC v1.0 §8은 이 규칙을 전혀 기술하지 않았다. **정정 필요.**
+기존 기술은 이 규칙을 전혀 다루지 않았다. **정정 필요.**
 
 ---
 
@@ -287,7 +287,7 @@ SPEC v1.0 §8은 이 규칙을 전혀 기술하지 않았다. **정정 필요.**
 
 **결론: `[UPSTREAM]` + 유효기간 있음.**
 
-§5.8 호환성 표는 `ytt.ytt:42-67`, `:88-93` 주석과 README에 근거한다. 그러나 iOS/Android 유튜브 앱은 업데이트로 동작이 바뀔 수 있으므로 **영구 규격이 아니라 "2026-08-24 시점의 관찰"** 로 취급한다. 리뷰 §24의 권고를 수용한다.
+호환성 표는 `ytt.ytt:42-67`, `:88-93` 주석과 README에 근거한다. 그러나 iOS/Android 유튜브 앱은 업데이트로 동작이 바뀔 수 있으므로 **영구 규격이 아니라 "2026-08-24 시점의 관찰"** 로 취급한다. 리뷰 의 권고를 수용한다.
 
 재검증이 필요한 시점:
 - YttStudio가 호환성 경고를 근거로 사용자 선택을 제약할 때
@@ -298,7 +298,7 @@ SPEC v1.0 §8은 이 규칙을 전혀 기술하지 않았다. **정정 필요.**
 
 ## V-13. `<wp ap>`와 `<ws ju>` 독립성의 upstream 모델 손실
 
-**결론: 해결됨. 포크 `DO0OG/YTSubConverter`의 `yttstudio/independent-justification` 브랜치 커밋 `c460cca`에서 SPEC §5.3의 독립 조합을 보존하도록 수정했다.**
+**결론: 해결됨. 포크 `DO0OG/YTSubConverter`의 `yttstudio/independent-justification` 브랜치 커밋 `c460cca`에서 `ap`/`ju` 독립 조합을 보존하도록 수정했다.**
 
 - `Line`에 nullable `int? Justification`을 추가했다. 값이 `null`이면 이전처럼 `AnchorPoint`에서 실효 justification을 파생한다.
 - `Line.Assign()`이 `Justification`을 보존하므로 복사 생성자와 `Clone()` 경로에서도 값이 유지된다.
@@ -326,4 +326,4 @@ M1 adapter는 export 시 도메인 `Cue.Justify`를 `Line.Justification`에 설�
 | E-5 | 제로폭 공백 없을 때 첫 `<s>`의 `p` 제거 | upstream 코드 우회 존재 |
 | E-6 | JSON3 압축 10240 bit/s 한계의 정확한 측정법 | README 서술만, 코드 없음 |
 | E-7 | 모바일에서 효과 과다 사용 시 자막 선택지 미표시 조건 | README 서술만, 정량 기준 없음 |
-| E-8 | 일반/극장/전체화면 모드의 실제 좌표 동작 | 미측정 — §7.8 PlayerViewport 구현 전 필수 |
+| E-8 | 일반/극장/전체화면 모드의 실제 좌표 동작 | 미측정 — PlayerViewport 구현 전 필수 |

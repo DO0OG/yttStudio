@@ -4,12 +4,12 @@ using System.Text;
 
 namespace YttStudio.Core.Editing;
 
-/// <summary>Splits subtitle text into karaoke-friendly Unicode units.</summary>
+/// <summary>자막 텍스트를 가라오케에 적합한 유니코드 단위로 분할한다.</summary>
 public sealed class KaraokeSplitter
 {
     /// <summary>
-    /// Splits text using the M4 rules: Hangul and Han are per character, kana are per kana
-    /// unit, Latin text is grouped by word, and whitespace is retained.
+    /// 분할 규칙은 다음과 같다. 한글과 한자는 글자 단위, 가나는 가나 단위,
+    /// 라틴 텍스트는 단어 단위로 묶고 공백은 유지한다.
     /// </summary>
     public IReadOnlyList<string> Split(string text)
     {
@@ -54,7 +54,7 @@ public sealed class KaraokeSplitter
         return tokens.Select(token => token.Text).ToArray();
     }
 
-    /// <summary>Provides a stateless convenience entry point for text-only callers.</summary>
+    /// <summary>텍스트만 다루는 호출자를 위한 상태 없는 진입점을 제공한다.</summary>
     public static IReadOnlyList<string> SplitText(string text) => new KaraokeSplitter().Split(text);
 
     private static KaraokeTokenKind Classify(Rune rune, string element)
