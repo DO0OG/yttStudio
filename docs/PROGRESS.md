@@ -8,7 +8,7 @@ YttStudio 마일스톤 진행 체크리스트. SSOT는 `docs/SPEC.md` §16.
 | 마일스톤 | 상태 | 브랜치 |
 |---|---|---|
 | M0 스캐폴딩 + Compatibility Spike | ✅ 완료 (CI 3개 OS 통과) | `1-m0-스캐폴딩-및-호환성-스파이크` |
-| M1 렌더러 (영상 없이) | ✅ 로컬 완료 · tolerance 실측 대기 | `3-m1-렌더러-구현` |
+| M1 렌더러 (영상 없이) | ✅ 완료 (CI 3개 OS 통과) · tolerance 실측 대기 | `3-m1-렌더러-구현` |
 | M2 영상 + 편집 캔버스 | ⬜ 미시작 | `m2/canvas` |
 | M3 효과 + 뷰포트 + 검증기 | ⬜ 미시작 | `m3/effects` |
 | M4 가라오케 | ⬜ 미시작 | `m4/karaoke` |
@@ -43,7 +43,7 @@ YttStudio 마일스톤 진행 체크리스트. SSOT는 `docs/SPEC.md` §16.
 - [x] `DocumentEditor` + Undo (§13)
 - [x] **`ap`/`ju` 독립성 확보** — 서브모듈 로컬 패치 (V-13, 포크 `c460cca`)
 - [ ] 기준 fixture 세트 작성 후 tolerance 확정 — **잠정값으로 진행, 실측 미수행**
-- [x] Layout / raster / smoke 3계층 테스트 (§15.2) — 63건 통과
+- [x] Layout / raster / smoke 3계층 테스트 (§15.2) — 63건 통과, Windows·Linux·macOS CI 검증 완료
 - [x] 최소 Avalonia 창: `.ytt` 열기 → 배경 위 렌더 → 시간 슬라이더 스크럽
 
 **완료 조건 대비:**
@@ -51,7 +51,7 @@ YttStudio 마일스톤 진행 체크리스트. SSOT는 `docs/SPEC.md` §16.
 | 항목 | 결과 |
 |---|---|
 | `dotnet build -c Release` | 경고 0 / 오류 0 |
-| `dotnet test` | 63건 전부 통과 |
+| `dotnet test` | 63건 전부 통과 (로컬 + CI 3개 OS) |
 | 폰트 크기 왕복 오차 | 0 |
 | 좌표 왕복 오차 | ≤ 1px @ 1280×720 |
 | 앵커 9종 × 정렬 3종 | 통과 |
