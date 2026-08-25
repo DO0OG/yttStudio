@@ -1,12 +1,15 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
+using Avalonia.Layout;
 
 namespace YttStudio.App;
 
 public interface IFileDialogService
 {
     Task<string?> OpenSubtitleAsync();
+    Task<string?> OpenVideoAsync();
     Task<string?> SaveYttAsync(string? suggestedName);
+    Task<bool> ConfirmAsync(string title, string message);
 }
 
 public sealed class FileDialogService : IFileDialogService
@@ -32,6 +35,23 @@ public sealed class FileDialogService : IFileDialogService
         return files.Count == 0 ? null : files[0].Path.LocalPath;
     }
 
+    public async Task<string?> OpenVideoAsync()
+    {
+        IReadOnlyList<IStorageFile> files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "영상 열기",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("영상")
+                {
+                    Patterns = ["*.mp4", "*.mkv", "*.webm", "*.mov", "*.avi", "*.m4v"],
+                },
+            ],
+        });
+        return files.Count == 0 ? null : files[0].Path.LocalPath;
+    }
+
     public async Task<string?> SaveYttAsync(string? suggestedName)
     {
         IStorageFile? file = await owner.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
@@ -42,5 +62,38 @@ public sealed class FileDialogService : IFileDialogService
             FileTypeChoices = [new FilePickerFileType("YouTube timed text") { Patterns = ["*.ytt"] }],
         });
         return file?.Path.LocalPath;
+    }
+
+    public Task<bool> ConfirmAsync(string title, string message)
+    {
+        Window dialog = new()
+        {
+            Title = title,
+            Width = 460,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+        Button cancel = new() { Content = "취소", MinWidth = 80 };
+        Button confirm = new() { Content = "삭제", MinWidth = 80 };
+        cancel.Click += (_, _) => dialog.Close(false);
+        confirm.Click += (_, _) => dialog.Close(true);
+        dialog.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(20),
+            Spacing = 16,
+            Children =
+            {
+                new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Spacing = 8,
+                    Children = { cancel, confirm },
+                },
+            },
+        };
+        return dialog.ShowDialog<bool>(owner);
     }
 }

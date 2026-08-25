@@ -155,6 +155,39 @@ public sealed class SectionOverrides
         EdgeColor = EdgeColor,
         Pack = Pack,
     };
+
+    internal static SectionOverrides FromResolved(ResolvedFormat format) => new()
+    {
+        Font = format.Font,
+        SizePercent = format.SizePercent,
+        Bold = format.Bold,
+        Italic = format.Italic,
+        Underline = format.Underline,
+        Offset = format.Offset,
+        Foreground = format.Foreground,
+        Background = format.Background,
+        SecondaryColor = format.SecondaryColor,
+        Edge = format.Edge,
+        EdgeColor = format.EdgeColor,
+        Pack = format.Pack,
+    };
+}
+
+/// <summary>Describes explicit format values to apply without exposing domain setters.</summary>
+public sealed record SectionFormatPatch
+{
+    public YtFont? Font { get; init; }
+    public int? SizePercent { get; init; }
+    public bool? Bold { get; init; }
+    public bool? Italic { get; init; }
+    public bool? Underline { get; init; }
+    public ScriptOffset? Offset { get; init; }
+    public RgbaColor? Foreground { get; init; }
+    public RgbaColor? Background { get; init; }
+    public RgbaColor? SecondaryColor { get; init; }
+    public EdgeType? Edge { get; init; }
+    public RgbaColor? EdgeColor { get; init; }
+    public bool? Pack { get; init; }
 }
 
 /// <summary>Contains the fully resolved format consumed by rendering and export.</summary>
