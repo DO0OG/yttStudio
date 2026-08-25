@@ -36,6 +36,10 @@
 - [ ] mitmproxy 프리뷰 — 자막 트랙이 **없는** 영상에서도 CC 버튼이 뜨는지
       (`ensure_subtitle_selector`가 실제로 동작하는지)
 - [ ] `ytInitialPlayerResponse` regex가 깨졌을 때 graceful 실패하고 편집·export는 계속 되는지
+- [ ] **효과 동등성 (M3)** — shake / chroma 자막을 업로드해 시작·종료 시각, 이동 경로,
+      주요 색·크기 전환이 내장 미리보기와 실사용상 동등한지. 차이는 `render-comparison/`에 기록
+- [ ] **`W102` 정량 기준 (E-7)** — 현재 "효과 3개 이상" 휴리스틱이다. 실제로 몇 개부터
+      모바일 자막 선택지에서 사라지는지 측정해 임계값을 근거 있게 바꾼다
 
 ## M4 — 가라오케
 
