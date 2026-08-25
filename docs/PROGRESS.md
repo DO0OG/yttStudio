@@ -8,7 +8,7 @@ YttStudio 마일스톤 진행 체크리스트. SSOT는 `docs/SPEC.md` §16.
 | 마일스톤 | 상태 | 브랜치 |
 |---|---|---|
 | M0 스캐폴딩 + Compatibility Spike | ✅ 완료 (CI 3개 OS 통과) | `1-m0-스캐폴딩-및-호환성-스파이크` |
-| M1 렌더러 (영상 없이) | ⬜ 미시작 | `m1/renderer` |
+| M1 렌더러 (영상 없이) | ✅ 완료 (CI 3개 OS 통과) · tolerance 실측 대기 | `3-m1-렌더러-구현` |
 | M2 영상 + 편집 캔버스 | ⬜ 미시작 | `m2/canvas` |
 | M3 효과 + 뷰포트 + 검증기 | ⬜ 미시작 | `m3/effects` |
 | M4 가라오케 | ⬜ 미시작 | `m4/karaoke` |
@@ -33,16 +33,33 @@ YttStudio 마일스톤 진행 체크리스트. SSOT는 `docs/SPEC.md` §16.
 
 ## M1 — 렌더러 (영상 없이)
 
-- [ ] §6 도메인 모델 (`internal set`), `CueCollection`, `FormatResolver`
-- [ ] `YTSubConverter.Shared` 어댑터 (양방향, `System.Drawing` 격리)
-- [ ] `.ytt` / `.ass` import·export (§10), 손실 보고 포함
-- [ ] Skia 렌더러: 레이아웃(§7.4) + pen 매핑(§7.5)
-- [ ] `IFontResolver` + 폰트 번들링 (§7.5.1)
-- [ ] 좌표 변환, 폰트 크기 공식 적용
-- [ ] 앵커 9종, 정렬 3종 정확 동작
-- [ ] 기준 fixture 세트 작성 후 tolerance 확정
-- [ ] Layout / raster / smoke 3계층 테스트 (§15.2)
-- [ ] 최소 Avalonia 창: `.ytt` 열기 → 단색 배경 위 렌더 → 시간 슬라이더 스크럽
+- [x] §6 도메인 모델 (`internal set`), `CueCollection`, `FormatResolver`
+- [x] `YTSubConverter.Shared` 어댑터 (양방향, `System.Drawing` 격리)
+- [x] `.ytt` / `.ass` import·export (§10), 손실 보고 포함
+- [x] Skia 렌더러: 레이아웃(§7.4) + pen 매핑(§7.5)
+- [x] `IFontResolver` + 폰트 번들링 (§7.5.1) — Roboto·Liberation 3종 + 라이선스 포함
+- [x] 좌표 변환, 폰트 크기 공식 적용
+- [x] 앵커 9종, 정렬 3종 정확 동작
+- [x] `DocumentEditor` + Undo (§13)
+- [x] **`ap`/`ju` 독립성 확보** — 서브모듈 로컬 패치 (V-13, 포크 `c460cca`)
+- [ ] 기준 fixture 세트 작성 후 tolerance 확정 — **잠정값으로 진행, 실측 미수행**
+- [x] Layout / raster / smoke 3계층 테스트 (§15.2) — 63건 통과, Windows·Linux·macOS CI 검증 완료
+- [x] 최소 Avalonia 창: `.ytt` 열기 → 배경 위 렌더 → 시간 슬라이더 스크럽
+
+**완료 조건 대비:**
+
+| 항목 | 결과 |
+|---|---|
+| `dotnet build -c Release` | 경고 0 / 오류 0 |
+| `dotnet test` | 63건 전부 통과 (로컬 + CI 3개 OS) |
+| 폰트 크기 왕복 오차 | 0 |
+| 좌표 왕복 오차 | ≤ 1px @ 1280×720 |
+| 앵커 9종 × 정렬 3종 | 통과 |
+| `.ytt` / `.ass` 왕복 | 통과 (`ap`/`ju` 독립 조합 포함) |
+| 실제 유튜브 스크린샷 대조 | **미수행** — `docs/render-comparison/README.md` 참조 |
+
+**남은 것:** 앵커·박스 tolerance는 **잠정값**이다. `docs/MANUAL_QA.md`의
+"tolerance 확정용 유튜브 스크린샷 측정"을 수행해야 확정된다.
 
 ## M2 — 영상 + 편집 캔버스
 

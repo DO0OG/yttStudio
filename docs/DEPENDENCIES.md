@@ -7,17 +7,50 @@
 ## YTSubConverter (핵심 의존성)
 
 ```
-repository:       https://github.com/arcusmaximus/YTSubConverter
-license:          MIT
+upstream:         https://github.com/arcusmaximus/YTSubConverter   (MIT)
+fork (사용 중):   https://github.com/DO0OG/YTSubConverter
 integration:      git submodule → external/YTSubConverter
+branch:           yttstudio/independent-justification
 project used:     YTSubConverter.Shared (netstandard2.0)
-commit:           b186a40bc21e58a8c9651cf616cbb5e80425dfc6
-commit date:      2026-07-27
-commit subject:   Merge pull request #144 from s0hv/patch-1
-verified date:    2026-08-24
-verified by:      SPEC v1.1 검증 (docs/YTT-VERIFICATION.md)
-local patches:    없음
+commit:           c460cca (2747267 + ReadLine 전달 수정)
+upstream base:    b186a40bc21e58a8c9651cf616cbb5e80425dfc6  (2026-07-27, PR #144 from s0hv)
+verified date:    2026-08-25
+verified by:      SPEC v1.1 검증 (docs/YTT-VERIFICATION.md) + M1 빌드·테스트
+local patches:    1건 — 아래 참조
 ```
+
+### 로컬 패치 1: `ap`와 독립적인 `ju`
+
+**왜 필요한가:** YTT 포맷에서 `<wp ap>`와 `<ws ju>`는 독립이지만(SPEC §5.3),
+pin된 upstream은 `WriteWindowStyle()`이 `ju`를 `AnchorPoint`에서 파생시키고
+`ReadWindowStyle()`은 `ju`를 아예 읽지 않는다. 그래서 `ap=7` + `ju=0` 같은 조합을
+표현할 수도 왕복시킬 수도 없었다. 근거는 `docs/YTT-VERIFICATION.md` V-13.
+
+SPEC §2.1 F4와 §9.4가 `ju`를 독립 컨트롤로 요구하는데, SPEC §2.2의
+"사용자가 설정할 수 있는데 결과물에 반영이 안 되는 게 최악"이라는 원칙상
+제한을 그냥 받아들일 수 없었다. §10.2/§17.3이 head writer 복제를 금지하므로
+우회 대신 upstream을 고쳤다.
+
+**변경 내용** (`YTSubConverter.Shared`, 23 insertions / 3 deletions, 커밋 2개):
+
+| 파일 | 변경 |
+|---|---|
+| `Line.cs` | nullable `int? Justification` 추가. `null`이면 기존 파생 동작 유지 |
+| `Line.cs` | `Assign()`에서 보존 — 복사 생성자와 `Clone()`이 값을 유지 |
+| `YttDocument.cs` | `ReadWindowStyle()`이 `ju` 속성을 읽음 |
+| `YttDocument.cs` | `WriteWindowStyle()`이 `GetEffectiveJustificationId()` 사용 |
+| `YttDocument.cs` | `LineAlignmentComparer`가 실효 `ju`를 동등성에 포함 — 없으면 `ap`가 같고 `ju`가 다른 줄이 하나의 `<ws>`로 합쳐짐 |
+| `YttDocument.cs` | `ReadLine()`이 windowStyle의 `Justification`을 자막 Line으로 전달 — 없으면 import에서 값이 유실됨 |
+
+**하위 호환:** `Justification`이 `null`이면 패치 전과 바이트 단위로 동일한 출력.
+기존 호출자는 영향받지 않는다.
+
+**upstream PR 제출 여부:** 미제출. 제출해서 병합되면 이 패치를 제거하고
+upstream pin으로 되돌린다.
+
+**pin 갱신 시 주의:** upstream을 올릴 때 이 패치를 새 base에 rebase해야 한다.
+`ReadWindowStyle` / `WriteWindowStyle` / `LineAlignmentComparer`가 upstream에서
+바뀌었으면 충돌 가능성이 높다.
 
 ### 검증된 픽스처 / 코드 경로
 
@@ -30,6 +63,7 @@ local patches:    없음
 | `YTSubConverter.Tests/Ass/Files/*.ytt` | golden 비교용 픽스처, head 타입 순서 확인 |
 | `mitmproxy_script.py` | `ensure_subtitle_selector` + `apply_custom_subtitles` |
 | `ytt.ytt` | 포맷 설명 문서 — **writer 출력이 아님. 규범 근거로 단독 사용 금지** |
+| `YttDocument.cs:710-720`, `:1160-1175` | 로컬 패치 지점 — `ju` 독립화. pin 갱신 시 rebase 필요 |
 
 ### 갱신 절차
 
@@ -57,6 +91,8 @@ M0 compatibility spike와 실제 NuGet restore로 다음 버전을 **확정**했
 | Avalonia | **12.1.1** | `Avalonia`, `Avalonia.Desktop`, `Avalonia.Themes.Fluent` 모두 12.1.1 |
 | Avalonia.Skia | **12.1.1** (전이) | `Avalonia.Desktop`에서 실제 해석 |
 | SkiaSharp | **3.119.4** | `Avalonia.Skia 12.1.1`의 전이 버전과 Render의 명시 버전 일치 |
+| SkiaSharp.NativeAssets.Linux | **3.119.4** | Linux Render 테스트용 네이티브 자산, 관리형 SkiaSharp와 버전 일치 |
+| SkiaSharp.NativeAssets.macOS | **3.119.4** | macOS Render 테스트용 네이티브 자산, 관리형 SkiaSharp와 버전 일치 |
 | CommunityToolkit.Mvvm | **8.4.2** | 실제 restore 통과 |
 | xUnit | **xunit.v3 4.0.0** | .NET 10 Microsoft.Testing.Platform runner로 테스트 3건 통과 |
 | Microsoft.NET.Test.Sdk | **17.14.1** | 실제 restore 통과 |

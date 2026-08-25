@@ -296,6 +296,23 @@ SPEC v1.0 §8은 이 규칙을 전혀 기술하지 않았다. **정정 필요.**
 
 ---
 
+## V-13. `<wp ap>`와 `<ws ju>` 독립성의 upstream 모델 손실
+
+**결론: 해결됨. 포크 `DO0OG/YTSubConverter`의 `yttstudio/independent-justification` 브랜치 커밋 `c460cca`에서 SPEC §5.3의 독립 조합을 보존하도록 수정했다.**
+
+- `Line`에 nullable `int? Justification`을 추가했다. 값이 `null`이면 이전처럼 `AnchorPoint`에서 실효 justification을 파생한다.
+- `Line.Assign()`이 `Justification`을 보존하므로 복사 생성자와 `Clone()` 경로에서도 값이 유지된다.
+- `YttDocument.ReadWindowStyle()`은 `ju`를 읽어 `Line.Justification`에 저장한다.
+- `YttDocument.ReadLine()`은 window style의 `Justification`을 실제 subtitle line으로 전달한다.
+- `YttDocument.WriteWindowStyle()`은 `GetEffectiveJustificationId(style)`로 명시된 `Justification`을 우선 기록한다.
+- `LineAlignmentComparer`는 실효 justification을 동등성과 해시 계산에 포함한다.
+
+M1 adapter는 export 시 도메인 `Cue.Justify`를 `Line.Justification`에 설정하고, import 시 별도 XML 보조 파싱 없이 해당 값을 직접 사용한다. 값이 `null`인 기존 입력은 `AnchorPoint`에서 정렬을 파생해 이전 동작을 유지한다.
+
+**실제 조치:** pin을 커밋 `c460cca`로 교체하고, `ap=7`(하단 중앙)과 `ju=0`(왼쪽 정렬)을 저장한 뒤 다시 읽어 두 값이 독립적으로 보존되는 왕복 테스트를 추가했다. export는 계속 `YttDocument.Save()`에 위임한다.
+
+---
+
 ## 미검증 항목 (`[EMPIRICAL]` 필요)
 
 아래는 upstream 주석·README에만 근거하며 실제 재현 테스트를 하지 않았다. M1~M3 진행 중 실제 업로드로 확인하고 이 문서를 갱신할 것.

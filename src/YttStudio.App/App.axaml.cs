@@ -6,6 +6,8 @@ namespace YttStudio.App;
 
 public partial class App : Application
 {
+    private MainWindowViewModel? mainViewModel;
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -15,7 +17,11 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow();
+            MainWindow window = new();
+            mainViewModel = new MainWindowViewModel(new FileDialogService(window));
+            window.DataContext = mainViewModel;
+            desktop.MainWindow = window;
+            desktop.ShutdownRequested += (_, _) => mainViewModel.Dispose();
         }
 
         base.OnFrameworkInitializationCompleted();

@@ -26,4 +26,28 @@ public static class YttConstants
 
     // SPEC §7.3 [PRODUCT]: the editor uses 32 px at 720p as its 100 percent font baseline.
     public const double DefaultFontSizePixels = 32.0;
+
+    // SPEC §7.5 [PRODUCT]: horizontal box padding is a quarter of the resolved font size.
+    public const double HorizontalBoxPaddingFactor = 0.25;
+
+    // SPEC §7.5 [PRODUCT]: vertical box padding is 15 percent of the resolved font size.
+    public const double VerticalBoxPaddingFactor = 0.15;
+
+    // SPEC §7.5 [PRODUCT]: subscript and superscript use 65 percent glyphs.
+    public const double ScriptFontScale = 0.65;
+
+    // SPEC §7.5 [PRODUCT]: script glyphs move by 30 percent of the base font size.
+    public const double ScriptBaselineOffsetFactor = 0.30;
+
+    // SPEC §7.5 [PRODUCT]: hard shadow offset is six percent of the font size.
+    public const double HardShadowOffsetFactor = 0.06;
+
+    // SPEC §7.5 [PRODUCT]: glow stroke width is eight percent of the font size.
+    public const double GlowStrokeWidthFactor = 0.08;
+
+    // SPEC §7.5 [PRODUCT]: soft-shadow blur is ten percent of the font size.
+    public const double SoftShadowBlurFactor = 0.10;
+
+    // SPEC §7.5 [PRODUCT]: underline thickness is one sixteenth of the font size.
+    public const double UnderlineThicknessFactor = 1.0 / 16.0;
 }
