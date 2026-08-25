@@ -12,7 +12,9 @@ internal sealed class ProjectMigrationPipeline
 {
     private readonly IReadOnlyDictionary<int, IProjectMigration> migrations;
 
-    private ProjectMigrationPipeline(IEnumerable<IProjectMigration> migrations)
+    // Built through the Default singleton so the migration order stays in one place.
+    // Internal keeps that intent while letting the type be instantiated within the assembly.
+    internal ProjectMigrationPipeline(IEnumerable<IProjectMigration> migrations)
     {
         this.migrations = migrations.ToDictionary(migration => migration.FromVersion);
     }

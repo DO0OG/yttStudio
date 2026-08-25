@@ -166,6 +166,9 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
                     case EdgeType.SoftShadow:
                         canvas.DrawText(blob, run.Origin.X + offset, run.Origin.Y + offset, resources.Edge);
                         break;
+                    default:
+                        // EdgeType.None draws no edge pass. SPEC §5.4: one pen carries one et.
+                        break;
                 }
             });
         }

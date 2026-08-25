@@ -66,6 +66,9 @@ public static class CueEffectEvaluator
                         edge = Interpolate(RgbaColor.EdgeDefault, targetEdge, eased);
                     }
                     break;
+                default:
+                    // Inactive or non-visual effects contribute nothing to this frame.
+                    break;
             }
         }
 

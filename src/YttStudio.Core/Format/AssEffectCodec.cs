@@ -150,6 +150,9 @@ internal static partial class AssEffectCodec
                     }
                     tags.Append(')');
                     break;
+                default:
+                    // Effect kinds without an ASS representation contribute no tag.
+                    break;
             }
         }
 
