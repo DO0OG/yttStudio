@@ -250,6 +250,9 @@ public sealed class DocumentEditor
                     }
                 }
                 break;
+            default:
+                // Only the codes listed above expose an automatic fix (SPEC §11).
+                break;
         }
 
         if (commands.Count == 0)
