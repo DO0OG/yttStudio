@@ -12,29 +12,71 @@
         Height="900"
         MinWidth="1024"
         MinHeight="700"
-        Title="YttStudio — M2 영상 파이프라인 + 편집 캔버스">
-  <Grid RowDefinitions="Auto,*,Auto" Margin="10" RowSpacing="8">
-    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
+        Title="YttStudio"
+        Icon="/Assets/app.ico">
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="0" RowSpacing="0">
+    <Menu Grid.Row="0" Background="#232323" Padding="4,2">
+      <MenuItem Header="{Binding Loc[MenuFile]}">
+        <MenuItem Header="{Binding Loc[OpenProject]}" Command="{Binding OpenProjectCommand}" />
+        <MenuItem Header="{Binding Loc[SaveProject]}" Command="{Binding SaveProjectCommand}" />
+        <Separator />
+        <MenuItem Header="{Binding Loc[OpenSubtitle]}" Command="{Binding OpenSubtitleCommand}" />
+        <MenuItem Header="{Binding Loc[OpenVideo]}" Command="{Binding OpenVideoCommand}" />
+        <MenuItem Header="{Binding Loc[SaveYtt]}" Command="{Binding SaveCommand}" />
+        <Separator />
+        <MenuItem Header="{Binding Loc[MenuExit]}" Command="{Binding ExitCommand}" />
+      </MenuItem>
+      <MenuItem Header="{Binding Loc[MenuEdit]}">
+        <MenuItem Header="{Binding Loc[Undo]}" Command="{Binding UndoCommand}" />
+        <MenuItem Header="{Binding Loc[Redo]}" Command="{Binding RedoCommand}" />
+        <Separator />
+        <MenuItem Header="{Binding Loc[Duplicate]}" Command="{Binding DuplicateCueCommand}" />
+        <MenuItem Header="{Binding Loc[Delete]}" Command="{Binding DeleteCueCommand}" />
+        <Separator />
+        <MenuItem Header="{Binding Loc[ReplaceAll]}" Command="{Binding ReplaceAllCommand}" />
+      </MenuItem>
+      <MenuItem Header="{Binding Loc[MenuView]}">
+        <MenuItem Header="{Binding Loc[MenuSafeArea]}" ToggleType="CheckBox" IsChecked="{Binding ShowSafeArea}" />
+        <MenuItem Header="{Binding Loc[MenuAnchors]}" ToggleType="CheckBox" IsChecked="{Binding ShowAnchors}" />
+        <MenuItem Header="{Binding Loc[CheckerboardBg]}" ToggleType="CheckBox" IsChecked="{Binding UseCheckerboard}" />
+      </MenuItem>
+      <MenuItem Header="{Binding Loc[MenuSubtitle]}">
+        <MenuItem Header="{Binding Loc[AddCueAtTime]}" Command="{Binding AddCueCommand}" />
+        <MenuItem Header="{Binding Loc[BringToFront]}" Command="{Binding BringToFrontCommand}" />
+        <MenuItem Header="{Binding Loc[SendToBack]}" Command="{Binding SendToBackCommand}" />
+        <Separator />
+        <MenuItem Header="{Binding Loc[AutoSplit]}" Command="{Binding AutoSplitKaraokeCommand}" />
+      </MenuItem>
+      <MenuItem Header="{Binding Loc[MenuTools]}">
+        <MenuItem Header="{Binding Loc[RunCheck]}" Command="{Binding ValidateCommand}" />
+        <MenuItem Header="{Binding Loc[ShiftSelected]}" Command="{Binding ShiftSelectedCommand}" />
+        <MenuItem Header="{Binding Loc[ShiftAll]}" Command="{Binding ShiftAllCommand}" />
+      </MenuItem>
+      <MenuItem Header="{Binding Loc[MenuHelp]}">
+        <MenuItem Header="{Binding Loc[MenuAbout]}" Command="{Binding AboutCommand}" />
+      </MenuItem>
+    </Menu>
+
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8" Margin="10,8,10,4">
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
-        <Button Content="{Binding Loc[OpenProject]}" Command="{Binding OpenProjectCommand}" />
-        <Button Content="{Binding Loc[SaveProject]}" Command="{Binding SaveProjectCommand}" />
-        <Border Width="1" Background="#444" Margin="4,2" />
-        <Button Content="{Binding Loc[OpenSubtitle]}" Command="{Binding OpenSubtitleCommand}" />
-        <Button Content="{Binding Loc[OpenVideo]}" Command="{Binding OpenVideoCommand}" />
-        <Button Content="{Binding Loc[SaveYtt]}" Command="{Binding SaveCommand}" />
-        <Border Width="1" Background="#444" Margin="4,2" />
-        <Button Content="{Binding Loc[Undo]}" Command="{Binding UndoCommand}" />
-        <Button Content="{Binding Loc[Redo]}" Command="{Binding RedoCommand}" />
+        <Button Content="{Binding Loc[OpenProject]}" Command="{Binding OpenProjectCommand}" MinWidth="96" />
+        <Button Content="{Binding Loc[OpenVideo]}" Command="{Binding OpenVideoCommand}" MinWidth="88" />
+        <Button Content="{Binding Loc[SaveYtt]}" Command="{Binding SaveCommand}" MinWidth="88" />
+        <Border Width="1" Background="#3C3C3C" Margin="6,3" />
+        <Button Content="{Binding Loc[Undo]}" Command="{Binding UndoCommand}" MinWidth="64" />
+        <Button Content="{Binding Loc[Redo]}" Command="{Binding RedoCommand}" MinWidth="64" />
       </StackPanel>
-      <TextBlock Grid.Column="1" Text="{Binding VideoStatus}" VerticalAlignment="Center" Margin="10,0" />
-      <CheckBox Grid.Column="2" Content="{Binding Loc[CheckerboardBg]}" IsChecked="{Binding UseCheckerboard}" />
+      <Border Grid.Column="1" Background="#242424" CornerRadius="4" Margin="12,0" Padding="10,4">
+        <TextBlock Text="{Binding VideoStatus}" VerticalAlignment="Center"
+                   Foreground="#BBB" TextTrimming="CharacterEllipsis" />
+      </Border>
       <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
         <TextBlock Text="{Binding Loc[LanguageLabel]}" VerticalAlignment="Center" />
         <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" MinWidth="110" />
       </StackPanel>
     </Grid>
 
-    <Grid Grid.Row="1" ColumnDefinitions="210,*,280" ColumnSpacing="8">
+    <Grid Grid.Row="2" ColumnDefinitions="230,*,300" ColumnSpacing="10" Margin="10,0,10,0">
       <Border Grid.Column="0" BorderBrush="#444" BorderThickness="1" Padding="8">
         <Grid RowDefinitions="Auto,*,Auto">
           <TextBlock Grid.Row="0" Text="{Binding Loc[StylePresets]}" FontWeight="Bold" Margin="0,0,0,8" />
@@ -131,25 +173,25 @@
 
         <Border Grid.Row="5" BorderBrush="#444" BorderThickness="1">
           <Grid RowDefinitions="Auto,*">
-            <Grid Grid.Row="0" ColumnDefinitions="34,92,92,72,54,80,*" Background="#292929">
-              <TextBlock Grid.Column="0" Text="#" />
-              <TextBlock Grid.Column="1" Text="{Binding Loc[StartMs]}" />
-              <TextBlock Grid.Column="2" Text="{Binding Loc[EndMs]}" />
-              <TextBlock Grid.Column="3" Text="{Binding Loc[Duration]}" />
-              <TextBlock Grid.Column="4" Text="{Binding Loc[Track]}" />
-              <TextBlock Grid.Column="5" Text="{Binding Loc[Style]}" />
-              <TextBlock Grid.Column="6" Text="{Binding Loc[TextSection]}" />
+            <Grid Grid.Row="0" ColumnDefinitions="40,104,104,88,64,120,*" ColumnSpacing="8" Background="#2A2A2A" Margin="0" Height="30">
+              <TextBlock Grid.Column="0" Text="#" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#CCC" />
+              <TextBlock Grid.Column="1" Text="{Binding Loc[StartMs]}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#CCC" />
+              <TextBlock Grid.Column="2" Text="{Binding Loc[EndMs]}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#CCC" />
+              <TextBlock Grid.Column="3" Text="{Binding Loc[Duration]}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#CCC" />
+              <TextBlock Grid.Column="4" Text="{Binding Loc[Track]}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#CCC" />
+              <TextBlock Grid.Column="5" Text="{Binding Loc[Style]}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#CCC" />
+              <TextBlock Grid.Column="6" Text="{Binding Loc[TextSection]}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#CCC" />
             </Grid>
             <ListBox Grid.Row="1" ItemsSource="{Binding CueRows}" SelectedItem="{Binding SelectedCueRow}">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:CueRowViewModel">
-                  <Grid ColumnDefinitions="34,92,92,72,54,80,*">
-                    <TextBlock Grid.Column="0" Text="{Binding Number}" VerticalAlignment="Center" />
-                    <TextBox Grid.Column="1" Text="{Binding StartMilliseconds}" />
-                    <TextBox Grid.Column="2" Text="{Binding EndMilliseconds}" />
-                    <TextBlock Grid.Column="3" Text="{Binding DurationMilliseconds}" VerticalAlignment="Center" />
-                    <TextBox Grid.Column="4" Text="{Binding Track}" />
-                    <TextBlock Grid.Column="5" Text="{Binding Style}" VerticalAlignment="Center" />
+                  <Grid ColumnDefinitions="40,104,104,88,64,120,*" ColumnSpacing="8" Margin="0,3">
+                    <TextBlock Grid.Column="0" Text="{Binding Number}" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="#999" />
+                    <TextBox Grid.Column="1" Text="{Binding StartMilliseconds}" HorizontalContentAlignment="Right" />
+                    <TextBox Grid.Column="2" Text="{Binding EndMilliseconds}" HorizontalContentAlignment="Right" />
+                    <TextBlock Grid.Column="3" Text="{Binding DurationMilliseconds}" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,6,0" Foreground="#BBB" />
+                    <TextBox Grid.Column="4" Text="{Binding Track}" HorizontalContentAlignment="Right" />
+                    <TextBlock Grid.Column="5" Text="{Binding Style}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Foreground="#BBB" />
                     <TextBox Grid.Column="6" Text="{Binding Text}" />
                   </Grid>
                 </DataTemplate>
@@ -359,7 +401,7 @@
       </Border>
     </Grid>
 
-    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="10,4,10,8">
       <TextBlock Grid.Column="0" Text="{Binding Status}" TextWrapping="Wrap" />
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
         <Button Content="{Binding Loc[AddCueAtTime]}" Command="{Binding AddCueCommand}" />

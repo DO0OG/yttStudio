@@ -143,6 +143,19 @@ public sealed class Localizer : System.ComponentModel.INotifyPropertyChanged
         ["VideoMissingTitle"] = new("영상을 찾을 수 없음", "Video not found", "動画が見つかりません"),
         ["VideoMissingPrompt"] = new("프로젝트에 기록된 영상 경로를 찾을 수 없습니다. 다시 찾으시겠습니까?", "The video path stored in the project could not be found. Locate it again?", "プロジェクトに記録された動画パスが見つかりません。再指定しますか？"),
         ["Relink"] = new("다시 찾기", "Locate", "再指定"),
+        ["MenuFile"] = new("파일(_F)", "_File", "ファイル(_F)"),
+        ["MenuEdit"] = new("편집(_E)", "_Edit", "編集(_E)"),
+        ["MenuView"] = new("보기(_V)", "_View", "表示(_V)"),
+        ["MenuSubtitle"] = new("자막(_S)", "_Subtitle", "字幕(_S)"),
+        ["MenuTools"] = new("도구(_T)", "_Tools", "ツール(_T)"),
+        ["MenuHelp"] = new("도움말(_H)", "_Help", "ヘルプ(_H)"),
+        ["MenuExit"] = new("끝내기", "Exit", "終了"),
+        ["MenuAbout"] = new("정보", "About", "情報"),
+        ["MenuUserGuide"] = new("사용자 가이드", "User Guide", "ユーザーガイド"),
+        ["MenuSafeArea"] = new("세이프 에어리어 표시", "Show Safe Area", "セーフエリアを表示"),
+        ["MenuAnchors"] = new("앵커 마커 표시", "Show Anchor Markers", "アンカーマーカーを表示"),
+        ["AboutBody"] = new("YTT 자막 전용 WYSIWYG 편집기입니다. 영상 위에서 직접 배치하고 스타일링해 .ytt 를 출력합니다.", "A WYSIWYG editor for YouTube timed text. Place and style subtitles directly over the video and export .ytt.", "YouTube タイムドテキスト専用の WYSIWYG エディタです。動画上で直接配置してスタイルを整え .ytt を書き出します。"),
+        ["Close"] = new("닫기", "Close", "閉じる"),
     };
 
     private AppLanguage language = AppLanguage.Korean;

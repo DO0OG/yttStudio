@@ -37,6 +37,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private bool matchCase;
     private double shiftMilliseconds;
     private double snapThreshold = YttConstants.DefaultSnapThresholdPixels;
+    private bool showSafeArea;
+    private bool showAnchors;
     private string status = "자막 또는 영상을 열어 주세요.";
     private string videoStatus = "libmpv 탐색 중";
     private double maximumMilliseconds = 1;
@@ -72,6 +74,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             () => unsavedChanges,
             message => Serilog.Log.Warning("{Autosave}", message));
         autosave.Start();
+        ExitCommand = new DelegateCommand(RequestShutdown);
+        AboutCommand = new AsyncCommand(ShowAboutAsync);
         OpenProjectCommand = new AsyncCommand(OpenProjectAsync);
         SaveProjectCommand = new AsyncCommand(SaveProjectAsync, () => project is not null);
         ReplaceAllCommand = new DelegateCommand(
@@ -287,6 +291,66 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    /// <summary>스타일 식별자를 표시용 이름으로 바꾼다. 알 수 없으면 기본 스타일 이름을 쓴다.</summary>
+    internal string StyleNameOf(Guid? styleId)
+    {
+        if (project is null)
+        {
+            return "Default";
+        }
+
+        StylePreset style = project.GetStyle(styleId);
+        return string.IsNullOrWhiteSpace(style.Name) ? "Default" : style.Name;
+    }
+
+    /// <summary>미리보기에 세이프 에어리어 안내선을 표시할지 결정한다.</summary>
+    public bool ShowSafeArea
+    {
+        get => showSafeArea;
+        set
+        {
+            if (showSafeArea == value)
+            {
+                return;
+            }
+
+            showSafeArea = value;
+            OnPropertyChanged();
+            RenderSubtitlePreview();
+        }
+    }
+
+    /// <summary>미리보기에 앵커 마커를 표시할지 결정한다.</summary>
+    public bool ShowAnchors
+    {
+        get => showAnchors;
+        set
+        {
+            if (showAnchors == value)
+            {
+                return;
+            }
+
+            showAnchors = value;
+            OnPropertyChanged();
+            RenderSubtitlePreview();
+        }
+    }
+
+    private static void RequestShutdown()
+    {
+        if (Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.Shutdown();
+        }
+    }
+
+    private async Task ShowAboutAsync()
+    {
+        await dialogs.ConfirmAsync(Loc["MenuAbout"], Loc["AboutBody"], Loc["Close"]);
+    }
+
     private Cue? SingleSelectedCue()
     {
         if (project is null || selectedCueIds.Count != 1)
@@ -319,6 +383,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(Language));
     }
 
+    public DelegateCommand ExitCommand { get; }
+    public AsyncCommand AboutCommand { get; }
     public AsyncCommand OpenProjectCommand { get; }
     public AsyncCommand SaveProjectCommand { get; }
     public DelegateCommand ReplaceAllCommand { get; }
@@ -1652,6 +1718,31 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        await OpenPathAsync(path);
+    }
+
+    /// <summary>
+    /// 명령줄 인자나 파일 연결로 전달된 경로를 연다.
+    /// 확장자로 프로젝트 패키지와 자막 파일을 구분한다.
+    /// </summary>
+    public async Task OpenPathAsync(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return;
+        }
+
+        if (string.Equals(Path.GetExtension(path), ".yttproj", StringComparison.OrdinalIgnoreCase))
+        {
+            await LoadProjectPackageAsync(path, clearSnapshots: true);
+            return;
+        }
+
+        ImportSubtitle(path);
+    }
+
+    private void ImportSubtitle(string path)
+    {
         try
         {
             ImportResult result = fileService.Import(path);
@@ -2284,7 +2375,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         double framesPerSecond = project.Video?.NominalFps is > 0 ? project.Video.NominalFps : 30;
         long frameIndex = checked((long)Math.Floor(time.TotalSeconds * framesPerSecond));
         PlayerViewport viewport = PlayerViewport.VideoFrame(bitmap.Width, bitmap.Height);
-        renderer.Render(canvas, viewport, project, time, new RenderOptions { FrameIndex = frameIndex });
+        renderer.Render(canvas, viewport, project, time, new RenderOptions { FrameIndex = frameIndex, ShowSafeArea = showSafeArea, ShowAnchorPoints = showAnchors });
         SubtitleImage = EncodeBitmap(bitmap);
         CanvasItems = renderer.Measure(viewport, project, time)
             .Select(hit => new CanvasCueItem(
