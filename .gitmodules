@@ -1,3 +1,4 @@
 [submodule "external/YTSubConverter"]
 	path = external/YTSubConverter
-	url = https://github.com/arcusmaximus/YTSubConverter.git
+	url = https://github.com/DO0OG/YTSubConverter.git
+	branch = yttstudio/independent-justification

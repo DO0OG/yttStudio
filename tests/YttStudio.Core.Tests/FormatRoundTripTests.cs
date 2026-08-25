@@ -32,6 +32,39 @@ public sealed class FormatRoundTripTests
     }
 
     [Fact]
+    public void YttRoundTripPreservesIndependentAnchorAndJustification()
+    {
+        SubtitleProject project = new()
+        {
+            Video = new VideoInfo(1280, 720, TimeSpan.Zero, 0),
+        };
+        Cue cue = new(Guid.NewGuid())
+        {
+            Start = TimeSpan.FromSeconds(1),
+            End = TimeSpan.FromSeconds(2),
+            Anchor = AnchorPoint.BottomCenter,
+            Justify = Justification.Left,
+        };
+        cue.AddSection(new Section { Text = "independent alignment" });
+        project.Cues.Add(cue);
+
+        string output = Path.Combine(Path.GetTempPath(), $"yttstudio-{Guid.NewGuid():N}.ytt");
+        try
+        {
+            SubtitleFileService service = new();
+            service.Export(project, output);
+
+            Cue importedCue = Assert.Single(service.Import(output).Project.Cues);
+            Assert.Equal(AnchorPoint.BottomCenter, importedCue.Anchor);
+            Assert.Equal(Justification.Left, importedCue.Justify);
+        }
+        finally
+        {
+            File.Delete(output);
+        }
+    }
+
+    [Fact]
     public void AssRoundTripPreservesSupportedTextAndTiming()
     {
         SubtitleFileService service = new();

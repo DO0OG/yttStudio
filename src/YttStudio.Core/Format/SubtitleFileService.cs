@@ -1,6 +1,5 @@
 using System.Drawing;
 using System.Text.RegularExpressions;
-using System.Xml;
 using YTSubConverter.Shared;
 using YTSubConverter.Shared.Formats;
 using YTSubConverter.Shared.Formats.Ass;
@@ -63,8 +62,7 @@ public sealed partial class SubtitleFileService
     private static ImportResult ImportYtt(string path)
     {
         YttDocument document = new(path);
-        IReadOnlyList<Justification> justifications = ReadYttJustifications(path);
-        SubtitleProject project = FromExternalDocument(document, justifications);
+        SubtitleProject project = FromExternalDocument(document);
         ImportWarning[] warnings =
         [
             new("효과 정보 없이 가져옴"),
@@ -77,13 +75,11 @@ public sealed partial class SubtitleFileService
     {
         IReadOnlyList<ImportWarning> warnings = FindUnsupportedAssTags(path);
         AssDocument document = new(path);
-        SubtitleProject project = FromExternalDocument(document, null);
+        SubtitleProject project = FromExternalDocument(document);
         return new ImportResult(project, warnings);
     }
 
-    private static SubtitleProject FromExternalDocument(
-        SubtitleDocument document,
-        IReadOnlyList<Justification>? yttJustifications)
+    private static SubtitleProject FromExternalDocument(SubtitleDocument document)
     {
         SubtitleProject project = new();
         project.Video = new VideoInfo(document.VideoDimensions.Width, document.VideoDimensions.Height, TimeSpan.Zero, 0);
@@ -99,9 +95,7 @@ public sealed partial class SubtitleFileService
                 Start = line.Start - SubtitleDocument.TimeBase,
                 End = line.End - SubtitleDocument.TimeBase,
                 Anchor = ToModelAnchor(line.AnchorPoint),
-                Justify = yttJustifications is not null && lineIndex < yttJustifications.Count
-                    ? yttJustifications[lineIndex]
-                    : AnchorToJustification(line.AnchorPoint),
+                Justify = ToModelJustification(line.Justification, line.AnchorPoint),
                 Direction = ToModelDirection(line.HorizontalTextDirection, line.VerticalTextType),
                 Track = line is AssLine assLine ? assLine.Layer : 0,
                 ZOrder = line is AssLine zOrderLine ? zOrderLine.Layer : lineIndex,
@@ -276,6 +270,7 @@ public sealed partial class SubtitleFileService
                 SubtitleDocument.TimeBase + cue.End)
             {
                 AnchorPoint = ToExternalAnchor(cue.Anchor),
+                Justification = ToExternalJustification(cue.Justify),
                 Position = new PointF(
                     (float)YttMath.ToPixelCoordinate(checked((int)Math.Round(cue.PositionX)), width),
                     (float)YttMath.ToPixelCoordinate(checked((int)Math.Round(cue.PositionY)), height)),
@@ -383,32 +378,6 @@ public sealed partial class SubtitleFileService
         return warnings;
     }
 
-    private static IReadOnlyList<Justification> ReadYttJustifications(string path)
-    {
-        XmlDocument xml = new();
-        xml.Load(path);
-        Dictionary<int, Justification> styles = [];
-        foreach (XmlElement element in xml.SelectNodes("/timedtext/head/ws")!.OfType<XmlElement>())
-        {
-            if (int.TryParse(element.GetAttribute("id"), out int id) &&
-                int.TryParse(element.GetAttribute("ju"), out int justification) &&
-                Enum.IsDefined((Justification)justification))
-            {
-                styles[id] = (Justification)justification;
-            }
-        }
-
-        List<Justification> result = [];
-        foreach (XmlElement element in xml.SelectNodes("/timedtext/body/p")!.OfType<XmlElement>())
-        {
-            result.Add(int.TryParse(element.GetAttribute("ws"), out int styleId) && styles.TryGetValue(styleId, out Justification value)
-                ? value
-                : Justification.Center);
-        }
-
-        return result;
-    }
-
     private static RgbaColor ToModelColor(Color color, RgbaColor fallback)
         => color.IsEmpty ? fallback : new RgbaColor(color.R, color.G, color.B, color.A);
 
@@ -480,6 +449,22 @@ public sealed partial class SubtitleFileService
         ExternalAnchorPoint.TopLeft or ExternalAnchorPoint.MiddleLeft or ExternalAnchorPoint.BottomLeft => Justification.Left,
         ExternalAnchorPoint.TopRight or ExternalAnchorPoint.MiddleRight or ExternalAnchorPoint.BottomRight => Justification.Right,
         _ => Justification.Center,
+    };
+
+    private static Justification ToModelJustification(int? justification, ExternalAnchorPoint anchor) => justification switch
+    {
+        0 => Justification.Left,
+        1 => Justification.Right,
+        2 => Justification.Center,
+        _ => AnchorToJustification(anchor),
+    };
+
+    private static int ToExternalJustification(Justification justification) => justification switch
+    {
+        Justification.Left => 0,
+        Justification.Right => 1,
+        Justification.Center => 2,
+        _ => 2,
     };
 
     private static TextDirection ToModelDirection(HorizontalTextDirection horizontal, VerticalTextType vertical)

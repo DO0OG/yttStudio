@@ -298,16 +298,18 @@ SPEC v1.0 §8은 이 규칙을 전혀 기술하지 않았다. **정정 필요.**
 
 ## V-13. `<wp ap>`와 `<ws ju>` 독립성의 upstream 모델 손실
 
-**결론: `[UPSTREAM]` 모델 제한 확인. SPEC §5.3의 독립성을 현재 pin의 공개 모델만으로는 export할 수 없다.**
+**결론: 해결됨. 포크 `DO0OG/YTSubConverter`의 `yttstudio/independent-justification` 브랜치 커밋 `c460cca`에서 SPEC §5.3의 독립 조합을 보존하도록 수정했다.**
 
-- `Line`에는 `AnchorPoint`만 있고 별도 justification 프로퍼티가 없다.
-- `YttDocument.ReadWindowStyle()`은 `pd`와 `sd`만 읽고 `ju`를 읽지 않는다.
-- `YttDocument.WriteWindowStyle()`은 `ju`를 `GetJustificationId(style.AnchorPoint)`로 계산한다.
-- 따라서 `ap=7`(하단 중앙)과 `ju=0`(왼쪽 정렬)처럼 열이 다른 조합은 `YttDocument.Save()` 경로에서 하나의 `AnchorPoint`로 합쳐진다.
+- `Line`에 nullable `int? Justification`을 추가했다. 값이 `null`이면 이전처럼 `AnchorPoint`에서 실효 justification을 파생한다.
+- `Line.Assign()`이 `Justification`을 보존하므로 복사 생성자와 `Clone()` 경로에서도 값이 유지된다.
+- `YttDocument.ReadWindowStyle()`은 `ju`를 읽어 `Line.Justification`에 저장한다.
+- `YttDocument.ReadLine()`은 window style의 `Justification`을 실제 subtitle line으로 전달한다.
+- `YttDocument.WriteWindowStyle()`은 `GetEffectiveJustificationId(style)`로 명시된 `Justification`을 우선 기록한다.
+- `LineAlignmentComparer`는 실효 justification을 동등성과 해시 계산에 포함한다.
 
-M1 import는 `.ytt` XML을 읽기 전용으로 보조 파싱해 `ju`를 도메인에 보존한다. 하지만 export는 직접 XML 조립 금지와 `YttDocument.Save()` 위임 규칙을 지키므로 독립 조합을 완전히 기록할 수 없다.
+M1 adapter는 export 시 도메인 `Cue.Justify`를 `Line.Justification`에 설정하고, import 시 별도 XML 보조 파싱 없이 해당 값을 직접 사용한다. 값이 `null`인 기존 입력은 `AnchorPoint`에서 정렬을 파생해 이전 동작을 유지한다.
 
-**정정/후속 제안:** pin된 converter에 `Line.Justification`을 추가하고 reader/writer가 이를 사용하도록 upstream 변경을 먼저 반영하거나, SPEC에 현재 writer 경로의 제한을 명시해야 한다. YttStudio에서 head writer를 복제하는 우회는 §5.1/§10.2에 위배되므로 채택하지 않는다.
+**실제 조치:** pin을 커밋 `c460cca`로 교체하고, `ap=7`(하단 중앙)과 `ju=0`(왼쪽 정렬)을 저장한 뒤 다시 읽어 두 값이 독립적으로 보존되는 왕복 테스트를 추가했다. export는 계속 `YttDocument.Save()`에 위임한다.
 
 ---
 
