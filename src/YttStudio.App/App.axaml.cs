@@ -22,6 +22,11 @@ public partial class App : Application
             window.DataContext = mainViewModel;
             desktop.MainWindow = window;
             desktop.ShutdownRequested += (_, _) => mainViewModel.Dispose();
+
+            // SPEC §12: a snapshot left on disk means the previous run did not shut down
+            // cleanly. Offer recovery once the window exists to host a dialog.
+            MainWindowViewModel viewModel = mainViewModel;
+            window.Opened += async (_, _) => await viewModel.OfferCrashRecoveryAsync();
         }
 
         base.OnFrameworkInitializationCompleted();

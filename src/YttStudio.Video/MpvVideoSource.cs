@@ -93,6 +93,11 @@ public sealed class MpvVideoSource : IVideoSource
     public string LibraryVersion { get; }
     public string LibraryPath => native.LoadedPath;
 
+    /// <summary>
+    /// Gets a one-line description of the loaded native library for crash reports (SPEC §18).
+    /// </summary>
+    public string CrashMetadata { get; private set; } = string.Empty;
+
     /// <summary>Creates a libmpv source when probing finds a compatible native library.</summary>
     public static bool TryCreate(out MpvVideoSource? source, out string diagnostic)
     {
@@ -104,7 +109,20 @@ public sealed class MpvVideoSource : IVideoSource
 
         try
         {
-            source = new MpvVideoSource(library!);
+            // SPEC §18: gate on the client API version before touching the render API, so an
+            // unsupported build fails with an actionable message instead of crashing later.
+            uint apiVersion = (uint)library!.ClientApiVersion();
+            if (!MpvCompatibility.IsSupported(apiVersion))
+            {
+                diagnostic = MpvCompatibility.DescribeUnsupported(apiVersion, library.LoadedPath);
+                library.Dispose();
+                source = null;
+                return false;
+            }
+
+            source = new MpvVideoSource(library);
+            // SPEC §18: the libmpv build must be recoverable from a crash report.
+            source.CrashMetadata = MpvCompatibility.DescribeForCrashLog(apiVersion, library.LoadedPath);
             diagnostic = $"{diagnostic}; version {source.LibraryVersion}";
             return true;
         }

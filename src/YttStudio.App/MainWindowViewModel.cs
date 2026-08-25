@@ -9,6 +9,7 @@ using SkiaSharp;
 using YttStudio.Core;
 using YttStudio.Core.Editing;
 using YttStudio.Core.Format;
+using YttStudio.Core.Project;
 using YttStudio.Core.Validation;
 using YttStudio.Render;
 using YttStudio.Video;
@@ -27,6 +28,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private Bitmap? videoFrameImage;
     private Bitmap? subtitleImage;
     private string? sourcePath;
+    private string? projectPath;
+    private bool unsavedChanges;
+    private AutosaveService? autosave;
+    private string searchPattern = string.Empty;
+    private string replacementText = string.Empty;
+    private bool useRegex;
+    private bool matchCase;
+    private double shiftMilliseconds;
+    private double snapThreshold = YttConstants.DefaultSnapThresholdPixels;
     private string status = "자막 또는 영상을 열어 주세요.";
     private string videoStatus = "libmpv 탐색 중";
     private double maximumMilliseconds = 1;
@@ -52,8 +62,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public MainWindowViewModel(IFileDialogService dialogs)
     {
         this.dialogs = dialogs;
+        // SPEC §16 M5: every visible string resolves through the localizer so a language
+        // switch re-reads the whole view without rebuilding it.
+        Loc.LanguageChanged += OnLanguageChanged;
         renderer = new SkiaSubtitleRenderer(new BundledFontResolver(
             message => Serilog.Log.Information("{FontResolution}", message)));
+        autosave = new AutosaveService(
+            () => project,
+            () => unsavedChanges,
+            message => Serilog.Log.Warning("{Autosave}", message));
+        autosave.Start();
+        OpenProjectCommand = new AsyncCommand(OpenProjectAsync);
+        SaveProjectCommand = new AsyncCommand(SaveProjectAsync, () => project is not null);
+        ReplaceAllCommand = new DelegateCommand(
+            ReplaceAll,
+            () => editor is not null && !string.IsNullOrEmpty(searchPattern));
+        ShiftSelectedCommand = new DelegateCommand(
+            () => ShiftTimes(selectedOnly: true),
+            () => editor is not null && selectedCueIds.Count > 0);
+        ShiftAllCommand = new DelegateCommand(
+            () => ShiftTimes(selectedOnly: false),
+            () => editor is not null);
         OpenSubtitleCommand = new AsyncCommand(OpenSubtitleAsync);
         OpenVideoCommand = new AsyncCommand(OpenVideoAsync, () => videoSource is not null);
         SaveCommand = new AsyncCommand(SaveAsync, () => project is not null);
@@ -102,6 +131,199 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>
+    /// Gets the string table bound by every view element as <c>{Binding Loc[Key]}</c>.
+    /// SPEC §16 M5 ships Korean, English and Japanese.
+    /// </summary>
+    public Localizer Loc { get; } = new();
+
+    /// <summary>Gets the pattern used by search and replace (SPEC §16 M5).</summary>
+    public string SearchPattern
+    {
+        get => searchPattern;
+        set
+        {
+            if (searchPattern == value)
+            {
+                return;
+            }
+
+            searchPattern = value;
+            OnPropertyChanged();
+            ReplaceAllCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    /// <summary>Gets the replacement text applied by <see cref="ReplaceAllCommand"/>.</summary>
+    public string ReplacementText
+    {
+        get => replacementText;
+        set
+        {
+            if (replacementText == value)
+            {
+                return;
+            }
+
+            replacementText = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Gets whether <see cref="SearchPattern"/> is treated as a regular expression.</summary>
+    public bool UseRegex
+    {
+        get => useRegex;
+        set
+        {
+            if (useRegex == value)
+            {
+                return;
+            }
+
+            useRegex = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Gets whether search is case sensitive.</summary>
+    public bool MatchCase
+    {
+        get => matchCase;
+        set
+        {
+            if (matchCase == value)
+            {
+                return;
+            }
+
+            matchCase = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Gets the bulk time shift in milliseconds. Negative values move cues earlier.</summary>
+    public double ShiftMilliseconds
+    {
+        get => shiftMilliseconds;
+        set
+        {
+            if (Math.Abs(shiftMilliseconds - value) < double.Epsilon)
+            {
+                return;
+            }
+
+            shiftMilliseconds = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Gets the selectable ruby roles (SPEC §5.4 <c>rb</c>).</summary>
+    public IReadOnlyList<RubyRole> RubyRoles { get; } =
+        [RubyRole.None, RubyRole.Base, RubyRole.Above, RubyRole.Below];
+
+    /// <summary>Gets or sets the ruby role of the first section of the selected cue.</summary>
+    public RubyRole? SelectedRubyRole
+    {
+        get => FirstSelectedSection()?.Ruby;
+        set
+        {
+            if (editor is null || value is null)
+            {
+                return;
+            }
+
+            Cue? cue = SingleSelectedCue();
+            if (cue is null)
+            {
+                return;
+            }
+
+            editor.SetRuby(cue.Id, 0, value.Value, cue.Sections[0].RubyText);
+            AfterMutation(refreshRows: true);
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Gets or sets the ruby text of the first section of the selected cue.</summary>
+    public string? SelectedRubyText
+    {
+        get => FirstSelectedSection()?.RubyText;
+        set
+        {
+            if (editor is null)
+            {
+                return;
+            }
+
+            Cue? cue = SingleSelectedCue();
+            if (cue is null)
+            {
+                return;
+            }
+
+            editor.SetRuby(cue.Id, 0, cue.Sections[0].Ruby, value);
+            AfterMutation(refreshRows: true);
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the drag snap threshold in pixels (SPEC §9.3, default 8).
+    /// </summary>
+    public double SnapThreshold
+    {
+        get => snapThreshold;
+        set
+        {
+            double clamped = Math.Clamp(value, 0, 64);
+            if (Math.Abs(snapThreshold - clamped) < double.Epsilon)
+            {
+                return;
+            }
+
+            snapThreshold = clamped;
+            OnPropertyChanged();
+        }
+    }
+
+    private Cue? SingleSelectedCue()
+    {
+        if (project is null || selectedCueIds.Count != 1)
+        {
+            return null;
+        }
+
+        Cue? cue = project.Cues[selectedCueIds.First()];
+        return cue is null || cue.Sections.Count == 0 ? null : cue;
+    }
+
+    private Section? FirstSelectedSection() => SingleSelectedCue()?.Sections[0];
+
+    /// <summary>Gets the selectable languages in display order.</summary>
+    public IReadOnlyList<AppLanguage> Languages { get; } =
+        [AppLanguage.Korean, AppLanguage.English, AppLanguage.Japanese];
+
+    /// <summary>Gets or sets the active language.</summary>
+    public AppLanguage Language
+    {
+        get => Loc.Language;
+        set => Loc.Language = value;
+    }
+
+    private void OnLanguageChanged()
+    {
+        // An indexer binding only refreshes when the indexer itself is invalidated.
+        OnPropertyChanged("Item[]");
+        OnPropertyChanged(nameof(Loc));
+        OnPropertyChanged(nameof(Language));
+    }
+
+    public AsyncCommand OpenProjectCommand { get; }
+    public AsyncCommand SaveProjectCommand { get; }
+    public DelegateCommand ReplaceAllCommand { get; }
+    public DelegateCommand ShiftSelectedCommand { get; }
+    public DelegateCommand ShiftAllCommand { get; }
     public AsyncCommand OpenSubtitleCommand { get; }
     public AsyncCommand OpenVideoCommand { get; }
     public AsyncCommand SaveCommand { get; }
@@ -1379,6 +1601,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         disposed = true;
+        Loc.LanguageChanged -= OnLanguageChanged;
+        if (autosave is not null)
+        {
+            autosave.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            // A clean shutdown must leave no snapshot behind, or the next launch
+            // would offer a recovery that is not actually needed.
+            AutosaveService.ClearSnapshots();
+        }
+
         if (videoSource is not null)
         {
             videoSource.FrameReady -= OnVideoFrameReady;
@@ -1455,6 +1686,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        await LoadVideoAsync(path);
+    }
+
+    /// <summary>Loads a video into the shared source. Shared by the open command and project relink.</summary>
+    private async Task LoadVideoAsync(string path)
+    {
+        if (videoSource is null)
+        {
+            return;
+        }
+
         try
         {
             Status = "영상 메타데이터 읽는 중…";
@@ -1472,6 +1714,219 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             Status = $"영상 열기 실패: {exception.Message}";
             RenderFallbackFrame();
             NotifyVideoState();
+        }
+    }
+
+    /// <summary>Replaces every match across cue text through the editor so the edit stays undoable.</summary>
+    private void ReplaceAll()
+    {
+        if (editor is null || string.IsNullOrEmpty(searchPattern))
+        {
+            return;
+        }
+
+        try
+        {
+            TextSearchOptions options = new()
+            {
+                UseRegex = useRegex,
+                CaseSensitive = matchCase,
+            };
+            int replaced = editor.ReplaceText(searchPattern, replacementText, options);
+            Status = $"{Loc["ReplaceAll"]}: {replaced}";
+            AfterMutation(refreshRows: true);
+        }
+        catch (ArgumentException exception)
+        {
+            // An invalid regular expression is user input, not a crash.
+            Status = $"{Loc["UseRegex"]} — {exception.Message}";
+        }
+    }
+
+    /// <summary>Shifts cue timings in bulk. The editor clamps so no cue starts before 1 ms (SPEC §5.5).</summary>
+    private void ShiftTimes(bool selectedOnly)
+    {
+        if (editor is null || project is null)
+        {
+            return;
+        }
+
+        IEnumerable<Guid> targets = selectedOnly
+            ? selectedCueIds.ToArray()
+            : project.Cues.Select(cue => cue.Id).ToArray();
+
+        TimeSpan applied = editor.ShiftCueTimes(targets, TimeSpan.FromMilliseconds(shiftMilliseconds));
+        Status = $"{Loc["TimeShift"]}: {applied.TotalMilliseconds:0} ms";
+        UpdateMaximum();
+        AfterMutation(refreshRows: true);
+    }
+
+    /// <summary>Opens a <c>.yttproj</c> package (SPEC §12), relinking a missing video if needed.</summary>
+    private async Task OpenProjectAsync()
+    {
+        string? path = await dialogs.OpenProjectAsync();
+        if (path is null)
+        {
+            return;
+        }
+
+        await LoadProjectPackageAsync(path, clearSnapshots: true);
+    }
+
+    /// <summary>Saves the open project as a <c>.yttproj</c> package (SPEC §12).</summary>
+    private async Task SaveProjectAsync()
+    {
+        if (project is null)
+        {
+            return;
+        }
+
+        string suggested = Path.GetFileNameWithoutExtension(projectPath ?? sourcePath ?? "project") + ".yttproj";
+        string? path = await dialogs.SaveProjectAsync(suggested);
+        if (path is null)
+        {
+            return;
+        }
+
+        try
+        {
+            ProjectPackage.Save(project, path, RenderThumbnailPng());
+            projectPath = path;
+            unsavedChanges = false;
+            // A clean save invalidates any crash snapshot.
+            AutosaveService.ClearSnapshots();
+            Status = $"{Loc["SaveProject"]}: {path}";
+        }
+        catch (Exception exception)
+        {
+            Status = $"{Loc["SaveProject"]} — {exception.Message}";
+        }
+    }
+
+    private async Task LoadProjectPackageAsync(string path, bool clearSnapshots)
+    {
+        try
+        {
+            ProjectPackageReadResult result = ProjectPackage.Read(path);
+            project = result.Project;
+            // SPEC §12: package load is an undo-free context, so the editor starts fresh.
+            editor = new DocumentEditor(project);
+            projectPath = clearSnapshots ? path : null;
+            sourcePath = path;
+            unsavedChanges = false;
+
+            await RelinkVideoIfMissingAsync();
+
+            UpdateMaximum();
+            selectedCueIds.Clear();
+            lastSelectedCueId = null;
+            RefreshRowsAndStyles();
+            AfterMutation(refreshRows: false);
+
+            string migrated = result.WasMigrated
+                ? $" (v{result.SourceSchemaVersion} → v{result.SchemaVersion})"
+                : string.Empty;
+            Status = $"{Loc["OpenProject"]}: {Path.GetFileName(path)}{migrated}";
+            if (clearSnapshots)
+            {
+                AutosaveService.ClearSnapshots();
+            }
+        }
+        catch (Exception exception)
+        {
+            Status = $"{Loc["OpenProject"]} — {exception.Message}";
+        }
+    }
+
+    /// <summary>
+    /// SPEC §12: the package stores only the video path, so a broken link must be recoverable
+    /// rather than silently leaving the project without video.
+    /// </summary>
+    private async Task RelinkVideoIfMissingAsync()
+    {
+        string? recorded = project?.VideoPath;
+        if (project is null || string.IsNullOrEmpty(recorded) || File.Exists(recorded))
+        {
+            return;
+        }
+
+        bool relink = await dialogs.ConfirmAsync(
+            Loc["VideoMissingTitle"],
+            $"{Loc["VideoMissingPrompt"]}\n\n{recorded}",
+            Loc["Relink"]);
+        if (!relink)
+        {
+            return;
+        }
+
+        string? replacement = await dialogs.RelinkVideoAsync(recorded);
+        if (replacement is not null)
+        {
+            await LoadVideoAsync(replacement);
+        }
+    }
+
+    /// <summary>
+    /// Offers to restore a snapshot left behind by an unclean shutdown (SPEC §12).
+    /// Recovery never clears the undo stack of a live document because it runs at startup.
+    /// </summary>
+    public async Task OfferCrashRecoveryAsync()
+    {
+        string? snapshot = AutosaveService.FindLatestSnapshot();
+        if (snapshot is null)
+        {
+            return;
+        }
+
+        bool recover = await dialogs.ConfirmAsync(
+            Loc["RecoveryTitle"],
+            Loc["RecoveryPrompt"],
+            Loc["Recover"]);
+        if (!recover)
+        {
+            AutosaveService.ClearSnapshots();
+            return;
+        }
+
+        await LoadProjectPackageAsync(snapshot, clearSnapshots: false);
+        // The recovered document is unsaved by definition.
+        unsavedChanges = true;
+    }
+
+    /// <summary>Renders the current frame as a thumbnail, or <c>null</c> when nothing is drawn yet.</summary>
+    private byte[]? RenderThumbnailPng()
+    {
+        if (project is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            const int width = 320;
+            const int height = 180;
+            using SKSurface surface = SKSurface.Create(new SKImageInfo(width, height));
+            SKCanvas canvas = surface.Canvas;
+            canvas.Clear(new SKColor(24, 24, 24));
+            renderer.Render(
+                canvas,
+                new PlayerViewport(
+                    new SKSize(width, height),
+                    SKRect.Create(width, height),
+                    SKRect.Create(width, height),
+                    PreviewViewportMode.VideoFrame),
+                project,
+                TimeSpan.FromMilliseconds(PositionMilliseconds),
+                new RenderOptions());
+            using SKImage image = surface.Snapshot();
+            using SKData data = image.Encode(SKEncodedImageFormat.Png, 90);
+            return data.ToArray();
+        }
+        catch (Exception exception)
+        {
+            // A thumbnail is cosmetic; never block a save over it, and never fabricate one.
+            Serilog.Log.Warning("{ThumbnailFailure}", exception.Message);
+            return null;
         }
     }
 
@@ -1849,6 +2304,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void AfterMutation(bool refreshRows = false)
     {
+        // SPEC §12: autosave only writes when there is something to recover.
+        unsavedChanges = true;
         if (refreshRows)
         {
             RefreshRowsAndStyles();

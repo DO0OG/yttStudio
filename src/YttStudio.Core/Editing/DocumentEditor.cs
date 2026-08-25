@@ -180,6 +180,17 @@ public sealed class DocumentEditor
         Execute(new SetTextCommand(cueId, section, text ?? string.Empty));
     }
 
+    /// <summary>
+    /// Sets the ruby role and ruby text of one section.
+    /// SPEC §5.4 [UPSTREAM]: <c>rb</c> is PC-only, so callers surface a compatibility badge;
+    /// the model still records it faithfully for export.
+    /// </summary>
+    public void SetRuby(Guid cueId, int sectionIndex, RubyRole role, string? rubyText)
+    {
+        Section section = GetSection(cueId, sectionIndex);
+        Execute(new SetRubyCommand(cueId, section, role, rubyText));
+    }
+
     /// <summary>Replaces the explicit format overrides of one section.</summary>
     public void SetFormatOverrides(Guid cueId, int sectionIndex, SectionOverrides overrides)
     {
@@ -1193,6 +1204,30 @@ public sealed class DocumentEditor
         public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [cueId];
         public void Execute() => section.Text = text;
         public void Undo() => section.Text = oldText;
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+    }
+
+    private sealed class SetRubyCommand(Guid cueId, Section section, RubyRole role, string? rubyText)
+        : IUndoableCommand
+    {
+        private readonly RubyRole oldRole = section.Ruby;
+        private readonly string? oldText = section.RubyText;
+
+        public string Label => "루비 변경";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [cueId];
+
+        public void Execute()
+        {
+            section.Ruby = role;
+            section.RubyText = string.IsNullOrEmpty(rubyText) ? null : rubyText;
+        }
+
+        public void Undo()
+        {
+            section.Ruby = oldRole;
+            section.RubyText = oldText;
+        }
+
         public bool TryMergeWith(IUndoableCommand previous) => false;
     }
 

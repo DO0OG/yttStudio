@@ -243,6 +243,83 @@ crash 수집은 **미구현**이다.
 
 ---
 
+## §18 네이티브 배포 전략 (M5 확정)
+
+### 지원 아키텍처
+
+| OS | 아키텍처 | 우선순위 | 상태 |
+|---|---|---|---|
+| Windows | x64 | 1순위 | CI 빌드·테스트 통과 |
+| macOS | arm64 | 2순위 | CI 빌드·테스트 통과 |
+| Linux | x64 | 3순위 | CI 빌드·테스트 통과 |
+| Windows / Linux arm64, macOS x64 | — | 미지원 | 요청 시 재검토 |
+
+> CI는 빌드·테스트만 검증한다. **실제 배포 패키지 생성과 플랫폼 검증은 미수행이다.**
+
+### libmpv 제공 방식: 시스템 탐색 (번들하지 않음)
+
+**결정: 번들하지 않고 탐색만 한다.**
+
+근거:
+- libmpv는 **LGPLv2.1+ (빌드 구성에 따라 GPL)** 이다. 번들하면 배포 패키지 전체의
+  라이선스 의무가 커지고, 정적 링크 여부에 따라 소스 공개 의무가 생길 수 있다
+- 영상 재생은 **선택 기능**이다. libmpv가 없어도 자막 편집·검증·export가 전부 동작한다
+- 사용자가 이미 mpv를 설치한 경우가 많고, 배포본이 그것과 충돌할 이유가 없다
+
+### probing 순서
+
+`MpvNativeLibrary.TryLoad`가 다음 순서로 시도한다:
+
+1. 환경변수 `YTTSTUDIO_MPV_PATH` — 파일 경로 또는 디렉터리
+2. 앱 실행 디렉터리
+3. OS 표준 라이브러리 탐색 (`NativeLibrary.TryLoad`)
+
+플랫폼별 파일명: Windows `libmpv-2.dll` / `mpv-2.dll`, Linux `libmpv.so.2`, macOS `libmpv.2.dylib`.
+
+**실패 시**: 크래시하지 않고 영상 기능만 비활성화한 뒤 단색·체커보드 배경으로 폴백한다.
+어떤 경로를 시도했는지 진단 메시지에 남긴다.
+
+### 버전 게이트
+
+- 최소 `mpv_client_api_version()` = **2.0** (mpv 0.35+). `MpvCompatibility.MinimumClientApiVersion`
+- 이 프로젝트가 쓰는 render API 진입점이 안정화된 최초 릴리스가 기준이다
+- 미달 시 render context를 만들기 전에 거부하고, **발견한 버전 · 요구 버전 · 로드 경로**를
+  메시지에 담는다. 파이프라인 깊은 곳에서 크래시하는 것보다 낫다
+
+### crash log
+
+`MpvCompatibility.DescribeForCrashLog`가 한 줄로 기록한다:
+
+```
+libmpv client-api=2.0 path=... os=... arch=...
+```
+
+네이티브 크래시의 대부분이 버전·드라이버 문제이므로 이 줄이 없으면 원인 추적이 불가능하다.
+
+### 라이선스 파일
+
+배포 패키지에 포함한다:
+
+| 대상 | 라이선스 |
+|---|---|
+| YttStudio | 저장소 `LICENSE` |
+| YTSubConverter (fork) | MIT |
+| Roboto | Apache-2.0 (`src/YttStudio.Render/Assets/Fonts/LICENSE-Roboto.txt`) |
+| Liberation Sans/Serif/Mono | SIL OFL 1.1 (`LICENSE-Liberation.txt`) |
+| libmpv | **번들하지 않으므로 미포함.** 시스템 설치본을 쓴다 |
+
+### 미수행 — 실제 패키징
+
+아래는 **문서로 전략만 확정**했고 구현·검증하지 않았다. 이 환경에서 불가능하다.
+
+- self-contained publish 산출물 생성 및 검증
+- macOS codesign / notarization
+- Linux AppImage (GPU / OpenGL / Wayland / X11 의존성)
+- Windows GPU 드라이버 / OpenGL fallback 실측
+- 각 플랫폼 설치 관리자
+
+---
+
 ## 외부 도구 (번들하지 않음)
 
 | 도구 | 용도 | 정책 |

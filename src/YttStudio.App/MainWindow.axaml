@@ -14,20 +14,30 @@
         MinHeight="700"
         Title="YttStudio — M2 영상 파이프라인 + 편집 캔버스">
   <Grid RowDefinitions="Auto,*,Auto" Margin="10" RowSpacing="8">
-    <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="6">
-      <Button Grid.Column="0" Content="자막 열기" Command="{Binding OpenSubtitleCommand}" />
-      <Button Grid.Column="1" Content="영상 열기" Command="{Binding OpenVideoCommand}" />
-      <Button Grid.Column="2" Content="YTT 저장" Command="{Binding SaveCommand}" />
-      <Button Grid.Column="3" Content="Undo" Command="{Binding UndoCommand}" />
-      <Button Grid.Column="4" Content="Redo" Command="{Binding RedoCommand}" />
-      <TextBlock Grid.Column="5" Text="{Binding VideoStatus}" VerticalAlignment="Center" Margin="10,0" />
-      <CheckBox Grid.Column="6" Content="체커보드 배경" IsChecked="{Binding UseCheckerboard}" />
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
+      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+        <Button Content="{Binding Loc[OpenProject]}" Command="{Binding OpenProjectCommand}" />
+        <Button Content="{Binding Loc[SaveProject]}" Command="{Binding SaveProjectCommand}" />
+        <Border Width="1" Background="#444" Margin="4,2" />
+        <Button Content="{Binding Loc[OpenSubtitle]}" Command="{Binding OpenSubtitleCommand}" />
+        <Button Content="{Binding Loc[OpenVideo]}" Command="{Binding OpenVideoCommand}" />
+        <Button Content="{Binding Loc[SaveYtt]}" Command="{Binding SaveCommand}" />
+        <Border Width="1" Background="#444" Margin="4,2" />
+        <Button Content="{Binding Loc[Undo]}" Command="{Binding UndoCommand}" />
+        <Button Content="{Binding Loc[Redo]}" Command="{Binding RedoCommand}" />
+      </StackPanel>
+      <TextBlock Grid.Column="1" Text="{Binding VideoStatus}" VerticalAlignment="Center" Margin="10,0" />
+      <CheckBox Grid.Column="2" Content="{Binding Loc[CheckerboardBg]}" IsChecked="{Binding UseCheckerboard}" />
+      <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+        <TextBlock Text="{Binding Loc[LanguageLabel]}" VerticalAlignment="Center" />
+        <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" MinWidth="110" />
+      </StackPanel>
     </Grid>
 
     <Grid Grid.Row="1" ColumnDefinitions="210,*,280" ColumnSpacing="8">
       <Border Grid.Column="0" BorderBrush="#444" BorderThickness="1" Padding="8">
         <Grid RowDefinitions="Auto,*,Auto">
-          <TextBlock Grid.Row="0" Text="스타일 프리셋" FontWeight="Bold" Margin="0,0,0,8" />
+          <TextBlock Grid.Row="0" Text="{Binding Loc[StylePresets]}" FontWeight="Bold" Margin="0,0,0,8" />
           <ListBox Grid.Row="1"
                    ItemsSource="{Binding Styles}"
                    SelectedItem="{Binding SelectedStyleOption}">
@@ -38,25 +48,25 @@
             </ListBox.ItemTemplate>
           </ListBox>
           <StackPanel Grid.Row="2" Spacing="5" Margin="0,8,0,0">
-            <TextBox Text="{Binding SelectedStyleName, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="스타일 이름" />
+            <TextBox Text="{Binding SelectedStyleName, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{Binding Loc[StyleName]}" />
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <Button Content="+ 추가" Command="{Binding AddStyleCommand}" />
-              <Button Content="이름 변경" Command="{Binding RenameStyleCommand}" />
-              <Button Content="삭제" Command="{Binding DeleteStyleCommand}" />
+              <Button Content="{Binding Loc[Add]}" Command="{Binding AddStyleCommand}" />
+              <Button Content="{Binding Loc[Rename]}" Command="{Binding RenameStyleCommand}" />
+              <Button Content="{Binding Loc[Delete]}" Command="{Binding DeleteStyleCommand}" />
             </StackPanel>
-            <Button Content="선택 큐 형식 저장" Command="{Binding SaveCueAsStyleCommand}" />
+            <Button Content="{Binding Loc[SaveCueFormat]}" Command="{Binding SaveCueAsStyleCommand}" />
           </StackPanel>
         </Grid>
       </Border>
 
       <Grid Grid.Column="1" RowDefinitions="Auto,3*,Auto,Auto,*,2*" RowSpacing="6">
         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4">
-          <Button Content="영상" IsEnabled="True" />
-          <Button Content="YouTube 일반" IsEnabled="False" ToolTip.Tip="측정 대기 중" />
-          <Button Content="극장" IsEnabled="False" ToolTip.Tip="측정 대기 중" />
-          <Button Content="전체화면" IsEnabled="False" ToolTip.Tip="측정 대기 중" />
-          <Button Content="모바일" IsEnabled="False" ToolTip.Tip="측정 대기 중" />
-          <TextBlock Text="VideoFrame 모드 · 나머지 측정 대기 중" VerticalAlignment="Center" Margin="8,0" />
+          <Button Content="{Binding Loc[ViewportVideo]}" IsEnabled="True" />
+          <Button Content="{Binding Loc[ViewportYouTube]}" IsEnabled="False" ToolTip.Tip="{Binding Loc[ViewportPending]}" />
+          <Button Content="{Binding Loc[ViewportTheater]}" IsEnabled="False" ToolTip.Tip="{Binding Loc[ViewportPending]}" />
+          <Button Content="{Binding Loc[ViewportFullscreen]}" IsEnabled="False" ToolTip.Tip="{Binding Loc[ViewportPending]}" />
+          <Button Content="{Binding Loc[ViewportMobile]}" IsEnabled="False" ToolTip.Tip="{Binding Loc[ViewportPending]}" />
+          <TextBlock Text="{Binding Loc[ViewportModeNote]}" VerticalAlignment="Center" Margin="8,0" />
         </StackPanel>
 
         <Border Grid.Row="1" Background="#111" BorderBrush="#555" BorderThickness="1" ClipToBounds="True">
@@ -66,27 +76,27 @@
             <vm:PreviewCanvas>
               <vm:PreviewCanvas.ContextMenu>
                 <ContextMenu>
-                  <MenuItem Header="복제" Command="{Binding DuplicateCueCommand}" />
-                  <MenuItem Header="삭제" Command="{Binding DeleteCueCommand}" />
+                  <MenuItem Header="{Binding Loc[Duplicate]}" Command="{Binding DuplicateCueCommand}" />
+                  <MenuItem Header="{Binding Loc[Delete]}" Command="{Binding DeleteCueCommand}" />
                   <Separator />
-                  <MenuItem Header="선택 스타일 적용" Command="{Binding ApplySelectedStyleCommand}" />
-                  <MenuItem Header="맨 앞으로" Command="{Binding BringToFrontCommand}" />
-                  <MenuItem Header="맨 뒤로" Command="{Binding SendToBackCommand}" />
-                  <MenuItem Header="정렬">
-                    <MenuItem Header="왼쪽 맞춤" Command="{Binding AlignLeftCommand}" />
-                    <MenuItem Header="가운데 맞춤" Command="{Binding AlignCenterCommand}" />
-                    <MenuItem Header="오른쪽 맞춤" Command="{Binding AlignRightCommand}" />
-                    <MenuItem Header="위쪽 맞춤" Command="{Binding AlignTopCommand}" />
-                    <MenuItem Header="세로 가운데 맞춤" Command="{Binding AlignMiddleCommand}" />
-                    <MenuItem Header="아래쪽 맞춤" Command="{Binding AlignBottomCommand}" />
+                  <MenuItem Header="{Binding Loc[ApplySelectedStyle]}" Command="{Binding ApplySelectedStyleCommand}" />
+                  <MenuItem Header="{Binding Loc[BringToFront]}" Command="{Binding BringToFrontCommand}" />
+                  <MenuItem Header="{Binding Loc[SendToBack]}" Command="{Binding SendToBackCommand}" />
+                  <MenuItem Header="{Binding Loc[Alignment]}">
+                    <MenuItem Header="{Binding Loc[AlignLeft]}" Command="{Binding AlignLeftCommand}" />
+                    <MenuItem Header="{Binding Loc[AlignCenter]}" Command="{Binding AlignCenterCommand}" />
+                    <MenuItem Header="{Binding Loc[AlignRight]}" Command="{Binding AlignRightCommand}" />
+                    <MenuItem Header="{Binding Loc[AlignTop]}" Command="{Binding AlignTopCommand}" />
+                    <MenuItem Header="{Binding Loc[AlignMiddle]}" Command="{Binding AlignMiddleCommand}" />
+                    <MenuItem Header="{Binding Loc[AlignBottom]}" Command="{Binding AlignBottomCommand}" />
                     <Separator />
-                    <MenuItem Header="가로 균등 분배" Command="{Binding DistributeHorizontalCommand}" />
-                    <MenuItem Header="세로 균등 분배" Command="{Binding DistributeVerticalCommand}" />
+                    <MenuItem Header="{Binding Loc[DistributeHFull]}" Command="{Binding DistributeHorizontalCommand}" />
+                    <MenuItem Header="{Binding Loc[DistributeVFull]}" Command="{Binding DistributeVerticalCommand}" />
                   </MenuItem>
-                  <MenuItem Header="정렬·스타일은 속성 패널에서도 적용할 수 있습니다." IsEnabled="False" />
+                  <MenuItem Header="{Binding Loc[AlignHint]}" IsEnabled="False" />
                   <Separator />
-                  <MenuItem Header="회전 — YTT 포맷 미지원" IsEnabled="False" />
-                  <MenuItem Header="자유 스케일 — YTT 포맷 미지원" IsEnabled="False" />
+                  <MenuItem Header="{Binding Loc[NoRotation]}" IsEnabled="False" />
+                  <MenuItem Header="{Binding Loc[NoFreeScale]}" IsEnabled="False" />
                 </ContextMenu>
               </vm:PreviewCanvas.ContextMenu>
             </vm:PreviewCanvas>
@@ -97,7 +107,7 @@
                           Orientation="Horizontal"
                           Spacing="4">
                 <TextBox Text="{Binding InlineText}" AcceptsReturn="True" MinWidth="120" />
-                <Button Content="적용" Command="{Binding CommitInlineEditCommand}" />
+                <Button Content="{Binding Loc[Apply]}" Command="{Binding CommitInlineEditCommand}" />
               </StackPanel>
             </Canvas>
           </Grid>
@@ -115,7 +125,7 @@
                     Width="72" />
         </Grid>
 
-        <TextBlock Grid.Row="3" Text="타임라인 · Ctrl+휠 확대 · 블록 몸통 이동 / 좌우 끝 트림"
+        <TextBlock Grid.Row="3" Text="{Binding Loc[TimelineHint]}"
                    Foreground="#AAA" />
         <vm:TimelineControl Grid.Row="4" />
 
@@ -123,12 +133,12 @@
           <Grid RowDefinitions="Auto,*">
             <Grid Grid.Row="0" ColumnDefinitions="34,92,92,72,54,80,*" Background="#292929">
               <TextBlock Grid.Column="0" Text="#" />
-              <TextBlock Grid.Column="1" Text="시작(ms)" />
-              <TextBlock Grid.Column="2" Text="끝(ms)" />
-              <TextBlock Grid.Column="3" Text="길이" />
-              <TextBlock Grid.Column="4" Text="Track" />
-              <TextBlock Grid.Column="5" Text="스타일" />
-              <TextBlock Grid.Column="6" Text="텍스트" />
+              <TextBlock Grid.Column="1" Text="{Binding Loc[StartMs]}" />
+              <TextBlock Grid.Column="2" Text="{Binding Loc[EndMs]}" />
+              <TextBlock Grid.Column="3" Text="{Binding Loc[Duration]}" />
+              <TextBlock Grid.Column="4" Text="{Binding Loc[Track]}" />
+              <TextBlock Grid.Column="5" Text="{Binding Loc[Style]}" />
+              <TextBlock Grid.Column="6" Text="{Binding Loc[TextSection]}" />
             </Grid>
             <ListBox Grid.Row="1" ItemsSource="{Binding CueRows}" SelectedItem="{Binding SelectedCueRow}">
               <ListBox.ItemTemplate>
@@ -152,12 +162,12 @@
       <Border Grid.Column="2" BorderBrush="#444" BorderThickness="1" Padding="8">
         <ScrollViewer>
           <StackPanel Spacing="8">
-            <TextBlock Text="속성" FontWeight="Bold" />
+            <TextBlock Text="{Binding Loc[Properties]}" FontWeight="Bold" />
             <TextBlock Text="{Binding SelectionSummary}" Foreground="#AAA" TextWrapping="Wrap" />
 
-            <Expander Header="위치 &amp; 정렬" IsExpanded="True">
+            <Expander Header="{Binding Loc[PositionAndAlign]}" IsExpanded="True">
               <StackPanel Spacing="6" Margin="0,6,0,0">
-                <TextBlock Text="앵커 포인트 (ap)" />
+                <TextBlock Text="{Binding Loc[AnchorPoint]}" />
                 <vm:AnchorPicker HorizontalAlignment="Left" />
                   <Grid ColumnDefinitions="Auto,*,Auto,*" ColumnSpacing="5">
                     <TextBlock Grid.Column="0" Text="X" VerticalAlignment="Center" />
@@ -166,37 +176,37 @@
                   <TextBox Grid.Column="3" Text="{Binding SelectedPositionYText}" />
                   </Grid>
                 <TextBlock Text="{Binding SelectedAnchorDisplay}" Foreground="#AAA" />
-                <TextBlock Text="박스 내부 정렬 (ju)" />
+                <TextBlock Text="{Binding Loc[BoxJustify]}" />
                 <vm:JustificationPicker />
                 <TextBlock Text="{Binding SelectedJustificationDisplay}" Foreground="#AAA" />
                 <StackPanel Orientation="Horizontal" Spacing="3">
-                  <Button Content="좌" Command="{Binding AlignLeftCommand}" />
-                  <Button Content="중" Command="{Binding AlignCenterCommand}" />
-                  <Button Content="우" Command="{Binding AlignRightCommand}" />
-                  <Button Content="상" Command="{Binding AlignTopCommand}" />
-                  <Button Content="중" Command="{Binding AlignMiddleCommand}" />
-                  <Button Content="하" Command="{Binding AlignBottomCommand}" />
+                  <Button Content="{Binding Loc[Left]}" Command="{Binding AlignLeftCommand}" />
+                  <Button Content="{Binding Loc[Center]}" Command="{Binding AlignCenterCommand}" />
+                  <Button Content="{Binding Loc[Right]}" Command="{Binding AlignRightCommand}" />
+                  <Button Content="{Binding Loc[Top]}" Command="{Binding AlignTopCommand}" />
+                  <Button Content="{Binding Loc[Center]}" Command="{Binding AlignMiddleCommand}" />
+                  <Button Content="{Binding Loc[Bottom]}" Command="{Binding AlignBottomCommand}" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="3">
-                  <Button Content="가로 균등" Command="{Binding DistributeHorizontalCommand}" />
-                  <Button Content="세로 균등" Command="{Binding DistributeVerticalCommand}" />
+                  <Button Content="{Binding Loc[DistributeH]}" Command="{Binding DistributeHorizontalCommand}" />
+                  <Button Content="{Binding Loc[DistributeV]}" Command="{Binding DistributeVerticalCommand}" />
                 </StackPanel>
-                <TextBlock Text="여러 줄일 때 적용됨" FontSize="11" Foreground="#AAA" />
+                <TextBlock Text="{Binding Loc[MultilineOnly]}" FontSize="11" Foreground="#AAA" />
               </StackPanel>
             </Expander>
 
-            <Expander Header="텍스트" IsExpanded="True">
+            <Expander Header="{Binding Loc[TextSection]}" IsExpanded="True">
               <StackPanel Spacing="6" Margin="0,6,0,0">
-                <TextBlock Text="텍스트 (더블클릭 편집 대상)" />
+                <TextBlock Text="{Binding Loc[TextEditHint]}" />
                 <TextBox Text="{Binding SelectedText}" AcceptsReturn="True" MinHeight="54" />
-                <TextBlock Text="스타일" />
+                <TextBlock Text="{Binding Loc[Style]}" />
                 <ComboBox ItemsSource="{Binding Styles}" SelectedItem="{Binding SelectedCueStyleOption}" />
-                <TextBlock Text="스타일 목록 선택과 큐 적용은 분리되어 있습니다." FontSize="11" Foreground="#AAA" />
-                <TextBlock Text="문자 방향" />
+                <TextBlock Text="{Binding Loc[StyleListHint]}" FontSize="11" Foreground="#AAA" />
+                <TextBlock Text="{Binding Loc[TextDirection]}" />
                 <ComboBox ItemsSource="{Binding DirectionOptions}" SelectedItem="{Binding SelectedDirection}" />
-                <TextBlock Text="폰트 · YTT 고정 8종" />
+                <TextBlock Text="{Binding Loc[Font]}" />
                 <ComboBox ItemsSource="{Binding FontOptions}" SelectedItem="{Binding SelectedFont}" />
-                <TextBlock Text="크기 % (하한 75, 슬라이더 권장 상한 200)" />
+                <TextBlock Text="{Binding Loc[SizePercent]}" />
                 <Slider Minimum="75" Maximum="200" Value="{Binding SelectedSizePercentValue}" />
                 <NumericUpDown Minimum="75" Maximum="1000" Value="{Binding SelectedSizePercentValue}" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -204,50 +214,100 @@
                   <CheckBox Content="I" IsThreeState="True" IsChecked="{Binding SelectedItalic}" />
                   <CheckBox Content="U" IsThreeState="True" IsChecked="{Binding SelectedUnderline}" />
                 </StackPanel>
-                <TextBlock Text="문자 오프셋" />
+                <TextBlock Text="{Binding Loc[CharOffset]}" />
                 <ComboBox ItemsSource="{Binding ScriptOffsetOptions}" SelectedItem="{Binding SelectedScriptOffset}" />
-                <CheckBox Content="Pack" IsThreeState="True" IsChecked="{Binding SelectedPack}" />
+                <CheckBox Content="{Binding Loc[Pack]}" IsThreeState="True" IsChecked="{Binding SelectedPack}" />
                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="4">
-                  <TextBlock Grid.Row="0" Grid.Column="0" Text="전경" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Loc[Foreground]}" VerticalAlignment="Center" />
                   <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding ForegroundHex}" />
-                  <TextBlock Grid.Row="1" Grid.Column="0" Text="배경" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding Loc[Background]}" VerticalAlignment="Center" />
                   <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding BackgroundHex}" />
                 </Grid>
                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="4">
-                  <TextBlock Grid.Row="0" Grid.Column="0" Text="전경 불투명도" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Loc[ForegroundOpacity]}" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding ForegroundOpacity}" />
-                  <TextBlock Grid.Row="1" Grid.Column="0" Text="배경 불투명도" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding Loc[BackgroundOpacity]}" VerticalAlignment="Center" />
                   <NumericUpDown Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="255" Value="{Binding BackgroundOpacity}" />
                 </Grid>
               </StackPanel>
             </Expander>
 
-            <Expander Header="엣지 / 그림자" IsExpanded="True">
+            <Expander Header="{Binding Loc[EdgeShadow]}" IsExpanded="True">
               <StackPanel Spacing="6" Margin="0,6,0,0">
                 <ComboBox ItemsSource="{Binding EdgeOptions}" SelectedItem="{Binding SelectedEdge}" />
                 <TextBox Text="{Binding EdgeColorHex}" PlaceholderText="#RRGGBBAA" />
                 <NumericUpDown Minimum="0" Maximum="255" Value="{Binding EdgeOpacity}" />
-                <TextBlock Text="호환성: PC 중심 · 검증일 2026-08-25" FontSize="11" Foreground="#AAA"
-                           ToolTip.Tip="SPEC §5.8 관찰 기준, 2026-08-25 검증" />
+                <TextBlock Text="{Binding Loc[CompatPcNote]}" FontSize="11" Foreground="#AAA"
+                           ToolTip.Tip="{Binding Loc[CompatSpecNote]}" />
               </StackPanel>
             </Expander>
 
-            <Expander Header="효과" IsExpanded="True">
+            <Expander Header="{Binding Loc[Effects]}" IsExpanded="True">
               <StackPanel Spacing="6" Margin="0,6,0,0">
-                <CheckBox Content="이동 · 시작점에서 끝점까지 선형 보간" IsChecked="{Binding MoveEffectEnabled}" />
-                <CheckBox Content="페이드 · 시작/종료 알파" IsChecked="{Binding FadeEffectEnabled}" />
-                <CheckBox Content="흔들림 · cueId + frameIndex 결정적 시드" IsChecked="{Binding ShakeEffectEnabled}" />
-                <CheckBox Content="색수차 · RGB 복제본 수렴/발산" IsChecked="{Binding ChromaEffectEnabled}" />
-                <CheckBox Content="애니메이션 · pow(progress, accel)" IsChecked="{Binding AnimateEffectEnabled}" />
-                <TextBlock Text="기본 파라미터로 추가됩니다. 가라오케 편집은 M4 범위입니다."
+                <CheckBox Content="{Binding Loc[EffectMove]}" IsChecked="{Binding MoveEffectEnabled}" />
+                <CheckBox Content="{Binding Loc[EffectFade]}" IsChecked="{Binding FadeEffectEnabled}" />
+                <CheckBox Content="{Binding Loc[EffectShake]}" IsChecked="{Binding ShakeEffectEnabled}" />
+                <CheckBox Content="{Binding Loc[EffectChroma]}" IsChecked="{Binding ChromaEffectEnabled}" />
+                <CheckBox Content="{Binding Loc[EffectAnimate]}" IsChecked="{Binding AnimateEffectEnabled}" />
+                <TextBlock Text="{Binding Loc[EffectDefaultNote]}"
                            FontSize="11" Foreground="#AAA" TextWrapping="Wrap" />
               </StackPanel>
             </Expander>
 
-            <Expander Header="검증 문제" IsExpanded="True">
+            <Expander Header="{Binding Loc[SearchReplace]}" IsExpanded="False">
               <StackPanel Spacing="6" Margin="0,6,0,0">
-                <Button Content="검사 실행" Command="{Binding ValidateCommand}" />
-                <TextBlock Text="W101은 실제 JSON3와 다른 gzip XML 근사치입니다. 업로드 후 확인하세요."
+                <TextBlock Text="{Binding Loc[FindWhat]}" />
+                <TextBox Text="{Binding SearchPattern}" />
+                <TextBlock Text="{Binding Loc[ReplaceWith]}" />
+                <TextBox Text="{Binding ReplacementText}" />
+                <CheckBox Content="{Binding Loc[UseRegex]}" IsChecked="{Binding UseRegex}" />
+                <CheckBox Content="{Binding Loc[MatchCase]}" IsChecked="{Binding MatchCase}" />
+                <Button Content="{Binding Loc[ReplaceAll]}" Command="{Binding ReplaceAllCommand}"
+                        HorizontalAlignment="Stretch" />
+              </StackPanel>
+            </Expander>
+
+            <Expander Header="{Binding Loc[TimeShift]}" IsExpanded="False">
+              <StackPanel Spacing="6" Margin="0,6,0,0">
+                <TextBlock Text="{Binding Loc[ShiftMs]}" />
+                <TextBox Text="{Binding ShiftMilliseconds}" HorizontalContentAlignment="Right" />
+                <Button Content="{Binding Loc[ShiftSelected]}" Command="{Binding ShiftSelectedCommand}"
+                        HorizontalAlignment="Stretch" />
+                <Button Content="{Binding Loc[ShiftAll]}" Command="{Binding ShiftAllCommand}"
+                        HorizontalAlignment="Stretch" />
+              </StackPanel>
+            </Expander>
+
+            <Expander Header="{Binding Loc[Ruby]}" IsExpanded="False">
+              <StackPanel Spacing="6" Margin="0,6,0,0">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="{Binding Loc[RubyRole]}" VerticalAlignment="Center" />
+                  <Border Background="#3A3A3A" CornerRadius="3" Padding="5,1">
+                    <TextBlock Text="{Binding Loc[PcOnlyBadge]}" FontSize="10" Foreground="#DDD"
+                               ToolTip.Tip="{Binding Loc[CompatSpecNote]}" />
+                  </Border>
+                </StackPanel>
+                <ComboBox ItemsSource="{Binding RubyRoles}" SelectedItem="{Binding SelectedRubyRole}"
+                          HorizontalAlignment="Stretch" />
+                <TextBlock Text="{Binding Loc[RubyText]}" />
+                <TextBox Text="{Binding SelectedRubyText}" />
+              </StackPanel>
+            </Expander>
+
+            <Expander Header="{Binding Loc[Settings]}" IsExpanded="False">
+              <StackPanel Spacing="6" Margin="0,6,0,0">
+                <TextBlock Text="{Binding Loc[LanguageLabel]}" />
+                <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}"
+                          HorizontalAlignment="Stretch" />
+                <TextBlock Text="{Binding Loc[SnapThreshold]}" />
+                <TextBox Text="{Binding SnapThreshold}" HorizontalContentAlignment="Right" />
+              </StackPanel>
+            </Expander>
+
+            <Expander Header="{Binding Loc[ValidationIssues]}" IsExpanded="True">
+              <StackPanel Spacing="6" Margin="0,6,0,0">
+                <Button Content="{Binding Loc[RunCheck]}" Command="{Binding ValidateCommand}" />
+                <TextBlock Text="{Binding Loc[W101Note]}"
                            FontSize="11" Foreground="#E5B567" TextWrapping="Wrap" />
                 <ListBox ItemsSource="{Binding ValidationIssues}" SelectedItem="{Binding SelectedValidationIssue}"
                          MaxHeight="220">
@@ -261,18 +321,18 @@
                   </ListBox.ItemTemplate>
                 </ListBox>
                 <StackPanel Orientation="Horizontal" Spacing="5">
-                  <Button Content="큐로 이동" Command="{Binding GoToValidationIssueCommand}" />
-                  <Button Content="자동 수정" Command="{Binding ApplyValidationFixCommand}" />
+                  <Button Content="{Binding Loc[GoToCue]}" Command="{Binding GoToValidationIssueCommand}" />
+                  <Button Content="{Binding Loc[AutoFix]}" Command="{Binding ApplyValidationFixCommand}" />
                 </StackPanel>
               </StackPanel>
             </Expander>
 
-            <Expander Header="가라오케 편집" IsExpanded="True">
+            <Expander Header="{Binding Loc[Karaoke]}" IsExpanded="True">
               <StackPanel Spacing="7" Margin="0,6,0,0">
-                <TextBlock Text="재생 속도 0.5x 권장 · 이 영역에서 Space=탭 입력, Backspace=직전 탭 취소"
+                <TextBlock Text="{Binding Loc[KaraokeTapHint]}"
                            FontSize="11" Foreground="#E5B567" TextWrapping="Wrap" />
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                  <Button Content="자동 음절 분할" Command="{Binding AutoSplitKaraokeCommand}" />
+                  <Button Content="{Binding Loc[AutoSplit]}" Command="{Binding AutoSplitKaraokeCommand}" />
                   <ComboBox Width="105" ItemsSource="{Binding KaraokeTypeOptions}"
                             SelectedItem="{Binding SelectedKaraokeTypeOption}" />
                 </StackPanel>
@@ -284,13 +344,13 @@
                         <TextBlock Grid.Column="0" Text="{Binding Text}" VerticalAlignment="Center" />
                         <TextBox Grid.Column="1" Text="{Binding OffsetMillisecondsText}"
                                  PlaceholderText="ms" HorizontalContentAlignment="Right" />
-                        <Button Grid.Column="2" Content="분할" Command="{Binding SplitCommand}" />
-                        <Button Grid.Column="3" Content="병합" Command="{Binding MergeNextCommand}" />
+                        <Button Grid.Column="2" Content="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).Loc[Split]}" Command="{Binding SplitCommand}" />
+                        <Button Grid.Column="3" Content="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).Loc[Merge]}" Command="{Binding MergeNextCommand}" />
                       </Grid>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <TextBlock Text="오디오 샘플 경로가 없어 파형을 표시하지 않습니다. 가짜 파형은 생성하지 않습니다."
+                <TextBlock Text="{Binding Loc[WaveformUnavailable]}"
                            FontSize="11" Foreground="#AAA" TextWrapping="Wrap" />
               </StackPanel>
             </Expander>
@@ -302,9 +362,9 @@
     <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="8">
       <TextBlock Grid.Column="0" Text="{Binding Status}" TextWrapping="Wrap" />
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
-        <Button Content="+ 현재 시각에 큐" Command="{Binding AddCueCommand}" />
-        <Button Content="복제" Command="{Binding DuplicateCueCommand}" />
-        <Button Content="삭제" Command="{Binding DeleteCueCommand}" />
+        <Button Content="{Binding Loc[AddCueAtTime]}" Command="{Binding AddCueCommand}" />
+        <Button Content="{Binding Loc[Duplicate]}" Command="{Binding DuplicateCueCommand}" />
+        <Button Content="{Binding Loc[Delete]}" Command="{Binding DeleteCueCommand}" />
       </StackPanel>
     </Grid>
   </Grid>
