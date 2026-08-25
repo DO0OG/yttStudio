@@ -63,6 +63,12 @@ public static class YttConstants
     // SPEC §13 [PRODUCT]: undo and redo history retains at most 200 operations.
     public const int MaximumUndoDepth = 200;
 
+    // SPEC §9.8 [PRODUCT]: bound editor search patterns before constructing a regex.
+    public const int MaximumSearchPatternLength = 4096;
+
+    // SPEC §9.8 [PRODUCT]: regex searches use a finite timeout to keep the editor responsive.
+    public const int SearchRegexTimeoutMilliseconds = 250;
+
     // SPEC §5.5 [UPSTREAM]: t=0 is unreliable on Android and is clamped to 1 ms.
     public const long MinimumCueStartMilliseconds = 1;
 

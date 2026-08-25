@@ -188,6 +188,53 @@ public sealed class DocumentEditor
         Execute(new SetOverridesCommand(cueId, section, overrides.Clone()));
     }
 
+    /// <summary>Replaces literal or regular-expression matches in section text as one undo step.</summary>
+    /// <returns>The number of matches replaced.</returns>
+    public int ReplaceText(string pattern, string replacement, TextSearchOptions? options = null)
+    {
+        IReadOnlyList<TextSearch.TextReplacementPlan> plans =
+            TextSearch.PlanReplacement(project, pattern, replacement, options);
+        if (plans.Count == 0)
+        {
+            return 0;
+        }
+
+        IUndoableCommand[] commands = plans
+            .Select(plan => (IUndoableCommand)new SetTextCommand(
+                plan.CueId,
+                plan.Section,
+                plan.ReplacementText))
+            .ToArray();
+        Execute(new CompositeCommand("검색 및 치환", commands));
+        return plans.Sum(plan => plan.MatchCount);
+    }
+
+    /// <summary>Moves selected cues by one common delta while preserving duration and track.</summary>
+    /// <returns>The effective delta after clamping the earliest cue to the 1 ms format boundary.</returns>
+    public TimeSpan ShiftCueTimes(IEnumerable<Guid> cueIds, TimeSpan requestedDelta)
+    {
+        ArgumentNullException.ThrowIfNull(cueIds);
+        Cue[] cues = cueIds.Distinct().Select(GetCue).ToArray();
+        if (cues.Length == 0)
+        {
+            return TimeSpan.Zero;
+        }
+
+        TimeSpan minimumStart = TimeSpan.FromMilliseconds(YttConstants.MinimumCueStartMilliseconds);
+        TimeSpan earliest = cues.Min(cue => cue.Start);
+        TimeSpan effectiveDelta = earliest + requestedDelta < minimumStart
+            ? minimumStart - earliest
+            : requestedDelta;
+        IUndoableCommand[] commands = cues.Select(cue => (IUndoableCommand)new SetTimingCommand(
+            project.Cues,
+            cue,
+            cue.Start + effectiveDelta,
+            cue.End + effectiveDelta,
+            cue.Track)).ToArray();
+        Execute(new CompositeCommand("자막 일괄 시간 이동", commands));
+        return effectiveDelta;
+    }
+
     /// <summary>Replaces a cue's sections with the M4 karaoke chips produced by the splitter.</summary>
     /// <remarks>
     /// The source section's formatting is copied to every generated chip. Existing karaoke offsets
