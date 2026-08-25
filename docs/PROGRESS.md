@@ -7,7 +7,7 @@ YttStudio 마일스톤 진행 체크리스트. SSOT는 `docs/SPEC.md` §16.
 
 | 마일스톤 | 상태 | 브랜치 |
 |---|---|---|
-| M0 스캐폴딩 + Compatibility Spike | ✅ 로컬 완료 · CI 대기 | `1-m0-스캐폴딩-및-호환성-스파이크` |
+| M0 스캐폴딩 + Compatibility Spike | ✅ 완료 (CI 3개 OS 통과) | `1-m0-스캐폴딩-및-호환성-스파이크` |
 | M1 렌더러 (영상 없이) | ⬜ 미시작 | `m1/renderer` |
 | M2 영상 + 편집 캔버스 | ⬜ 미시작 | `m2/canvas` |
 | M3 효과 + 뷰포트 + 검증기 | ⬜ 미시작 | `m3/effects` |
@@ -21,12 +21,12 @@ YttStudio 마일스톤 진행 체크리스트. SSOT는 `docs/SPEC.md` §16.
 - [x] .NET 10 솔루션 생성, 의존 방향 검증
 - [x] YTSubConverter 서브모듈 추가 + `b186a40bc21e58a8c9651cf616cbb5e80425dfc6`로 pin
 - [x] `YTSubConverter.Shared` 프로젝트 참조로 clean build
-- [x] Windows restore 성공 / Linux·macOS는 CI 위임
+- [x] Windows restore 성공 / Linux·macOS는 CI에서 실측 통과
 - [x] `System.Drawing` 의존 범위 확인 — 어댑터 밖으로 새지 않음
 - [x] Avalonia 12.1.1 + SkiaSharp 3.119.4 버전 정렬 확인
 - [ ] libmpv 로드 가능 여부 — Windows 미설치로 확인 불가, M2 재확인
 - [x] FAIL 항목 없음 — fallback 비용 산정 불필요
-- [x] CI: 3개 OS 빌드 + 테스트 워크플로 구성 (원격 실행 대기)
+- [x] CI: 3개 OS 빌드 + 테스트 워크플로 구성 및 실행 통과
 - [x] `docs/PROGRESS.md` 갱신
 
 **완료 조건:** `dotnet build` / `dotnet test` 클린 통과. §3 스택이 `DEPENDENCIES.md`에 확정 기록됨.
