@@ -54,6 +54,9 @@ public sealed class FormatResolverTests
                 overrides.EdgeColor = new RgbaColor(200, 100, 50, 254);
                 overrides.Offset = ScriptOffset.Superscript;
                 break;
+            default:
+                // "inherit" 시나리오는 override 를 두지 않아 상속 결과를 그대로 검증한다.
+                break;
         }
 
         ResolvedFormat resolved = FormatResolver.Resolve(baseFormat, overrides);
