@@ -73,7 +73,7 @@ Verify는 M0에 추가하지 않았다. M1 raster golden test에서 도입한다
 | `System.Drawing` 경계 | **PASS** | Core public API에서 `Core/Format/` 밖 `System.Drawing` 노출이 없음을 스모크 테스트로 확인 |
 | Avalonia / SkiaSharp 정렬 | **PASS** | Avalonia.Skia 12.1.1이 SkiaSharp 3.119.4를 해석하며 Render의 명시 버전과 일치 |
 | Windows libmpv 로드 | **N/A — 미설치, 확인 불가** | `NativeLibrary.TryLoad("mpv-2.dll")`와 `TryLoad("libmpv-2.dll")` 모두 false. 설치하지 않고 M2에서 재확인 |
-| Linux / macOS restore | **N/A — CI 대기** | 로컬 크로스 검증 대신 3개 OS matrix CI에 위임 |
+| Linux / macOS restore | **PASS** | 3개 OS matrix CI에서 ubuntu-latest / macos-latest / windows-latest 모두 build + test 성공 (run 32809478109, 2026-08-25) |
 
 FAIL 항목이 없으므로 .NET 8 + Avalonia 11 fallback 비용 산정은 필요하지 않다.
 
