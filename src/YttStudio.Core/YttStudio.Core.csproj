@@ -1,0 +1,9 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup />
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\external\YTSubConverter\YTSubConverter.Shared\YTSubConverter.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

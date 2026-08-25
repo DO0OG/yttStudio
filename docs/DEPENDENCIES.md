@@ -42,32 +42,40 @@ upstream을 올릴 때 반드시 순서대로:
 5. 이 파일의 commit / verified date 갱신
 6. 위 5단계 결과를 PR 본문에 요약
 
-> `Shared`는 `netstandard2.0`이므로 `System.Drawing` 계열 타입(`Color`, `PointF`, `Size`)을 사용한다. .NET 10에서 `System.Drawing.Common`은 Windows 전용이므로, `YttStudio.Core/Format/` 어댑터가 이 타입들을 자체 타입으로 감싸 경계 밖으로 새어나가지 않게 한다. M0 spike에서 3개 OS 빌드로 확인할 것.
+> `Shared`가 사용하는 `Color`, `PointF`, `SizeF`, `Size`, `Point`는 크로스플랫폼 `System.Drawing.Primitives` 타입이다. Windows 전용 `System.Drawing.Common` API는 사용하지 않는다. `YttStudio.Core/Format/` 어댑터 경계는 플랫폼 우회가 아니라 외부 타입을 도메인 모델에서 격리하기 위해 유지하며, M0 스모크 테스트에서 경계 밖 public API 누수가 없음을 확인했다.
 
 ---
 
 ## 런타임 / 프레임워크
 
-M0 compatibility spike에서 최종 확정. 아래는 **기본 후보**이며, spike 실패 시 이 파일에 사유와 대안을 기록한다.
+M0 compatibility spike와 실제 NuGet restore로 다음 버전을 **확정**했다.
 
-| 항목 | 후보 버전 | 근거 / 주의 |
+| 항목 | 확정 버전 | 실제 해석 / 근거 |
 |---|---|---|
-| .NET | **10 (LTS)** | .NET 8/9 모두 2026-11-10 EOL. 10은 2028-11까지 |
-| C# | **14** | .NET 10 기본 |
-| Avalonia | **12.1.x** | 12.0.0 stable 2026-04-07, 12.1.1 2026-07-29. v11 → v12 breaking changes 문서 확인 필요 |
-| SkiaSharp | Avalonia 12가 참조하는 버전에 정렬 | 버전 불일치 시 네이티브 심볼 충돌 |
-| CommunityToolkit.Mvvm | 최신 stable | |
-| xUnit / Verify | 최신 stable | raster golden test는 SkiaSharp 버전 고정 필요 |
-| Serilog | 최신 stable | |
+| .NET SDK / 런타임 | **10.0.301 / net10.0** | Windows restore 및 Release build 통과 |
+| C# | **14** | `LangVersion=14.0`, nullable 및 warnings-as-errors 적용 |
+| Avalonia | **12.1.1** | `Avalonia`, `Avalonia.Desktop`, `Avalonia.Themes.Fluent` 모두 12.1.1 |
+| Avalonia.Skia | **12.1.1** (전이) | `Avalonia.Desktop`에서 실제 해석 |
+| SkiaSharp | **3.119.4** | `Avalonia.Skia 12.1.1`의 전이 버전과 Render의 명시 버전 일치 |
+| CommunityToolkit.Mvvm | **8.4.2** | 실제 restore 통과 |
+| xUnit | **xunit.v3 4.0.0** | .NET 10 Microsoft.Testing.Platform runner로 테스트 3건 통과 |
+| Microsoft.NET.Test.Sdk | **17.14.1** | 실제 restore 통과 |
+| Serilog | **4.4.0** | 실제 restore 통과 |
+| Serilog.Sinks.File | **7.0.0** | 실제 restore 통과 |
 
-### M0 spike 체크리스트
+Verify는 M0에 추가하지 않았다. M1 raster golden test에서 도입한다.
 
-- [ ] .NET 10 솔루션 생성, `YTSubConverter.Shared` 프로젝트 참조로 clean build
-- [ ] Windows / Linux / macOS restore 성공
-- [ ] `System.Drawing` 의존 범위 확인 — 어댑터 밖으로 새는지
-- [ ] Avalonia 12 + SkiaSharp 통합, 버전 정렬 확인
-- [ ] libmpv 로드 가능 여부 (3개 OS, 기본 self-contained publish)
-- [ ] 실패 항목이 있으면 .NET 8 + Avalonia 11 fallback 비용 산정 후 이 파일에 기록
+### M0 spike 결과
+
+| 항목 | 판정 | 근거 / 후속 조치 |
+|---|---|---|
+| .NET 10 + `YTSubConverter.Shared` | **PASS** | ProjectReference를 포함한 Release build 성공, 경고 0 / 오류 0 |
+| `System.Drawing` 경계 | **PASS** | Core public API에서 `Core/Format/` 밖 `System.Drawing` 노출이 없음을 스모크 테스트로 확인 |
+| Avalonia / SkiaSharp 정렬 | **PASS** | Avalonia.Skia 12.1.1이 SkiaSharp 3.119.4를 해석하며 Render의 명시 버전과 일치 |
+| Windows libmpv 로드 | **N/A — 미설치, 확인 불가** | `NativeLibrary.TryLoad("mpv-2.dll")`와 `TryLoad("libmpv-2.dll")` 모두 false. 설치하지 않고 M2에서 재확인 |
+| Linux / macOS restore | **N/A — CI 대기** | 로컬 크로스 검증 대신 3개 OS matrix CI에 위임 |
+
+FAIL 항목이 없으므로 .NET 8 + Avalonia 11 fallback 비용 산정은 필요하지 않다.
 
 ---
 
