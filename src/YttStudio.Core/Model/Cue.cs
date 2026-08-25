@@ -7,11 +7,14 @@ public sealed class Cue
 {
     private readonly List<Section> sections = [];
     private readonly ReadOnlyCollection<Section> readOnlySections;
+    private readonly List<CueEffect> effects = [];
+    private readonly ReadOnlyCollection<CueEffect> readOnlyEffects;
 
     internal Cue(Guid id)
     {
         Id = id;
         readOnlySections = sections.AsReadOnly();
+        readOnlyEffects = effects.AsReadOnly();
     }
 
     public Guid Id { get; }
@@ -26,10 +29,29 @@ public sealed class Cue
     public TextDirection Direction { get; internal set; } = TextDirection.Horizontal;
     public Guid? StyleId { get; internal set; }
     public IReadOnlyList<Section> Sections => readOnlySections;
+    public IReadOnlyList<CueEffect> Effects => readOnlyEffects;
 
     internal void AddSection(Section section) => sections.Add(section);
     internal void InsertSection(int index, Section section) => sections.Insert(index, section);
     internal void RemoveSectionAt(int index) => sections.RemoveAt(index);
+    internal void AddEffect(CueEffect effect)
+    {
+        ArgumentNullException.ThrowIfNull(effect);
+        effects.Add(effect);
+    }
+
+    internal void InsertEffect(int index, CueEffect effect)
+    {
+        ArgumentNullException.ThrowIfNull(effect);
+        effects.Insert(index, effect);
+    }
+
+    internal void RemoveEffectAt(int index) => effects.RemoveAt(index);
+    internal void ReplaceEffects(IEnumerable<CueEffect> replacements)
+    {
+        effects.Clear();
+        effects.AddRange(replacements);
+    }
 }
 
 /// <summary>Represents one independently formatted span inside a cue.</summary>

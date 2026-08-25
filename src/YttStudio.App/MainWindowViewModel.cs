@@ -9,6 +9,7 @@ using SkiaSharp;
 using YttStudio.Core;
 using YttStudio.Core.Editing;
 using YttStudio.Core.Format;
+using YttStudio.Core.Validation;
 using YttStudio.Render;
 using YttStudio.Video;
 
@@ -40,6 +41,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private Guid? selectedStyleId;
     private string selectedStyleName = string.Empty;
     private bool isInlineEditing;
+    private ValidationIssue? selectedValidationIssue;
     private string inlineText = string.Empty;
     private double inlineEditorLeft;
     private double inlineEditorTop;
@@ -87,6 +89,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         SendToBackCommand = new DelegateCommand(() => MoveSelectionToZOrder(front: false),
             () => selectedCueIds.Count > 0 && project is not null);
         CommitInlineEditCommand = new DelegateCommand(CommitInlineEdit, () => IsInlineEditing);
+        ValidateCommand = new DelegateCommand(RunValidation, () => project is not null);
+        ApplyValidationFixCommand = new DelegateCommand(ApplySelectedValidationFix);
+        GoToValidationIssueCommand = new DelegateCommand(GoToSelectedValidationIssue);
         InitializeVideoSource();
         RenderFallbackFrame();
     }
@@ -120,8 +125,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public DelegateCommand BringToFrontCommand { get; }
     public DelegateCommand SendToBackCommand { get; }
     public DelegateCommand CommitInlineEditCommand { get; }
+    public DelegateCommand ValidateCommand { get; }
+    public DelegateCommand ApplyValidationFixCommand { get; }
+    public DelegateCommand GoToValidationIssueCommand { get; }
     public ObservableCollection<CueRowViewModel> CueRows { get; } = [];
     public ObservableCollection<StyleOption> Styles { get; } = [];
+    public ObservableCollection<ValidationIssue> ValidationIssues { get; } = [];
     public IReadOnlyList<CanvasCueItem> CanvasItems { get; private set; } = [];
     public IReadOnlyCollection<Guid> SelectedCueIds => selectedCueIds;
     public Array AnchorOptions { get; } = Enum.GetValues<AnchorPoint>();
@@ -135,6 +144,42 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool HasVideo => videoLoaded;
     public bool IsPlaying => videoSource?.IsPlaying == true;
     public string PlayPauseLabel => IsPlaying ? "일시정지" : "재생";
+
+    public ValidationIssue? SelectedValidationIssue
+    {
+        get => selectedValidationIssue;
+        set => SetField(ref selectedValidationIssue, value);
+    }
+
+    public bool MoveEffectEnabled
+    {
+        get => HasSelectedEffect<MoveEffect>();
+        set => SetSelectedEffect(CueEffectKind.Move, value);
+    }
+
+    public bool FadeEffectEnabled
+    {
+        get => HasSelectedEffect<FadeEffect>();
+        set => SetSelectedEffect(CueEffectKind.Fade, value);
+    }
+
+    public bool ShakeEffectEnabled
+    {
+        get => HasSelectedEffect<ShakeEffect>();
+        set => SetSelectedEffect(CueEffectKind.Shake, value);
+    }
+
+    public bool ChromaEffectEnabled
+    {
+        get => HasSelectedEffect<ChromaEffect>();
+        set => SetSelectedEffect(CueEffectKind.Chroma, value);
+    }
+
+    public bool AnimateEffectEnabled
+    {
+        get => HasSelectedEffect<AnimateEffect>();
+        set => SetSelectedEffect(CueEffectKind.Animate, value);
+    }
 
     public Bitmap? VideoFrameImage
     {
@@ -392,19 +437,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         set => ApplyFormat(new SectionFormatPatch { SizePercent = Math.Max(75, value) });
     }
 
-    public double? SelectedSizePercentValue
+    public double SelectedSizePercentValue
     {
         get
         {
             int? value = GetCommonFormat(format => format.SizePercent);
-            return value;
+            return value ?? 100;
         }
         set
         {
-            if (value.HasValue)
-            {
-                ApplyFormat(new SectionFormatPatch { SizePercent = (int)Math.Round(value.Value) });
-            }
+            ApplyFormat(new SectionFormatPatch { SizePercent = (int)Math.Round(value) });
         }
     }
 
@@ -615,6 +657,108 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 : FormatResolver.Resolve(project.GetStyle(section.StyleIdOverride ?? cue.StyleId).BaseFormat,
                     section.Overrides);
         }
+    }
+
+    private bool HasSelectedEffect<TEffect>() where TEffect : CueEffect
+        => SelectedCue?.Effects.OfType<TEffect>().Any() == true;
+
+    private void SetSelectedEffect(CueEffectKind kind, bool enabled)
+    {
+        if (editor is null || selectedCueIds.Count == 0)
+        {
+            return;
+        }
+        bool current = kind switch
+        {
+            CueEffectKind.Move => MoveEffectEnabled,
+            CueEffectKind.Fade => FadeEffectEnabled,
+            CueEffectKind.Shake => ShakeEffectEnabled,
+            CueEffectKind.Chroma => ChromaEffectEnabled,
+            CueEffectKind.Animate => AnimateEffectEnabled,
+            _ => false,
+        };
+        if (current == enabled)
+        {
+            return;
+        }
+        editor.SetEffectEnabled(selectedCueIds, kind, enabled);
+        AfterMutation();
+    }
+
+    private void RunValidation()
+    {
+        ValidationIssues.Clear();
+        if (project is null)
+        {
+            return;
+        }
+
+        Dictionary<Guid, ValidationMetrics> metrics = [];
+        foreach (Cue cue in project.Cues)
+        {
+            CanvasCueItem? item = CanvasItems.FirstOrDefault(candidate => candidate.Id == cue.Id);
+            bool outside = item is not null && (item.Bounds.Left < YttConstants.ReferenceWidth * 0.05 ||
+                item.Bounds.Top < YttConstants.ReferenceHeight * 0.05 ||
+                item.Bounds.Right > YttConstants.ReferenceWidth * 0.95 ||
+                item.Bounds.Bottom > YttConstants.ReferenceHeight * 0.95);
+            metrics[cue.Id] = new ValidationMetrics
+            {
+                MobileEffectRisk = cue.Effects.Count >= 3,
+                IsOutsideSafeArea = outside,
+                BoxWidth = item?.Bounds.Width,
+                SubtitleSpaceWidth = YttConstants.ReferenceWidth,
+            };
+        }
+
+        byte[]? exportedXml = null;
+        string temporaryPath = Path.Combine(Path.GetTempPath(), $"YttStudio-{Guid.NewGuid():N}.ytt");
+        try
+        {
+            fileService.Export(project, temporaryPath);
+            exportedXml = File.ReadAllBytes(temporaryPath);
+        }
+        catch (Exception exception)
+        {
+            Status = $"크기 근사 계산 실패: {exception.Message}";
+        }
+        finally
+        {
+            File.Delete(temporaryPath);
+        }
+
+        ValidationContext context = new(project)
+        {
+            VideoDuration = project.Video?.Duration,
+            ExportedXmlBytes = exportedXml,
+            CueMetrics = metrics,
+        };
+        foreach (ValidationIssue issue in new DocumentValidator().Validate(project, context))
+        {
+            ValidationIssues.Add(issue);
+        }
+        Status = $"검증 {ValidationIssues.Count}건 · 크기는 실제 JSON3와 다른 근사치이며 업로드 후 확인 필요";
+    }
+
+    private void ApplySelectedValidationFix()
+    {
+        if (editor is null || SelectedValidationIssue is not ValidationIssue issue ||
+            !new DocumentValidator().ApplyAutoFix(editor, issue))
+        {
+            return;
+        }
+        AfterMutation();
+        RunValidation();
+    }
+
+    private void GoToSelectedValidationIssue()
+    {
+        if (SelectedValidationIssue?.CueId is not Guid cueId || project?.Cues[cueId] is null)
+        {
+            return;
+        }
+        SelectCue(cueId, toggle: false);
+        Cue cue = project.Cues[cueId]!;
+        PositionMilliseconds = Math.Clamp(cue.Start.TotalMilliseconds + 1, 0, MaximumMilliseconds);
     }
 
     private IEnumerable<ResolvedFormat> SelectedFormats
@@ -1491,9 +1635,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         using SKCanvas canvas = new(bitmap);
         canvas.Clear(SKColors.Transparent);
         TimeSpan time = TimeSpan.FromMilliseconds(PositionMilliseconds);
-        renderer.Render(canvas, new PlayerViewport(bitmap.Width, bitmap.Height), project, time, new RenderOptions());
+        double framesPerSecond = project.Video?.NominalFps is > 0 ? project.Video.NominalFps : 30;
+        long frameIndex = checked((long)Math.Floor(time.TotalSeconds * framesPerSecond));
+        PlayerViewport viewport = PlayerViewport.VideoFrame(bitmap.Width, bitmap.Height);
+        renderer.Render(canvas, viewport, project, time, new RenderOptions { FrameIndex = frameIndex });
         SubtitleImage = EncodeBitmap(bitmap);
-        CanvasItems = renderer.Measure(new PlayerViewport(bitmap.Width, bitmap.Height), project, time)
+        CanvasItems = renderer.Measure(viewport, project, time)
             .Select(hit => new CanvasCueItem(
                 hit.Cue.Id,
                 new CanvasRect(hit.Bounds.Left, hit.Bounds.Top, hit.Bounds.Width, hit.Bounds.Height),
@@ -1597,6 +1744,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(BackgroundOpacity));
         OnPropertyChanged(nameof(EdgeColorHex));
         OnPropertyChanged(nameof(EdgeOpacity));
+        OnPropertyChanged(nameof(MoveEffectEnabled));
+        OnPropertyChanged(nameof(FadeEffectEnabled));
+        OnPropertyChanged(nameof(ShakeEffectEnabled));
+        OnPropertyChanged(nameof(ChromaEffectEnabled));
+        OnPropertyChanged(nameof(AnimateEffectEnabled));
 
         NotifyCommandStates();
     }
@@ -1627,6 +1779,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         DistributeVerticalCommand.NotifyCanExecuteChanged();
         BringToFrontCommand.NotifyCanExecuteChanged();
         SendToBackCommand.NotifyCanExecuteChanged();
+        ValidateCommand.NotifyCanExecuteChanged();
     }
 
     private void NotifyVideoState()

@@ -19,12 +19,12 @@ public sealed class SubtitleLayoutEngine
         ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(cue);
         options ??= new RenderOptions();
-        if (viewport.Width <= 0 || viewport.Height <= 0)
+        if (viewport.SubtitleSpace.Width <= 0 || viewport.SubtitleSpace.Height <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(viewport));
         }
 
-        float viewportScale = viewport.Height / YttConstants.ReferenceHeight;
+        float viewportScale = viewport.SubtitleSpace.Height / YttConstants.ReferenceHeight;
         List<MeasuredLine> measuredLines = MeasureLines(project, cue, viewportScale, options);
         float maximumFontSize = measuredLines.SelectMany(line => line.Runs).Select(run => run.FontSize).DefaultIfEmpty(
             (float)(YttConstants.DefaultFontSizePixels * viewportScale)).Max();
@@ -65,8 +65,9 @@ public sealed class SubtitleLayoutEngine
         {
             lines = PlaceHorizontalLines(cue, measuredLines, box, horizontalPadding, verticalPadding);
         }
-        return new CueLayout(cue, box, anchor, lines, maximumFontSize, box.Left < 0 || box.Top < 0 ||
-            box.Right > viewport.Width || box.Bottom > viewport.Height);
+        return new CueLayout(cue, box, anchor, lines, maximumFontSize,
+            box.Left < viewport.SubtitleSpace.Left || box.Top < viewport.SubtitleSpace.Top ||
+            box.Right > viewport.SubtitleSpace.Right || box.Bottom > viewport.SubtitleSpace.Bottom);
     }
 
     private List<MeasuredLine> MeasureLines(
@@ -231,9 +232,12 @@ public sealed class SubtitleLayoutEngine
     {
         int x = checked((int)Math.Round(cue.PositionX, MidpointRounding.ToEven));
         int y = checked((int)Math.Round(cue.PositionY, MidpointRounding.ToEven));
+        SKRect space = viewport.SubtitleSpace;
         return applyTransform
-            ? new SKPoint((float)YttMath.ToPixelCoordinate(x, viewport.Width), (float)YttMath.ToPixelCoordinate(y, viewport.Height))
-            : new SKPoint((float)(cue.PositionX / 100 * viewport.Width), (float)(cue.PositionY / 100 * viewport.Height));
+            ? new SKPoint(space.Left + (float)YttMath.ToPixelCoordinate(x, space.Width),
+                space.Top + (float)YttMath.ToPixelCoordinate(y, space.Height))
+            : new SKPoint(space.Left + (float)(cue.PositionX / 100 * space.Width),
+                space.Top + (float)(cue.PositionY / 100 * space.Height));
     }
 
     private static float MeasureVerticalHeight(MeasuredLine line)

@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Text;
 using System.Text.RegularExpressions;
 using YTSubConverter.Shared;
 using YTSubConverter.Shared.Formats;
@@ -40,9 +41,17 @@ public sealed partial class SubtitleFileService
         ArgumentNullException.ThrowIfNull(project);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
+        Cue[] orderedCues = project.Cues.OrderBy(cue => cue.ZOrder).ThenBy(cue => cue.Start).ToArray();
         AdapterDocument adapterDocument = ToExternalDocument(project);
         AssDocument assDocument = new(adapterDocument);
         string extension = Path.GetExtension(path).ToLowerInvariant();
+        bool hasEffects = orderedCues.Any(cue => cue.Effects.Count > 0);
+        if (hasEffects)
+        {
+            ExportWithEffects(assDocument, orderedCues, path, extension);
+            return;
+        }
+
         switch (extension)
         {
             case ".ytt":
@@ -74,9 +83,63 @@ public sealed partial class SubtitleFileService
     private static ImportResult ImportAss(string path)
     {
         IReadOnlyList<ImportWarning> warnings = FindUnsupportedAssTags(path);
-        AssDocument document = new(path);
-        SubtitleProject project = FromExternalDocument(document);
-        return new ImportResult(project, warnings);
+        string sanitized = AssEffectCodec.SanitizeAndRead(path, out List<IReadOnlyList<CueEffect>> effectsByLine);
+        string temporaryPath = Path.Combine(Path.GetTempPath(), $"YttStudio-{Guid.NewGuid():N}.ass");
+        try
+        {
+            File.WriteAllText(temporaryPath, sanitized, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            AssDocument document = new(temporaryPath);
+            SubtitleProject project = FromExternalDocument(document);
+            Cue[] cues = project.Cues.ToArray();
+            for (int index = 0; index < Math.Min(cues.Length, effectsByLine.Count); index++)
+            {
+                foreach (CueEffect effect in effectsByLine[index])
+                {
+                    cues[index].AddEffect(effect);
+                }
+            }
+            return new ImportResult(project, warnings);
+        }
+        finally
+        {
+            File.Delete(temporaryPath);
+        }
+    }
+
+    private static void ExportWithEffects(AssDocument assDocument, IReadOnlyList<Cue> orderedCues,
+        string path, string extension)
+    {
+        if (extension is not ".ytt" and not ".srv3" and not ".ass")
+        {
+            throw new NotSupportedException($"The '{extension}' format is outside the M3 export scope.");
+        }
+
+        string basePath = Path.Combine(Path.GetTempPath(), $"YttStudio-{Guid.NewGuid():N}-base.ass");
+        string effectsPath = Path.Combine(Path.GetTempPath(), $"YttStudio-{Guid.NewGuid():N}-effects.ass");
+        try
+        {
+            assDocument.Save(basePath);
+            string source = File.ReadAllText(basePath);
+            IReadOnlyList<IReadOnlyList<CueEffect>> effects = orderedCues
+                .Select(cue => cue.Effects)
+                .ToArray();
+            string encoded = AssEffectCodec.Inject(source, effects);
+            File.WriteAllText(effectsPath, encoded, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            if (extension == ".ass")
+            {
+                File.Copy(effectsPath, path, overwrite: true);
+            }
+            else
+            {
+                // SPEC §10.2 [UPSTREAM]: effects enter through ASS and YttDocument.Save owns XML.
+                new YttDocument(new AssDocument(effectsPath)).Save(path);
+            }
+        }
+        finally
+        {
+            File.Delete(basePath);
+            File.Delete(effectsPath);
+        }
     }
 
     private static SubtitleProject FromExternalDocument(SubtitleDocument document)
