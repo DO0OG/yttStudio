@@ -168,8 +168,12 @@ public sealed partial class SubtitleFileService
             cue.PositionX = YttMath.ToYttCoordinate(position.X, document.VideoDimensions.Width);
             cue.PositionY = YttMath.ToYttCoordinate(position.Y, document.VideoDimensions.Height);
 
-            for (int sectionIndex = 0; sectionIndex < line.Sections.Count; sectionIndex++)
+            // A ruby group spans four sections, so the index advances by more than one.
+            // A while loop keeps that advance explicit instead of mutating a for counter.
+            int sectionIndex = 0;
+            while (sectionIndex < line.Sections.Count)
             {
+                int consumed = 1;
                 ExternalSection externalSection = line.Sections[sectionIndex];
                 ResolvedFormat fullFormat = ToResolvedFormat(externalSection);
                 StylePreset? matchedStyle = importedStyles?.FirstOrDefault(style =>
@@ -194,10 +198,11 @@ public sealed partial class SubtitleFileService
                     ExternalSection rubySection = line.Sections[sectionIndex + 2];
                     modelSection.Ruby = rubySection.RubyPart == RubyPart.TextAfter ? RubyRole.Below : RubyRole.Above;
                     modelSection.RubyText = rubySection.Text;
-                    sectionIndex += 3;
+                    consumed = 4;
                 }
 
                 cue.AddSection(modelSection);
+                sectionIndex += consumed;
             }
 
             if (cue.Sections.Count == 0)
