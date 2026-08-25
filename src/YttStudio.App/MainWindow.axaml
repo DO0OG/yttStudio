@@ -267,9 +267,33 @@
               </StackPanel>
             </Expander>
 
-            <Border Background="#252525" Padding="8">
-              <TextBlock Text="가라오케 편집 · 고급 UI는 M4/M5 범위" Foreground="#888" TextWrapping="Wrap" />
-            </Border>
+            <Expander Header="가라오케 편집" IsExpanded="True">
+              <StackPanel Spacing="7" Margin="0,6,0,0">
+                <TextBlock Text="재생 속도 0.5x 권장 · 이 영역에서 Space=탭 입력, Backspace=직전 탭 취소"
+                           FontSize="11" Foreground="#E5B567" TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Button Content="자동 음절 분할" Command="{Binding AutoSplitKaraokeCommand}" />
+                  <ComboBox Width="105" ItemsSource="{Binding KaraokeTypeOptions}"
+                            SelectedItem="{Binding SelectedKaraokeTypeOption}" />
+                </StackPanel>
+                <vm:KaraokeTimelineControl />
+                <ItemsControl ItemsSource="{Binding KaraokeSections}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:KaraokeSectionViewModel">
+                      <Grid ColumnDefinitions="*,70,Auto,Auto" ColumnSpacing="4" Margin="0,2">
+                        <TextBlock Grid.Column="0" Text="{Binding Text}" VerticalAlignment="Center" />
+                        <TextBox Grid.Column="1" Text="{Binding OffsetMillisecondsText}"
+                                 PlaceholderText="ms" HorizontalContentAlignment="Right" />
+                        <Button Grid.Column="2" Content="분할" Command="{Binding SplitCommand}" />
+                        <Button Grid.Column="3" Content="병합" Command="{Binding MergeNextCommand}" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="오디오 샘플 경로가 없어 파형을 표시하지 않습니다. 가짜 파형은 생성하지 않습니다."
+                           FontSize="11" Foreground="#AAA" TextWrapping="Wrap" />
+              </StackPanel>
+            </Expander>
           </StackPanel>
         </ScrollViewer>
       </Border>

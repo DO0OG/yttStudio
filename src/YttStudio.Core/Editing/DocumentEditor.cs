@@ -9,6 +9,7 @@ public sealed class DocumentEditor
     private List<IUndoableCommand>? transactionCommands;
     private string? transactionLabel;
     private int undoFreeDepth;
+    private readonly Dictionary<Guid, KaraokeTabCursor> karaokeTabCursors = [];
 
     public DocumentEditor(SubtitleProject project)
     {
@@ -186,6 +187,165 @@ public sealed class DocumentEditor
         Section section = GetSection(cueId, sectionIndex);
         Execute(new SetOverridesCommand(cueId, section, overrides.Clone()));
     }
+
+    /// <summary>Replaces a cue's sections with the M4 karaoke chips produced by the splitter.</summary>
+    /// <remarks>
+    /// The source section's formatting is copied to every generated chip. Existing karaoke offsets
+    /// are retained on the first chip only; later chips are recorded by the tab or manual offset APIs.
+    /// </remarks>
+    public KaraokeEditResult SplitCueIntoKaraokeSections(Guid cueId)
+    {
+        Cue cue = GetCue(cueId);
+        KaraokeSplitter splitter = new();
+        List<Section> replacements = [];
+        foreach (Section source in cue.Sections)
+        {
+            IReadOnlyList<string> chips = splitter.Split(source.Text);
+            if (chips.Count == 0)
+            {
+                replacements.Add(CloneSection(source, string.Empty, source.KaraokeOffset));
+                continue;
+            }
+
+            replacements.AddRange(chips.Select((chip, index) => CloneSection(
+                source,
+                chip,
+                index == 0 ? source.KaraokeOffset : null)));
+        }
+
+        return ReplaceKaraokeSections(cue, replacements);
+    }
+
+    /// <summary>Alias for <see cref="SplitCueIntoKaraokeSections"/> used by editor clients.</summary>
+    public KaraokeEditResult AutoSplitKaraokeSections(Guid cueId)
+        => SplitCueIntoKaraokeSections(cueId);
+
+    /// <summary>Splits one karaoke chip at a UTF-16 text boundary.</summary>
+    public KaraokeEditResult SplitKaraokeSection(Guid cueId, int sectionIndex, int textOffset)
+    {
+        Cue cue = GetCue(cueId);
+        Section source = GetSection(cueId, sectionIndex);
+        if ((uint)textOffset >= (uint)source.Text.Length || textOffset == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(textOffset), "The split must be inside the section text.");
+        }
+
+        if (!System.Globalization.StringInfo.ParseCombiningCharacters(source.Text).Contains(textOffset))
+        {
+            throw new ArgumentException("The split must be on a Unicode text-element boundary.", nameof(textOffset));
+        }
+
+        List<Section> replacements = cue.Sections.ToList();
+        Section left = CloneSection(source, source.Text[..textOffset], source.KaraokeOffset);
+        Section right = CloneSection(source, source.Text[textOffset..], null);
+        replacements.RemoveAt(sectionIndex);
+        replacements.InsertRange(sectionIndex, [left, right]);
+        return ReplaceKaraokeSections(cue, replacements);
+    }
+
+    /// <summary>Merges one karaoke chip with its immediate right neighbour.</summary>
+    public KaraokeEditResult MergeKaraokeSections(Guid cueId, int leftSectionIndex)
+    {
+        Cue cue = GetCue(cueId);
+        if ((uint)leftSectionIndex >= (uint)(cue.Sections.Count - 1))
+        {
+            throw new ArgumentOutOfRangeException(nameof(leftSectionIndex), "A right neighbour is required to merge sections.");
+        }
+
+        Section left = cue.Sections[leftSectionIndex];
+        Section right = cue.Sections[leftSectionIndex + 1];
+        List<Section> replacements = cue.Sections.ToList();
+        replacements.RemoveRange(leftSectionIndex, 2);
+        replacements.Insert(leftSectionIndex, CloneSection(
+            left,
+            left.Text + right.Text,
+            left.KaraokeOffset));
+        return ReplaceKaraokeSections(cue, replacements);
+    }
+
+    /// <summary>Sets one section's karaoke offset and repairs non-increasing neighbours.</summary>
+    /// <remarks>
+    /// <para>
+    /// SPEC §5.5 [UPSTREAM]: adjacent equal or decreasing karaoke offsets are repaired by +1 ms
+    /// so the exported YTT sections do not have zero-duration transitions.
+    /// </para>
+    /// </remarks>
+    public KaraokeEditResult SetKaraokeOffset(Guid cueId, int sectionIndex, TimeSpan offset)
+    {
+        if (offset < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(offset), "Karaoke offsets cannot be negative.");
+        }
+
+        Cue cue = GetCue(cueId);
+        _ = GetSection(cueId, sectionIndex);
+        TimeSpan?[] nextOffsets = cue.Sections.Select(section => section.KaraokeOffset).ToArray();
+        nextOffsets[sectionIndex] = offset;
+        List<KaraokeOffsetCorrection> corrections = NormalizeKaraokeOffsets(nextOffsets);
+        Execute(new SetKaraokeOffsetsCommand(
+            this,
+            cue,
+            nextOffsets,
+            karaokeTabCursors.GetValueOrDefault(cue.Id),
+            newCursor: null));
+        return CreateKaraokeResult(cue, corrections);
+    }
+
+    /// <summary>Returns the tab-recording cursor for a cue.</summary>
+    public KaraokeTabState GetKaraokeTabState(Guid cueId)
+    {
+        Cue cue = GetCue(cueId);
+        KaraokeTabCursor? cursor = karaokeTabCursors.GetValueOrDefault(cueId);
+        int nextIndex = cursor?.NextSectionIndex ?? FindNextUnrecordedSection(cue);
+        int lastIndex = cursor?.History.LastOrDefault()?.SectionIndex ?? -1;
+        return new KaraokeTabState(cueId, nextIndex, lastIndex, cursor?.History.Count > 0);
+    }
+
+    /// <summary>Records a tab/space timing against the next karaoke chip.</summary>
+    public KaraokeEditResult RecordKaraokeTab(Guid cueId, TimeSpan offset)
+    {
+        Cue cue = GetCue(cueId);
+        KaraokeTabCursor? oldCursor = karaokeTabCursors.GetValueOrDefault(cueId);
+        KaraokeTabCursor cursor = oldCursor ?? new KaraokeTabCursor(FindNextUnrecordedSection(cue), []);
+        if ((uint)cursor.NextSectionIndex >= (uint)cue.Sections.Count)
+        {
+            throw new InvalidOperationException("All karaoke sections already have recorded offsets.");
+        }
+
+        TimeSpan?[] previousOffsets = cue.Sections.Select(section => section.KaraokeOffset).ToArray();
+        TimeSpan?[] nextOffsets = previousOffsets.ToArray();
+        nextOffsets[cursor.NextSectionIndex] = offset;
+        List<KaraokeOffsetCorrection> corrections = NormalizeKaraokeOffsets(nextOffsets);
+        KaraokeTabCursor nextCursor = new(
+            FindNextUnrecordedSection(nextOffsets),
+            [.. cursor.History, new KaraokeTabEntry(cursor.NextSectionIndex, previousOffsets)]);
+        Execute(new RecordKaraokeTabCommand(this, cue, nextOffsets, oldCursor, nextCursor));
+        return CreateKaraokeResult(cue, corrections);
+    }
+
+    /// <summary>Cancels the most recent tab timing for a cue.</summary>
+    public KaraokeEditResult CancelLastKaraokeTab(Guid cueId)
+    {
+        Cue cue = GetCue(cueId);
+        if (!karaokeTabCursors.TryGetValue(cueId, out KaraokeTabCursor? cursor) ||
+            cursor.History.Count == 0)
+        {
+            throw new InvalidOperationException("There is no karaoke tab timing to cancel.");
+        }
+
+        KaraokeTabEntry cancelled = cursor.History[^1];
+        TimeSpan?[] nextOffsets = cancelled.PreviousOffsets.ToArray();
+        KaraokeTabEntry[] remaining = cursor.History.Take(cursor.History.Count - 1).ToArray();
+        KaraokeTabCursor? nextCursor = remaining.Length > 0
+            ? new KaraokeTabCursor(cancelled.SectionIndex, remaining)
+            : null;
+        Execute(new RecordKaraokeTabCommand(this, cue, nextOffsets, cursor, nextCursor));
+        return CreateKaraokeResult(cue, []);
+    }
+
+    /// <summary>Sets the karaoke effect mode on a cue as one undoable operation.</summary>
+    public void SetKaraokeType(Guid cueId, KaraokeType type)
+        => Execute(new SetKaraokeTypeCommand(GetCue(cueId), type));
 
     /// <summary>Applies a supported validation repair as one undoable operation.</summary>
     public bool ApplyValidationFix(Validation.ValidationIssue issue)
@@ -480,7 +640,117 @@ public sealed class DocumentEditor
             });
         }
 
+        foreach (CueEffect effect in source.Effects)
+        {
+            copy.AddEffect(CloneEffect(effect));
+        }
+
         return copy;
+    }
+
+    private static CueEffect CloneEffect(CueEffect effect) => effect switch
+    {
+        MoveEffect move => new MoveEffect(move.FromX, move.FromY, move.ToX, move.ToY, move.StartTime, move.EndTime),
+        FadeEffect fade => new FadeEffect(fade.FadeIn, fade.FadeOut)
+        {
+            Alpha1 = fade.Alpha1,
+            Alpha2 = fade.Alpha2,
+            Alpha3 = fade.Alpha3,
+            T1 = fade.T1,
+            T2 = fade.T2,
+            T3 = fade.T3,
+            T4 = fade.T4,
+        },
+        ShakeEffect shake => new ShakeEffect(
+            shake.RadiusX, shake.RadiusY, shake.StartTime, shake.EndTime),
+        ChromaEffect chroma => new ChromaEffect(
+            chroma.OffsetX,
+            chroma.OffsetY,
+            chroma.InTime,
+            chroma.OutTime,
+            chroma.CustomColors?.ToArray()),
+        AnimateEffect animate => new AnimateEffect(animate.Start, animate.End, animate.Accel)
+        {
+            ToForeground = animate.ToForeground,
+            ToEdgeColor = animate.ToEdgeColor,
+            ToSizePercent = animate.ToSizePercent,
+        },
+        KaraokeSettings karaoke => new KaraokeSettings(karaoke.Type)
+        {
+            CursorText = karaoke.CursorText,
+            CursorInterval = karaoke.CursorInterval,
+        },
+        _ => throw new NotSupportedException($"Unsupported cue effect type {effect.GetType().Name}."),
+    };
+
+    private KaraokeEditResult ReplaceKaraokeSections(Cue cue, IReadOnlyList<Section> replacements)
+    {
+        TimeSpan?[] offsets = replacements.Select(section => section.KaraokeOffset).ToArray();
+        List<KaraokeOffsetCorrection> corrections = NormalizeKaraokeOffsets(offsets);
+        Section[] normalized = replacements.Select((section, index) =>
+            CloneSection(section, section.Text, offsets[index])).ToArray();
+        Execute(new ReplaceSectionsCommand(cue, normalized));
+        karaokeTabCursors.Remove(cue.Id);
+        return CreateKaraokeResult(cue, corrections);
+    }
+
+    private static Section CloneSection(Section source, string text, TimeSpan? karaokeOffset)
+        => new()
+        {
+            Text = text,
+            KaraokeOffset = karaokeOffset,
+            Overrides = source.Overrides.Clone(),
+            Ruby = source.Ruby,
+            RubyText = source.RubyText,
+            StyleIdOverride = source.StyleIdOverride,
+        };
+
+    private static List<KaraokeOffsetCorrection> NormalizeKaraokeOffsets(TimeSpan?[] offsets)
+    {
+        List<KaraokeOffsetCorrection> corrections = [];
+        TimeSpan? previous = null;
+        TimeSpan step = TimeSpan.FromMilliseconds(YttConstants.KaraokeOffsetStepMilliseconds);
+        for (int index = 0; index < offsets.Length; index++)
+        {
+            if (offsets[index] is not TimeSpan current)
+            {
+                previous = null;
+                continue;
+            }
+
+            if (previous is TimeSpan previousValue && current <= previousValue)
+            {
+                TimeSpan corrected = previousValue + step;
+                corrections.Add(new KaraokeOffsetCorrection(index, current, corrected));
+                offsets[index] = corrected;
+                current = corrected;
+            }
+
+            previous = current;
+        }
+
+        return corrections;
+    }
+
+    private static KaraokeEditResult CreateKaraokeResult(
+        Cue cue,
+        IReadOnlyList<KaraokeOffsetCorrection> corrections)
+        => new(cue.Id, cue.Sections.ToArray(), corrections);
+
+    private static int FindNextUnrecordedSection(Cue cue)
+        => FindNextUnrecordedSection(cue.Sections.Select(section => section.KaraokeOffset).ToArray());
+
+    private static int FindNextUnrecordedSection(IReadOnlyList<TimeSpan?> offsets)
+    {
+        for (int index = 0; index < offsets.Count; index++)
+        {
+            if (!offsets[index].HasValue)
+            {
+                return index;
+            }
+        }
+
+        return offsets.Count;
     }
 
     private static bool ClampAlpha(ref SectionOverrides overrides, ResolvedFormat resolved)
@@ -889,6 +1159,122 @@ public sealed class DocumentEditor
         public void Undo() => section.KaraokeOffset = oldOffset;
         public bool TryMergeWith(IUndoableCommand previous) => false;
     }
+
+    private sealed class ReplaceSectionsCommand(Cue cue, IReadOnlyList<Section> replacements) : IUndoableCommand
+    {
+        private readonly Section[] oldSections = cue.Sections.ToArray();
+        private readonly Section[] newSections = replacements.ToArray();
+
+        public string Label => "가라오케 음절 편집";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [cue.Id];
+        public void Execute() => cue.ReplaceSections(newSections);
+        public void Undo() => cue.ReplaceSections(oldSections);
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+    }
+
+    private sealed class SetKaraokeOffsetsCommand(
+        DocumentEditor owner,
+        Cue cue,
+        IReadOnlyList<TimeSpan?> offsets,
+        KaraokeTabCursor? oldCursor,
+        KaraokeTabCursor? newCursor) : IUndoableCommand
+    {
+        private readonly TimeSpan?[] oldOffsets = cue.Sections.Select(section => section.KaraokeOffset).ToArray();
+        private readonly TimeSpan?[] newOffsets = offsets.ToArray();
+
+        public string Label => "가라오케 타이밍 변경";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [cue.Id];
+        public void Execute() => Apply(newOffsets, newCursor);
+        public void Undo() => Apply(oldOffsets, oldCursor);
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+
+        private void Apply(IReadOnlyList<TimeSpan?> values, KaraokeTabCursor? cursor)
+        {
+            for (int index = 0; index < cue.Sections.Count; index++)
+            {
+                cue.Sections[index].KaraokeOffset = values[index];
+            }
+
+            if (cursor is null)
+            {
+                owner.karaokeTabCursors.Remove(cue.Id);
+            }
+            else
+            {
+                owner.karaokeTabCursors[cue.Id] = cursor;
+            }
+        }
+    }
+
+    private sealed class RecordKaraokeTabCommand(
+        DocumentEditor owner,
+        Cue cue,
+        IReadOnlyList<TimeSpan?> offsets,
+        KaraokeTabCursor? oldCursor,
+        KaraokeTabCursor? newCursor) : IUndoableCommand
+    {
+        private readonly TimeSpan?[] oldOffsets = cue.Sections.Select(section => section.KaraokeOffset).ToArray();
+        private readonly TimeSpan?[] newOffsets = offsets.ToArray();
+
+        public string Label => "가라오케 탭 입력";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [cue.Id];
+        public void Execute() => Apply(newOffsets, newCursor);
+        public void Undo() => Apply(oldOffsets, oldCursor);
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+
+        private void Apply(IReadOnlyList<TimeSpan?> values, KaraokeTabCursor? cursor)
+        {
+            for (int index = 0; index < cue.Sections.Count; index++)
+            {
+                cue.Sections[index].KaraokeOffset = values[index];
+            }
+
+            if (cursor is null)
+            {
+                owner.karaokeTabCursors.Remove(cue.Id);
+            }
+            else
+            {
+                owner.karaokeTabCursors[cue.Id] = cursor;
+            }
+        }
+    }
+
+    private sealed class SetKaraokeTypeCommand : IUndoableCommand
+    {
+        private readonly Cue cue;
+        private readonly CueEffect[] oldEffects;
+        private readonly CueEffect[] newEffects;
+
+        public SetKaraokeTypeCommand(Cue cue, KaraokeType type)
+        {
+            this.cue = cue;
+            AffectedCueIds = [cue.Id];
+            oldEffects = cue.Effects.ToArray();
+            KaraokeSettings? existing = oldEffects.OfType<KaraokeSettings>().LastOrDefault();
+            List<CueEffect> next = oldEffects.Where(effect => effect is not KaraokeSettings).ToList();
+            if (type != KaraokeType.None)
+            {
+                next.Add(new KaraokeSettings(type)
+                {
+                    CursorText = existing?.CursorText,
+                    CursorInterval = existing?.CursorInterval,
+                });
+            }
+
+            newEffects = next.ToArray();
+        }
+
+        public string Label => "가라오케 타입 변경";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; }
+        public void Execute() => cue.ReplaceEffects(newEffects);
+        public void Undo() => cue.ReplaceEffects(oldEffects);
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+    }
+
+    private sealed record KaraokeTabCursor(int NextSectionIndex, IReadOnlyList<KaraokeTabEntry> History);
+
+    private sealed record KaraokeTabEntry(int SectionIndex, IReadOnlyList<TimeSpan?> PreviousOffsets);
 
     private sealed class ReplaceEffectsCommand(Cue cue, IReadOnlyList<CueEffect> effects) : IUndoableCommand
     {

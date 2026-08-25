@@ -47,6 +47,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private double inlineEditorTop;
     private double inlineEditorWidth = 180;
     private bool disposed;
+    private bool karaokeTimelineTransaction;
 
     public MainWindowViewModel(IFileDialogService dialogs)
     {
@@ -92,6 +93,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ValidateCommand = new DelegateCommand(RunValidation, () => project is not null);
         ApplyValidationFixCommand = new DelegateCommand(ApplySelectedValidationFix);
         GoToValidationIssueCommand = new DelegateCommand(GoToSelectedValidationIssue);
+        AutoSplitKaraokeCommand = new DelegateCommand(
+            AutoSplitSelectedKaraokeCue,
+            () => HasKaraokeCue);
         InitializeVideoSource();
         RenderFallbackFrame();
     }
@@ -128,9 +132,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public DelegateCommand ValidateCommand { get; }
     public DelegateCommand ApplyValidationFixCommand { get; }
     public DelegateCommand GoToValidationIssueCommand { get; }
+    public DelegateCommand AutoSplitKaraokeCommand { get; }
     public ObservableCollection<CueRowViewModel> CueRows { get; } = [];
     public ObservableCollection<StyleOption> Styles { get; } = [];
     public ObservableCollection<ValidationIssue> ValidationIssues { get; } = [];
+    public ObservableCollection<KaraokeSectionViewModel> KaraokeSections { get; } = [];
     public IReadOnlyList<CanvasCueItem> CanvasItems { get; private set; } = [];
     public IReadOnlyCollection<Guid> SelectedCueIds => selectedCueIds;
     public Array AnchorOptions { get; } = Enum.GetValues<AnchorPoint>();
@@ -140,10 +146,45 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public Array FontOptions { get; } = Enum.GetValues<YtFont>();
     public Array EdgeOptions { get; } = Enum.GetValues<EdgeType>();
     public double[] SpeedOptions { get; } = [0.5, 1.0, 1.5, 2.0];
+    public IReadOnlyList<KaraokeTypeOption> KaraokeTypeOptions { get; } =
+    [
+        new(KaraokeType.Simple, "Simple"),
+        new(KaraokeType.Fade, "Fade"),
+        new(KaraokeType.Glitch, "Glitch"),
+        new(KaraokeType.Cursor, "Cursor"),
+        new(KaraokeType.LeftCursor, "LeftCursor"),
+    ];
     public bool HasProject => project is not null;
     public bool HasVideo => videoLoaded;
     public bool IsPlaying => videoSource?.IsPlaying == true;
     public string PlayPauseLabel => IsPlaying ? "일시정지" : "재생";
+
+    public Guid? SelectedKaraokeCueId => selectedCueIds.Count == 1 ? lastSelectedCueId : null;
+
+    public bool HasKaraokeCue => SelectedKaraokeCueId.HasValue && editor is not null;
+
+    public double SelectedKaraokeCueDurationMilliseconds
+        => SelectedCue is Cue cue ? Math.Max(1, (cue.End - cue.Start).TotalMilliseconds) : 1;
+
+    public KaraokeTypeOption? SelectedKaraokeTypeOption
+    {
+        get
+        {
+            KaraokeType type = SelectedCue?.Effects.OfType<KaraokeSettings>().LastOrDefault()?.Type
+                ?? KaraokeType.Simple;
+            return KaraokeTypeOptions.FirstOrDefault(option => option.Value == type);
+        }
+        set
+        {
+            if (value is null || editor is null || SelectedKaraokeCueId is not Guid cueId)
+            {
+                return;
+            }
+
+            editor.SetKaraokeType(cueId, value.Value);
+            AfterMutation();
+        }
+    }
 
     public ValidationIssue? SelectedValidationIssue
     {
@@ -919,6 +960,153 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         RefreshCanvasSelection();
         NotifySelectionProperties();
+    }
+
+    public int KaraokeSectionCount(Guid cueId)
+        => project?.Cues[cueId]?.Sections.Count ?? 0;
+
+    public void SplitKaraokeSection(Guid cueId, int sectionIndex, int textOffset)
+    {
+        if (editor is null)
+        {
+            return;
+        }
+
+        editor.SplitKaraokeSection(cueId, sectionIndex, textOffset);
+        AfterMutation(refreshRows: true);
+    }
+
+    public void RemoveKaraokeSection(Guid cueId, int sectionIndex)
+    {
+        int count = KaraokeSectionCount(cueId);
+        if (count <= 1)
+        {
+            return;
+        }
+
+        MergeKaraokeSections(cueId, sectionIndex > 0 ? sectionIndex - 1 : 0);
+    }
+
+    public void MergeKaraokeSections(Guid cueId, int leftSectionIndex)
+    {
+        if (editor is null)
+        {
+            return;
+        }
+
+        editor.MergeKaraokeSections(cueId, leftSectionIndex);
+        AfterMutation(refreshRows: true);
+    }
+
+    public void SetKaraokeOffset(Guid cueId, int sectionIndex, double milliseconds)
+        => ApplyKaraokeOffset(cueId, sectionIndex, milliseconds);
+
+    public void SetKaraokeOffsetFromTimeline(Guid cueId, int sectionIndex, double milliseconds)
+        => ApplyKaraokeOffset(cueId, sectionIndex, milliseconds);
+
+    public void BeginKaraokeTimelineAdjustment()
+    {
+        if (editor is null || karaokeTimelineTransaction)
+        {
+            return;
+        }
+
+        editor.BeginTransaction("가라오케 타이밍 미세 조정");
+        karaokeTimelineTransaction = true;
+    }
+
+    public void PreviewKaraokeTimelineOffset(Guid cueId, int sectionIndex, double milliseconds)
+        => ApplyKaraokeOffset(cueId, sectionIndex, milliseconds);
+
+    public void EndKaraokeTimelineAdjustment()
+    {
+        if (editor is null || !karaokeTimelineTransaction)
+        {
+            return;
+        }
+
+        editor.EndTransaction();
+        karaokeTimelineTransaction = false;
+        NotifyCommandStates();
+    }
+
+    public void RecordKaraokeTabForSelectedCue()
+    {
+        if (editor is null || SelectedCue is not Cue cue)
+        {
+            return;
+        }
+
+        try
+        {
+            KaraokeEditResult result = editor.RecordKaraokeTab(
+                cue.Id,
+                TimeSpan.FromMilliseconds(Math.Max(0, PositionMilliseconds - cue.Start.TotalMilliseconds)));
+            LogKaraokeCorrections(result);
+            AfterMutation();
+        }
+        catch (InvalidOperationException exception)
+        {
+            Status = exception.Message;
+        }
+    }
+
+    public void CancelLastKaraokeTabForSelectedCue()
+    {
+        if (editor is null || SelectedKaraokeCueId is not Guid cueId)
+        {
+            return;
+        }
+
+        try
+        {
+            editor.CancelLastKaraokeTab(cueId);
+            AfterMutation();
+        }
+        catch (InvalidOperationException exception)
+        {
+            Status = exception.Message;
+        }
+    }
+
+    private void AutoSplitSelectedKaraokeCue()
+    {
+        if (editor is null || SelectedKaraokeCueId is not Guid cueId)
+        {
+            return;
+        }
+
+        KaraokeEditResult result = editor.SplitCueIntoKaraokeSections(cueId);
+        LogKaraokeCorrections(result);
+        AfterMutation(refreshRows: true);
+    }
+
+    private void ApplyKaraokeOffset(Guid cueId, int sectionIndex, double milliseconds)
+    {
+        if (editor is null || !double.IsFinite(milliseconds))
+        {
+            return;
+        }
+
+        KaraokeEditResult result = editor.SetKaraokeOffset(
+            cueId,
+            sectionIndex,
+            TimeSpan.FromMilliseconds(Math.Max(0, milliseconds)));
+        LogKaraokeCorrections(result);
+        AfterMutation();
+    }
+
+    private static void LogKaraokeCorrections(KaraokeEditResult result)
+    {
+        foreach (KaraokeOffsetCorrection correction in result.OffsetCorrections)
+        {
+            Serilog.Log.Information(
+                "Karaoke offset auto-corrected for cue {CueId}, section {SectionIndex}: {PreviousOffset} -> {CorrectedOffset}",
+                result.CueId,
+                correction.SectionIndex,
+                correction.PreviousOffset,
+                correction.CorrectedOffset);
+        }
     }
 
     public CanvasMovePreview PreviewCanvasMove(double deltaX, double deltaY, bool altPressed)
@@ -1716,6 +1904,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void NotifySelectionProperties()
     {
+        RefreshKaraokePresentation();
         OnPropertyChanged(nameof(SelectionSummary));
         OnPropertyChanged(nameof(HasMixedSelection));
         OnPropertyChanged(nameof(SelectedText));
@@ -1749,6 +1938,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(ShakeEffectEnabled));
         OnPropertyChanged(nameof(ChromaEffectEnabled));
         OnPropertyChanged(nameof(AnimateEffectEnabled));
+        OnPropertyChanged(nameof(SelectedKaraokeCueId));
+        OnPropertyChanged(nameof(HasKaraokeCue));
+        OnPropertyChanged(nameof(SelectedKaraokeCueDurationMilliseconds));
+        OnPropertyChanged(nameof(SelectedKaraokeTypeOption));
 
         NotifyCommandStates();
     }
@@ -1780,6 +1973,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         BringToFrontCommand.NotifyCanExecuteChanged();
         SendToBackCommand.NotifyCanExecuteChanged();
         ValidateCommand.NotifyCanExecuteChanged();
+        AutoSplitKaraokeCommand.NotifyCanExecuteChanged();
+    }
+
+    private void RefreshKaraokePresentation()
+    {
+        KaraokeSections.Clear();
+        if (SelectedKaraokeCueId is not Guid cueId || project?.Cues[cueId] is not Cue cue)
+        {
+            return;
+        }
+
+        for (int index = 0; index < cue.Sections.Count; index++)
+        {
+            Section section = cue.Sections[index];
+            KaraokeSections.Add(new KaraokeSectionViewModel(
+                this,
+                cue.Id,
+                index,
+                section.Text,
+                section.KaraokeOffset));
+        }
     }
 
     private void NotifyVideoState()

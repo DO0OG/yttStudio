@@ -18,6 +18,9 @@ public static class YttConstants
     // SPEC §5.5 [UPSTREAM]: t=0 is unreliable on Android and must be clamped to 1 ms.
     public const long MinimumStartTimeMilliseconds = 1;
 
+    // SPEC §5.5 [UPSTREAM]: adjacent karaoke sections need strictly increasing offsets.
+    public const long KaraokeOffsetStepMilliseconds = 1;
+
     // SPEC §7.3 [UPSTREAM]: renderer calculations use the upstream 1280×720 reference frame.
     public const int ReferenceWidth = 1280;
 

@@ -44,10 +44,10 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
                 using SKPaint alphaPaint = new() { Color = SKColors.White.WithAlpha((byte)Math.Round(effect.Alpha * 255)) };
                 canvas.SaveLayer(alphaPaint);
             }
-            DrawChroma(canvas, layout, effect);
+            DrawChroma(canvas, layout, time, options, effect);
             DrawBackground(canvas, layout);
-            DrawEdges(canvas, layout);
-            DrawBody(canvas, layout, time, effect);
+            DrawEdges(canvas, layout, time, options);
+            DrawBody(canvas, layout, time, options, effect);
             DrawUnderlines(canvas, layout);
             DrawRuby(canvas, layout);
             canvas.RestoreToCount(saveCount);
@@ -141,59 +141,133 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         canvas.DrawRect(layout.Bounds, resources.Background);
     }
 
-    private void DrawEdges(SKCanvas canvas, CueLayout layout)
+    private void DrawEdges(SKCanvas canvas, CueLayout layout, TimeSpan time, RenderOptions options)
     {
         int saveCount = ApplyTextTransform(canvas, layout);
         foreach (RunLayout run in layout.Lines.SelectMany(line => line.Runs))
         {
             FormatResources resources = GetResources(run.Format, run.FontSize);
-            SKTextBlob blob = GetBlob(run, resources.Font);
+            string text = GetPreviewText(layout.Cue, run, time, options.FrameIndex);
             float offset = run.FontSize * (float)YttConstants.HardShadowOffsetFactor;
-            switch (run.Format.Edge)
+            DrawWithBlob(run, text, resources.Font, blob =>
             {
-                case EdgeType.HardShadow:
-                    canvas.DrawText(blob, run.Origin.X + offset, run.Origin.Y + offset, resources.Edge);
-                    break;
-                case EdgeType.Bevel:
-                    canvas.DrawText(blob, run.Origin.X - 1, run.Origin.Y - 1, resources.BevelLight);
-                    canvas.DrawText(blob, run.Origin.X + 1, run.Origin.Y + 1, resources.BevelDark);
-                    break;
-                case EdgeType.Glow:
-                    canvas.DrawText(blob, run.Origin.X, run.Origin.Y, resources.Edge);
-                    break;
-                case EdgeType.SoftShadow:
-                    canvas.DrawText(blob, run.Origin.X + offset, run.Origin.Y + offset, resources.Edge);
-                    break;
-            }
+                switch (run.Format.Edge)
+                {
+                    case EdgeType.HardShadow:
+                        canvas.DrawText(blob, run.Origin.X + offset, run.Origin.Y + offset, resources.Edge);
+                        break;
+                    case EdgeType.Bevel:
+                        canvas.DrawText(blob, run.Origin.X - 1, run.Origin.Y - 1, resources.BevelLight);
+                        canvas.DrawText(blob, run.Origin.X + 1, run.Origin.Y + 1, resources.BevelDark);
+                        break;
+                    case EdgeType.Glow:
+                        canvas.DrawText(blob, run.Origin.X, run.Origin.Y, resources.Edge);
+                        break;
+                    case EdgeType.SoftShadow:
+                        canvas.DrawText(blob, run.Origin.X + offset, run.Origin.Y + offset, resources.Edge);
+                        break;
+                }
+            });
         }
 
         canvas.RestoreToCount(saveCount);
     }
 
-    private void DrawBody(SKCanvas canvas, CueLayout layout, TimeSpan time, CueEffectState effect)
+    private void DrawBody(
+        SKCanvas canvas,
+        CueLayout layout,
+        TimeSpan time,
+        RenderOptions options,
+        CueEffectState effect)
     {
         int saveCount = ApplyTextTransform(canvas, layout);
-        TimeSpan elapsed = time - layout.Cue.Start;
+        KaraokeType karaokeType = KaraokePreview.GetType(layout.Cue);
         foreach (RunLayout run in layout.Lines.SelectMany(line => line.Runs))
         {
             FormatResources resources = GetResources(run.Format, run.FontSize);
-            SKTextBlob blob = GetBlob(run, resources.Font);
-            bool sung = run.Section.KaraokeOffset is null || elapsed >= run.Section.KaraokeOffset.Value;
+            bool sung = KaraokePreview.IsSung(layout.Cue, run.Section, time);
+            string text = GetPreviewText(layout.Cue, run, time, options.FrameIndex);
+            RgbaColor color = KaraokePreview.ResolveColor(layout.Cue, run.Section, run.Format, time);
             if (sung && effect.Foreground is RgbaColor animated)
             {
-                using SKPaint paint = new() { Color = ToSkColor(animated), IsAntialias = true };
-                canvas.DrawText(blob, run.Origin.X, run.Origin.Y, paint);
+                color = animated;
             }
-            else
+
+            DrawWithBlob(run, text, resources.Font, blob =>
             {
-                canvas.DrawText(blob, run.Origin.X, run.Origin.Y, sung ? resources.Foreground : resources.Secondary);
-            }
+                if (color == run.Format.Foreground)
+                {
+                    canvas.DrawText(blob, run.Origin.X, run.Origin.Y, resources.Foreground);
+                }
+                else if (color == run.Format.SecondaryColor)
+                {
+                    canvas.DrawText(blob, run.Origin.X, run.Origin.Y, resources.Secondary);
+                }
+                else
+                {
+                    using SKPaint paint = new() { Color = ToSkColor(color), IsAntialias = true };
+                    canvas.DrawText(blob, run.Origin.X, run.Origin.Y, paint);
+                }
+            });
         }
+
+        DrawCursor(canvas, layout, time, karaokeType);
 
         canvas.RestoreToCount(saveCount);
     }
 
-    private void DrawChroma(SKCanvas canvas, CueLayout layout, CueEffectState effect)
+    private void DrawCursor(SKCanvas canvas, CueLayout layout, TimeSpan time, KaraokeType karaokeType)
+    {
+        if (karaokeType is not (KaraokeType.Cursor or KaraokeType.LeftCursor) ||
+            KaraokePreview.GetSettings(layout.Cue) is not KaraokeSettings settings)
+        {
+            return;
+        }
+
+        string cursorText = KaraokePreview.GetCursorText(settings);
+        if (cursorText.Length == 0)
+        {
+            return;
+        }
+
+        // The model currently stores one cursor string. The interval still determines the
+        // upstream-compatible frame cadence, even though there are no alternate strings yet.
+        _ = KaraokePreview.GetCursorFrameIndex(time - layout.Cue.Start, settings.CursorInterval);
+        foreach (LineLayout line in layout.Lines)
+        {
+            IReadOnlyList<RunLayout> runs = line.Runs;
+            if (runs.Count == 0)
+            {
+                continue;
+            }
+
+            int activeCount = 0;
+            while (activeCount < runs.Count && KaraokePreview.IsSung(layout.Cue, runs[activeCount].Section, time))
+            {
+                activeCount++;
+            }
+
+            int insertion = karaokeType == KaraokeType.LeftCursor
+                ? Math.Max(0, activeCount - 1)
+                : activeCount;
+            RunLayout styleRun = insertion > 0 ? runs[insertion - 1] : runs[0];
+            FormatResources resources = GetResources(styleRun.Format, styleRun.FontSize);
+            SKTextBlob blob = GetBlob(styleRun.Format, styleRun.FontSize, cursorText, resources.Font);
+            using SKPaint measurePaint = new() { IsAntialias = true };
+            float cursorWidth = resources.Font.MeasureText(cursorText, measurePaint);
+            float boundary = insertion < runs.Count ? runs[insertion].Bounds.Left : runs[^1].Bounds.Right;
+            float x = boundary - (insertion == 0 || karaokeType == KaraokeType.LeftCursor ? cursorWidth : 0);
+            float baseline = insertion < runs.Count ? runs[insertion].Baseline : runs[^1].Baseline;
+            canvas.DrawText(blob, x, baseline, resources.Foreground);
+        }
+    }
+
+    private void DrawChroma(
+        SKCanvas canvas,
+        CueLayout layout,
+        TimeSpan time,
+        RenderOptions options,
+        CueEffectState effect)
     {
         if (effect.Chroma is not ChromaEffect chroma || effect.ChromaAmount <= 0)
         {
@@ -206,15 +280,18 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         foreach (RunLayout run in layout.Lines.SelectMany(line => line.Runs))
         {
             FormatResources resources = GetResources(run.Format, run.FontSize);
-            SKTextBlob blob = GetBlob(run, resources.Font);
-            for (int index = 0; index < colors.Count; index++)
+            string text = GetPreviewText(layout.Cue, run, time, options.FrameIndex);
+            DrawWithBlob(run, text, resources.Font, blob =>
             {
-                float direction = colors.Count == 1 ? 1 : (index - center) / Math.Max(center, 1);
-                using SKPaint paint = new() { Color = ToSkColor(colors[index]), IsAntialias = true };
-                canvas.DrawText(blob,
-                    run.Origin.X + ((float)chroma.OffsetX * effect.ChromaAmount * direction),
-                    run.Origin.Y + ((float)chroma.OffsetY * effect.ChromaAmount * direction), paint);
-            }
+                for (int index = 0; index < colors.Count; index++)
+                {
+                    float direction = colors.Count == 1 ? 1 : (index - center) / Math.Max(center, 1);
+                    using SKPaint paint = new() { Color = ToSkColor(colors[index]), IsAntialias = true };
+                    canvas.DrawText(blob,
+                        run.Origin.X + ((float)chroma.OffsetX * effect.ChromaAmount * direction),
+                        run.Origin.Y + ((float)chroma.OffsetY * effect.ChromaAmount * direction), paint);
+                }
+            });
         }
     }
 
@@ -278,31 +355,50 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         return resources;
     }
 
-    private SKTextBlob GetBlob(RunLayout run, SKFont font)
+    private SKTextBlob GetBlob(ResolvedFormat format, float fontSize, string text, SKFont font)
     {
-        BlobKey key = new(run.Format, run.FontSize, run.Text);
+        BlobKey key = new(format, fontSize, text);
         if (blobCache.TryGetValue(key, out SKTextBlob? blob))
         {
             return blob;
         }
 
-        if (run.Format.Pack && run.Text.Length > 0)
-        {
-            SKPoint[] positions = Enumerable.Range(0, run.Text.Length)
-                .Select(index => new SKPoint(index * run.FontSize, 0))
-                .ToArray();
-            blob = SKTextBlob.CreatePositioned(run.Text, font, positions)
-                ?? throw new InvalidOperationException("Skia could not shape packed text.");
-        }
-        else
-        {
-            blob = SKTextBlob.Create(run.Text, font, SKPoint.Empty)
-                ?? throw new InvalidOperationException("Skia could not shape subtitle text.");
-        }
-
+        blob = CreateBlob(format, fontSize, text, font);
         blobCache.Add(key, blob);
         return blob;
     }
+
+    private static SKTextBlob CreateBlob(ResolvedFormat format, float fontSize, string text, SKFont font)
+    {
+        if (format.Pack && text.Length > 0)
+        {
+            SKPoint[] positions = Enumerable.Range(0, text.Length)
+                .Select(index => new SKPoint(index * fontSize, 0))
+                .ToArray();
+            return SKTextBlob.CreatePositioned(text, font, positions)
+                ?? throw new InvalidOperationException("Skia could not shape packed text.");
+        }
+
+        return SKTextBlob.Create(text, font, SKPoint.Empty)
+            ?? throw new InvalidOperationException("Skia could not shape subtitle text.");
+    }
+
+    private void DrawWithBlob(RunLayout run, string text, SKFont font, Action<SKTextBlob> draw)
+    {
+        if (text == run.Text)
+        {
+            draw(GetBlob(run.Format, run.FontSize, text, font));
+            return;
+        }
+
+        using SKTextBlob transient = CreateBlob(run.Format, run.FontSize, text, font);
+        draw(transient);
+    }
+
+    private static string GetPreviewText(Cue cue, RunLayout run, TimeSpan time, long frameIndex)
+        => KaraokePreview.GetType(cue) == KaraokeType.Glitch && !KaraokePreview.IsSung(cue, run.Section, time)
+            ? KaraokePreview.GetGlitchedText(cue, run.Text, frameIndex)
+            : run.Text;
 
     private static SKColor ToSkColor(RgbaColor color)
     {

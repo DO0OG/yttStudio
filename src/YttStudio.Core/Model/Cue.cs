@@ -34,6 +34,12 @@ public sealed class Cue
     internal void AddSection(Section section) => sections.Add(section);
     internal void InsertSection(int index, Section section) => sections.Insert(index, section);
     internal void RemoveSectionAt(int index) => sections.RemoveAt(index);
+    internal void ReplaceSections(IEnumerable<Section> replacements)
+    {
+        ArgumentNullException.ThrowIfNull(replacements);
+        sections.Clear();
+        sections.AddRange(replacements);
+    }
     internal void AddEffect(CueEffect effect)
     {
         ArgumentNullException.ThrowIfNull(effect);
