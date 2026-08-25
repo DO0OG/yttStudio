@@ -1,0 +1,24 @@
+# .NET
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+TestResults/
+*.trx
+*.coverage
+*.received.*
+BenchmarkDotNet.Artifacts/
+
+# OMC / agent operational state
+.omc/
+!.omc/skills/
+
+# OS
+Thumbs.db
+.DS_Store
