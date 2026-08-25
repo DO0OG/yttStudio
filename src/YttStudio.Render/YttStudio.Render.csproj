@@ -1,0 +1,13 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YttStudio.Core\YttStudio.Core.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup />
+
+</Project>

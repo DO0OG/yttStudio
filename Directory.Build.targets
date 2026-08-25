@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'YTSubConverter.Shared'">
+    <!-- The pinned submodule is read-only; suppress only its known C# 14 diagnostics. -->
+    <NoWarn>$(NoWarn);CS0642;CS8509;CS8524</NoWarn>
+  </PropertyGroup>
+</Project>
