@@ -38,4 +38,4 @@ public interface IVideoSource : IAsyncDisposable
 }
 
 /// <summary>Contains immutable metadata for a loaded video.</summary>
-public sealed record VideoInfo(int Width, int Height, TimeSpan Duration);
+public sealed record VideoInfo(int Width, int Height, TimeSpan Duration, double NominalFps);
