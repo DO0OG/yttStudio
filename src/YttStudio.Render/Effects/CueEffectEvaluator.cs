@@ -3,7 +3,7 @@ using YttStudio.Core;
 
 namespace YttStudio.Render;
 
-/// <summary>Resolved, deterministic visual state for one cue and frame.</summary>
+/// <summary>큐와 프레임 하나에 대한 해석된 결정적 시각 상태다.</summary>
 public sealed record CueEffectState(
     SKPoint Translation,
     float Alpha,
@@ -13,7 +13,7 @@ public sealed record CueEffectState(
     float ChromaAmount,
     ChromaEffect? Chroma);
 
-/// <summary>Evaluates M3 cue effects without retaining frame-to-frame random state.</summary>
+/// <summary>프레임 간 난수 상태를 남기지 않고 큐 효과를 평가한다.</summary>
 public static class CueEffectEvaluator
 {
     public static CueEffectState Evaluate(Cue cue, TimeSpan time, long frameIndex, SKPoint baseAnchor)
@@ -67,7 +67,7 @@ public static class CueEffectEvaluator
                     }
                     break;
                 default:
-                    // Inactive or non-visual effects contribute nothing to this frame.
+                    // 비활성이거나 시각 효과가 아닌 항목은 이 프레임에 기여하지 않는다.
                     break;
             }
         }

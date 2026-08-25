@@ -1,11 +1,11 @@
 namespace YttStudio.Core;
 
-/// <summary>Base type for an effect applied to a complete cue.</summary>
+/// <summary>큐 전체에 적용되는 효과의 기반 타입이다.</summary>
 public abstract class CueEffect
 {
 }
 
-/// <summary>Identifies an effect exposed by the M3 property panel.</summary>
+/// <summary>속성 패널이 노출하는 효과를 식별한다.</summary>
 public enum CueEffectKind
 {
     Move,
@@ -15,7 +15,7 @@ public enum CueEffectKind
     Animate,
 }
 
-/// <summary>Interpolates a cue position between two ASS coordinates.</summary>
+/// <summary>두 ASS 좌표 사이에서 큐 위치를 보간한다.</summary>
 public sealed class MoveEffect : CueEffect
 {
     public MoveEffect()
@@ -41,7 +41,7 @@ public sealed class MoveEffect : CueEffect
     public TimeSpan? EndTime { get; internal set; }
 }
 
-/// <summary>Fades a cue in and out, optionally using the four-point ASS fade form.</summary>
+/// <summary>큐를 서서히 나타내고 사라지게 한다. 네 점 ASS 페이드 형식도 쓸 수 있다.</summary>
 public sealed class FadeEffect : CueEffect
 {
     public FadeEffect()
@@ -65,7 +65,7 @@ public sealed class FadeEffect : CueEffect
     public TimeSpan? T4 { get; internal set; }
 }
 
-/// <summary>Applies deterministic bounded position jitter to a cue.</summary>
+/// <summary>큐에 결정적이고 범위가 제한된 위치 흔들림을 적용한다.</summary>
 public sealed class ShakeEffect : CueEffect
 {
     public ShakeEffect()
@@ -89,7 +89,7 @@ public sealed class ShakeEffect : CueEffect
     public TimeSpan? EndTime { get; internal set; }
 }
 
-/// <summary>Creates offset coloured copies of a cue while it enters or exits.</summary>
+/// <summary>큐가 진입하거나 이탈하는 동안 색을 어긋나게 한 복제본을 만든다.</summary>
 public sealed class ChromaEffect : CueEffect
 {
     public ChromaEffect()
@@ -117,7 +117,7 @@ public sealed class ChromaEffect : CueEffect
     public IReadOnlyList<RgbaColor>? CustomColors { get; internal set; }
 }
 
-/// <summary>Animates section colour, edge colour, or size using the ASS transform tag.</summary>
+/// <summary>ASS 변환 태그로 섹션 색과 엣지 색과 크기를 애니메이션한다.</summary>
 public sealed class AnimateEffect : CueEffect
 {
     public AnimateEffect()
@@ -140,7 +140,7 @@ public sealed class AnimateEffect : CueEffect
     public int? ToSizePercent { get; internal set; }
 }
 
-/// <summary>Identifies the karaoke progression used for a cue.</summary>
+/// <summary>큐에 쓰이는 가라오케 진행 방식을 식별한다.</summary>
 public enum KaraokeType
 {
     None,
@@ -151,7 +151,7 @@ public enum KaraokeType
     LeftCursor,
 }
 
-/// <summary>Stores the karaoke effect mode and optional cursor settings.</summary>
+/// <summary>가라오케 효과 모드와 선택적 커서 설정을 담는다.</summary>
 public sealed class KaraokeSettings : CueEffect
 {
     public KaraokeSettings()

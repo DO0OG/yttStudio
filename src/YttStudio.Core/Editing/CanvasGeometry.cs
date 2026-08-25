@@ -1,9 +1,9 @@
 namespace YttStudio.Core.Editing;
 
-/// <summary>Represents a point in editor canvas pixels.</summary>
+/// <summary>편집기 캔버스 픽셀 좌표의 한 점이다.</summary>
 public readonly record struct CanvasPoint(double X, double Y);
 
-/// <summary>Represents a rectangle in editor canvas pixels.</summary>
+/// <summary>편집기 캔버스 픽셀 좌표의 사각형이다.</summary>
 public readonly record struct CanvasRect(double X, double Y, double Width, double Height)
 {
     public double Left => X;
@@ -12,13 +12,13 @@ public readonly record struct CanvasRect(double X, double Y, double Width, doubl
     public double Bottom => Y + Height;
 }
 
-/// <summary>Identifies a highlighted snapping guide.</summary>
+/// <summary>강조된 스냅 가이드를 식별한다.</summary>
 public sealed record SnapGuide(bool Vertical, double Position, string Label);
 
-/// <summary>Contains a snapped point and the guides that caused the adjustment.</summary>
+/// <summary>스냅된 지점과 그 조정을 일으킨 가이드를 담는다.</summary>
 public sealed record SnapResult(CanvasPoint Point, IReadOnlyList<SnapGuide> Guides);
 
-/// <summary>Implements canvas/YTT conversion, anchor preservation, and SPEC §9.3 snapping.</summary>
+/// <summary>캔버스와 YTT 좌표 변환, 앵커 보존, 스냅을 구현한다.</summary>
 public static class CanvasGeometry
 {
     public static CanvasPoint ToCanvasPoint(double positionX, double positionY, double width, double height)

@@ -1,6 +1,6 @@
 namespace YttStudio.Core;
 
-/// <summary>Represents a subtitle project independent of its source file format.</summary>
+/// <summary>원본 파일 형식과 무관한 자막 프로젝트다.</summary>
 public sealed class SubtitleProject
 {
     public SubtitleProject()
@@ -16,12 +16,12 @@ public sealed class SubtitleProject
     public CueCollection Cues { get; }
     public ProjectSettings Settings { get; internal set; }
 
-    /// <summary>Gets the style used for a cue or section, falling back to Default.</summary>
+    /// <summary>큐나 섹션이 쓰는 스타일을 가져온다. 없으면 Default 로 되돌아간다.</summary>
     public StylePreset GetStyle(Guid? styleId)
         => styleId is Guid id && Styles[id] is StylePreset style ? style : Styles.Default;
 }
 
-/// <summary>Contains optional metadata for an associated video.</summary>
+/// <summary>연결된 영상의 선택적 메타데이터를 담는다.</summary>
 public sealed class VideoInfo
 {
     public VideoInfo(int width, int height, TimeSpan duration, double nominalFps)
@@ -38,14 +38,14 @@ public sealed class VideoInfo
     public double NominalFps { get; }
 }
 
-/// <summary>Contains editor settings that travel with an in-memory project.</summary>
+/// <summary>메모리상의 프로젝트와 함께 이동하는 편집기 설정을 담는다.</summary>
 public sealed class ProjectSettings
 {
     public RgbaColor PreviewBackground { get; internal set; } = new(32, 32, 32, byte.MaxValue);
     public bool UseCheckerboard { get; internal set; }
 }
 
-/// <summary>Defines a named reusable subtitle style.</summary>
+/// <summary>이름이 있는 재사용 가능한 자막 스타일을 정의한다.</summary>
 public sealed class StylePreset
 {
     public StylePreset(Guid id)
@@ -61,7 +61,7 @@ public sealed class StylePreset
     public IReadOnlyList<EdgeType> ExtraEdges { get; internal set; } = [];
 }
 
-/// <summary>Stores style presets by stable identifier.</summary>
+/// <summary>스타일 프리셋을 안정적인 식별자로 저장한다.</summary>
 public sealed class StylePresetCollection : IReadOnlyCollection<StylePreset>
 {
     private readonly Dictionary<Guid, StylePreset> byId = [];

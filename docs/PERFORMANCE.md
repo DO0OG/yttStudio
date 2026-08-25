@@ -1,6 +1,6 @@
 # PERFORMANCE.md
 
-SPEC §8.6 성능 spike 결과. **예산은 분리해서 측정한다** — 자막 오버레이 렌더(§7.7 ≤ 8ms)와
+성능 spike 결과. **예산은 분리해서 측정한다** — 자막 오버레이 렌더(≤ 8ms)와
 영상 디코드·프레젠테이션은 별개다.
 
 - **측정일:** 2026-08-25
@@ -21,7 +21,7 @@ SPEC §8.6 성능 spike 결과. **예산은 분리해서 측정한다** — 자�
 
 세 해상도 모두 **목표 프레임레이트를 유지**했다.
 
-## 자막 오버레이 (§7.7 예산 ≤ 8ms)
+## 자막 오버레이 (예산 ≤ 8ms)
 
 동시 표시 큐 10개 기준 p95:
 
@@ -49,13 +49,13 @@ GPU Render API의 readback 비용:
 - 세 목표 해상도 모두 SW로 실시간 재생을 달성했다
 - **SW 복사 비용이 GPU readback보다 모든 해상도에서 낮다**
 - GPU는 CPU 사용량이 낮지만 readback·메모리·크로스플랫폼 GL context 관리 비용이 더 크다
-- §8.1 airspace 제약 때문에 어차피 픽셀을 CPU로 가져와 `WriteableBitmap`에 blit해야 한다.
+- airspace 제약 때문에 어차피 픽셀을 CPU로 가져와 `WriteableBitmap`에 blit해야 한다.
   GPU 경로의 이점이 readback에서 상쇄된다
 
-> SPEC §8.2는 SW를 "fallback/debug 전용"으로 기술하고 GPU 우선 검토를 권고했으나,
-> **M2 benchmark 결과로 SW를 기본으로 확정**했다. SPEC §8.2의 해당 문장은
+> 초기 설계는 SW 렌더러를 "fallback/debug 전용"으로 보고 GPU 우선 검토를 권고했으나,
+> **M2 benchmark 결과로 SW를 기본으로 확정**했다. 원래 설계도
 > "M2 benchmark 후 결정한다"고 명시하고 있으므로 절차 위반이 아니다.
-> §8.2 문구 정정을 제안한다 (SPEC 정정 절차 §0.1).
+> 이 결정을 근거와 함께 여기에 기록한다.
 
 ## 기타 확인
 

@@ -1,25 +1,25 @@
 namespace YttStudio.App.Preview;
 
 /// <summary>
-/// Describes the outcome of preparing or reverting an external-player preview.
+/// 외부 플레이어 프리뷰를 준비하거나 되돌린 결과를 기술한다.
 /// </summary>
 public enum ExternalPreviewStatus
 {
-    /// <summary>The script and subtitle file are available for external setup.</summary>
+    /// <summary>외부 설정에 쓸 스크립트와 자막 파일이 준비되었다.</summary>
     Ready,
 
-    /// <summary>The optional preview cannot be used in the current environment.</summary>
+    /// <summary>현재 환경에서는 선택적 프리뷰를 쓸 수 없다.</summary>
     Unavailable,
 
-    /// <summary>The request was invalid or a required local file was not found.</summary>
+    /// <summary>요청이 잘못되었거나 필요한 로컬 파일을 찾지 못했다.</summary>
     Failed,
 
-    /// <summary>No local preview configuration is retained by the adapter.</summary>
+    /// <summary>어댑터는 로컬 프리뷰 설정을 보관하지 않는다.</summary>
     Reverted,
 }
 
 /// <summary>
-/// A side-effect-free result from an external preview operation.
+/// 외부 프리뷰 작업의 부작용 없는 결과다.
 /// </summary>
 public sealed record ExternalPreviewResult(
     ExternalPreviewStatus Status,
@@ -27,15 +27,15 @@ public sealed record ExternalPreviewResult(
     string? ScriptPath = null,
     string? SubtitlePath = null)
 {
-    /// <summary>Gets whether setup completed and the optional preview is usable.</summary>
+    /// <summary>설정이 끝나 선택적 프리뷰를 쓸 수 있는지 가져온다.</summary>
     public bool IsSuccess => Status == ExternalPreviewStatus.Ready;
 
-    /// <summary>Gets whether the result represents a usable preview setup.</summary>
+    /// <summary>결과가 사용 가능한 프리뷰 설정을 뜻하는지 가져온다.</summary>
     public bool IsAvailable => Status == ExternalPreviewStatus.Ready;
 }
 
 /// <summary>
-/// Human-readable setup and recovery guidance for an external preview tool.
+/// 외부 프리뷰 도구의 설정과 복구 안내를 사람이 읽을 수 있는 형태로 담는다.
 /// </summary>
 public sealed record ExternalPreviewGuidance(
     string Setup,
@@ -44,26 +44,26 @@ public sealed record ExternalPreviewGuidance(
     string FiddlerAlternative);
 
 /// <summary>
-/// Optional integration boundary for previewing the edited subtitles in an external player.
+/// 편집한 자막을 외부 플레이어에서 확인하기 위한 선택적 통합 경계다.
 ///
-/// Implementations must not mutate editing state, export state, browser proxy settings, or
-/// certificate stores. Preview is deliberately independent from editing and export.
+/// 구현은 편집 상태나 내보내기 상태나 브라우저 프록시 설정이나
+/// 인증서 저장소를 바꾸지 않는다. 프리뷰는 편집과 내보내기에서 의도적으로 독립적이다.
 /// </summary>
 public interface IExternalPlayerPreview
 {
-    /// <summary>Gets the setup and recovery guidance shown to the user.</summary>
+    /// <summary>사용자에게 보여줄 설정과 복구 안내를 가져온다.</summary>
     ExternalPreviewGuidance Guidance { get; }
 
     /// <summary>
-    /// Validates the local inputs and locates the optional preview script.
-    /// This method does not start mitmproxy or alter proxy/certificate settings.
+    /// 로컬 입력을 검증하고 선택적 프리뷰 스크립트를 찾는다.
+    /// 이 메서드는 mitmproxy 를 실행하거나 프록시와 인증서 설정을 바꾸지 않는다.
     /// </summary>
-    /// <param name="subtitleFilePath">Path to the subtitle file to serve.</param>
+    /// <param name="subtitleFilePath">제공할 자막 파일 경로다.</param>
     ExternalPreviewResult Prepare(string subtitleFilePath);
 
     /// <summary>
-    /// Clears adapter-local state and returns instructions for manually reverting browser setup.
-    /// No browser, proxy, or certificate state is changed by this call.
+    /// 어댑터 로컬 상태를 지우고 브라우저 설정을 수동으로 되돌리는 방법을 알려준다.
+    /// 이 호출은 브라우저나 프록시나 인증서 상태를 바꾸지 않는다.
     /// </summary>
     ExternalPreviewResult Revert();
 }

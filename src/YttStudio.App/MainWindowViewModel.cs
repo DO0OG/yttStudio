@@ -9,6 +9,7 @@ using SkiaSharp;
 using YttStudio.Core;
 using YttStudio.Core.Editing;
 using YttStudio.Core.Format;
+using YttStudio.Core.Project;
 using YttStudio.Core.Validation;
 using YttStudio.Render;
 using YttStudio.Video;
@@ -27,6 +28,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private Bitmap? videoFrameImage;
     private Bitmap? subtitleImage;
     private string? sourcePath;
+    private string? projectPath;
+    private bool unsavedChanges;
+    private AutosaveService? autosave;
+    private string searchPattern = string.Empty;
+    private string replacementText = string.Empty;
+    private bool useRegex;
+    private bool matchCase;
+    private double shiftMilliseconds;
+    private double snapThreshold = YttConstants.DefaultSnapThresholdPixels;
+    private bool showSafeArea;
+    private bool showAnchors;
     private string status = "자막 또는 영상을 열어 주세요.";
     private string videoStatus = "libmpv 탐색 중";
     private double maximumMilliseconds = 1;
@@ -47,12 +59,34 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private double inlineEditorTop;
     private double inlineEditorWidth = 180;
     private bool disposed;
+    private bool karaokeTimelineTransaction;
 
     public MainWindowViewModel(IFileDialogService dialogs)
     {
         this.dialogs = dialogs;
+        // 모든 표시 문자열은 로컬라이저를 거친다. 그래야 언어를
+        // 전환하면 화면을 다시 만들지 않고도 전체 바인딩을 다시 읽는다.
+        Loc.LanguageChanged += OnLanguageChanged;
         renderer = new SkiaSubtitleRenderer(new BundledFontResolver(
             message => Serilog.Log.Information("{FontResolution}", message)));
+        autosave = new AutosaveService(
+            () => project,
+            () => unsavedChanges,
+            message => Serilog.Log.Warning("{Autosave}", message));
+        autosave.Start();
+        ExitCommand = new DelegateCommand(RequestShutdown);
+        AboutCommand = new AsyncCommand(ShowAboutAsync);
+        OpenProjectCommand = new AsyncCommand(OpenProjectAsync);
+        SaveProjectCommand = new AsyncCommand(SaveProjectAsync, () => project is not null);
+        ReplaceAllCommand = new DelegateCommand(
+            ReplaceAll,
+            () => editor is not null && !string.IsNullOrEmpty(searchPattern));
+        ShiftSelectedCommand = new DelegateCommand(
+            () => ShiftTimes(selectedOnly: true),
+            () => editor is not null && selectedCueIds.Count > 0);
+        ShiftAllCommand = new DelegateCommand(
+            () => ShiftTimes(selectedOnly: false),
+            () => editor is not null);
         OpenSubtitleCommand = new AsyncCommand(OpenSubtitleAsync);
         OpenVideoCommand = new AsyncCommand(OpenVideoAsync, () => videoSource is not null);
         SaveCommand = new AsyncCommand(SaveAsync, () => project is not null);
@@ -92,12 +126,270 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ValidateCommand = new DelegateCommand(RunValidation, () => project is not null);
         ApplyValidationFixCommand = new DelegateCommand(ApplySelectedValidationFix);
         GoToValidationIssueCommand = new DelegateCommand(GoToSelectedValidationIssue);
+        AutoSplitKaraokeCommand = new DelegateCommand(
+            AutoSplitSelectedKaraokeCue,
+            () => HasKaraokeCue);
         InitializeVideoSource();
         RenderFallbackFrame();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>
+    /// 모든 뷰 요소가 <c>{Binding Loc[Key]}</c> 로 바인딩하는 문자열 테이블을 가져온다.
+    /// 한국어와 영어와 일본어를 제공한다.
+    /// </summary>
+    public Localizer Loc { get; } = new();
+
+    /// <summary>검색과 치환에 쓰는 패턴을 가져온다.</summary>
+    public string SearchPattern
+    {
+        get => searchPattern;
+        set
+        {
+            if (searchPattern == value)
+            {
+                return;
+            }
+
+            searchPattern = value;
+            OnPropertyChanged();
+            ReplaceAllCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    /// <summary><see cref="ReplaceAllCommand"/> 가 적용할 치환 텍스트를 가져온다.</summary>
+    public string ReplacementText
+    {
+        get => replacementText;
+        set
+        {
+            if (replacementText == value)
+            {
+                return;
+            }
+
+            replacementText = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary><see cref="SearchPattern"/> 을 정규식으로 다루는지 가져온다.</summary>
+    public bool UseRegex
+    {
+        get => useRegex;
+        set
+        {
+            if (useRegex == value)
+            {
+                return;
+            }
+
+            useRegex = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>검색이 대소문자를 구분하는지 가져온다.</summary>
+    public bool MatchCase
+    {
+        get => matchCase;
+        set
+        {
+            if (matchCase == value)
+            {
+                return;
+            }
+
+            matchCase = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>일괄 시간 이동량을 밀리초로 가져온다. 음수는 큐를 앞으로 당긴다.</summary>
+    public double ShiftMilliseconds
+    {
+        get => shiftMilliseconds;
+        set
+        {
+            if (Math.Abs(shiftMilliseconds - value) < double.Epsilon)
+            {
+                return;
+            }
+
+            shiftMilliseconds = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>선택 가능한 루비 역할을 가져온다.</summary>
+    public IReadOnlyList<RubyRole> RubyRoles { get; } =
+        [RubyRole.None, RubyRole.Base, RubyRole.Above, RubyRole.Below];
+
+    /// <summary>선택한 큐 첫 섹션의 루비 역할을 가져오거나 설정한다.</summary>
+    public RubyRole? SelectedRubyRole
+    {
+        get => FirstSelectedSection()?.Ruby;
+        set
+        {
+            if (editor is null || value is null)
+            {
+                return;
+            }
+
+            Cue? cue = SingleSelectedCue();
+            if (cue is null)
+            {
+                return;
+            }
+
+            editor.SetRuby(cue.Id, 0, value.Value, cue.Sections[0].RubyText);
+            AfterMutation(refreshRows: true);
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>선택한 큐 첫 섹션의 루비 텍스트를 가져오거나 설정한다.</summary>
+    public string? SelectedRubyText
+    {
+        get => FirstSelectedSection()?.RubyText;
+        set
+        {
+            if (editor is null)
+            {
+                return;
+            }
+
+            Cue? cue = SingleSelectedCue();
+            if (cue is null)
+            {
+                return;
+            }
+
+            editor.SetRuby(cue.Id, 0, cue.Sections[0].Ruby, value);
+            AfterMutation(refreshRows: true);
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// 드래그 스냅 임계값을 픽셀로 가져오거나 설정한다. 기본값은 8 이다.
+    /// </summary>
+    public double SnapThreshold
+    {
+        get => snapThreshold;
+        set
+        {
+            double clamped = Math.Clamp(value, 0, 64);
+            if (Math.Abs(snapThreshold - clamped) < double.Epsilon)
+            {
+                return;
+            }
+
+            snapThreshold = clamped;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>스타일 식별자를 표시용 이름으로 바꾼다. 알 수 없으면 기본 스타일 이름을 쓴다.</summary>
+    internal string StyleNameOf(Guid? styleId)
+    {
+        if (project is null)
+        {
+            return "Default";
+        }
+
+        StylePreset style = project.GetStyle(styleId);
+        return string.IsNullOrWhiteSpace(style.Name) ? "Default" : style.Name;
+    }
+
+    /// <summary>미리보기에 세이프 에어리어 안내선을 표시할지 결정한다.</summary>
+    public bool ShowSafeArea
+    {
+        get => showSafeArea;
+        set
+        {
+            if (showSafeArea == value)
+            {
+                return;
+            }
+
+            showSafeArea = value;
+            OnPropertyChanged();
+            RenderSubtitlePreview();
+        }
+    }
+
+    /// <summary>미리보기에 앵커 마커를 표시할지 결정한다.</summary>
+    public bool ShowAnchors
+    {
+        get => showAnchors;
+        set
+        {
+            if (showAnchors == value)
+            {
+                return;
+            }
+
+            showAnchors = value;
+            OnPropertyChanged();
+            RenderSubtitlePreview();
+        }
+    }
+
+    private static void RequestShutdown()
+    {
+        if (Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.Shutdown();
+        }
+    }
+
+    private async Task ShowAboutAsync()
+    {
+        await dialogs.ConfirmAsync(Loc["MenuAbout"], Loc["AboutBody"], Loc["Close"]);
+    }
+
+    private Cue? SingleSelectedCue()
+    {
+        if (project is null || selectedCueIds.Count != 1)
+        {
+            return null;
+        }
+
+        Cue? cue = project.Cues[selectedCueIds.First()];
+        return cue is null || cue.Sections.Count == 0 ? null : cue;
+    }
+
+    private Section? FirstSelectedSection() => SingleSelectedCue()?.Sections[0];
+
+    /// <summary>선택 가능한 언어를 표시 순서대로 가져온다.</summary>
+    public IReadOnlyList<AppLanguage> Languages { get; } =
+        [AppLanguage.Korean, AppLanguage.English, AppLanguage.Japanese];
+
+    /// <summary>활성 언어를 가져오거나 설정한다.</summary>
+    public AppLanguage Language
+    {
+        get => Loc.Language;
+        set => Loc.Language = value;
+    }
+
+    private void OnLanguageChanged()
+    {
+        // 인덱서 바인딩은 인덱서 자체가 무효화될 때만 갱신된다.
+        OnPropertyChanged("Item[]");
+        OnPropertyChanged(nameof(Loc));
+        OnPropertyChanged(nameof(Language));
+    }
+
+    public DelegateCommand ExitCommand { get; }
+    public AsyncCommand AboutCommand { get; }
+    public AsyncCommand OpenProjectCommand { get; }
+    public AsyncCommand SaveProjectCommand { get; }
+    public DelegateCommand ReplaceAllCommand { get; }
+    public DelegateCommand ShiftSelectedCommand { get; }
+    public DelegateCommand ShiftAllCommand { get; }
     public AsyncCommand OpenSubtitleCommand { get; }
     public AsyncCommand OpenVideoCommand { get; }
     public AsyncCommand SaveCommand { get; }
@@ -128,9 +420,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public DelegateCommand ValidateCommand { get; }
     public DelegateCommand ApplyValidationFixCommand { get; }
     public DelegateCommand GoToValidationIssueCommand { get; }
+    public DelegateCommand AutoSplitKaraokeCommand { get; }
     public ObservableCollection<CueRowViewModel> CueRows { get; } = [];
     public ObservableCollection<StyleOption> Styles { get; } = [];
     public ObservableCollection<ValidationIssue> ValidationIssues { get; } = [];
+    public ObservableCollection<KaraokeSectionViewModel> KaraokeSections { get; } = [];
     public IReadOnlyList<CanvasCueItem> CanvasItems { get; private set; } = [];
     public IReadOnlyCollection<Guid> SelectedCueIds => selectedCueIds;
     public Array AnchorOptions { get; } = Enum.GetValues<AnchorPoint>();
@@ -140,10 +434,45 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public Array FontOptions { get; } = Enum.GetValues<YtFont>();
     public Array EdgeOptions { get; } = Enum.GetValues<EdgeType>();
     public double[] SpeedOptions { get; } = [0.5, 1.0, 1.5, 2.0];
+    public IReadOnlyList<KaraokeTypeOption> KaraokeTypeOptions { get; } =
+    [
+        new(KaraokeType.Simple, "Simple"),
+        new(KaraokeType.Fade, "Fade"),
+        new(KaraokeType.Glitch, "Glitch"),
+        new(KaraokeType.Cursor, "Cursor"),
+        new(KaraokeType.LeftCursor, "LeftCursor"),
+    ];
     public bool HasProject => project is not null;
     public bool HasVideo => videoLoaded;
     public bool IsPlaying => videoSource?.IsPlaying == true;
     public string PlayPauseLabel => IsPlaying ? "일시정지" : "재생";
+
+    public Guid? SelectedKaraokeCueId => selectedCueIds.Count == 1 ? lastSelectedCueId : null;
+
+    public bool HasKaraokeCue => SelectedKaraokeCueId.HasValue && editor is not null;
+
+    public double SelectedKaraokeCueDurationMilliseconds
+        => SelectedCue is Cue cue ? Math.Max(1, (cue.End - cue.Start).TotalMilliseconds) : 1;
+
+    public KaraokeTypeOption? SelectedKaraokeTypeOption
+    {
+        get
+        {
+            KaraokeType type = SelectedCue?.Effects.OfType<KaraokeSettings>().LastOrDefault()?.Type
+                ?? KaraokeType.Simple;
+            return KaraokeTypeOptions.FirstOrDefault(option => option.Value == type);
+        }
+        set
+        {
+            if (value is null || editor is null || SelectedKaraokeCueId is not Guid cueId)
+            {
+                return;
+            }
+
+            editor.SetKaraokeType(cueId, value.Value);
+            AfterMutation();
+        }
+    }
 
     public ValidationIssue? SelectedValidationIssue
     {
@@ -293,7 +622,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         set => SelectedStyleId = value?.Id ?? Guid.Empty;
     }
 
-    /// <summary>Style assigned to every selected cue, or null when the selection is mixed.</summary>
+    /// <summary>선택한 모든 큐에 적용된 스타일이다. 선택이 섞여 있으면 null 이다.</summary>
     public StyleOption? SelectedCueStyleOption
     {
         get
@@ -921,6 +1250,153 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         NotifySelectionProperties();
     }
 
+    public int KaraokeSectionCount(Guid cueId)
+        => project?.Cues[cueId]?.Sections.Count ?? 0;
+
+    public void SplitKaraokeSection(Guid cueId, int sectionIndex, int textOffset)
+    {
+        if (editor is null)
+        {
+            return;
+        }
+
+        editor.SplitKaraokeSection(cueId, sectionIndex, textOffset);
+        AfterMutation(refreshRows: true);
+    }
+
+    public void RemoveKaraokeSection(Guid cueId, int sectionIndex)
+    {
+        int count = KaraokeSectionCount(cueId);
+        if (count <= 1)
+        {
+            return;
+        }
+
+        MergeKaraokeSections(cueId, sectionIndex > 0 ? sectionIndex - 1 : 0);
+    }
+
+    public void MergeKaraokeSections(Guid cueId, int leftSectionIndex)
+    {
+        if (editor is null)
+        {
+            return;
+        }
+
+        editor.MergeKaraokeSections(cueId, leftSectionIndex);
+        AfterMutation(refreshRows: true);
+    }
+
+    public void SetKaraokeOffset(Guid cueId, int sectionIndex, double milliseconds)
+        => ApplyKaraokeOffset(cueId, sectionIndex, milliseconds);
+
+    public void SetKaraokeOffsetFromTimeline(Guid cueId, int sectionIndex, double milliseconds)
+        => ApplyKaraokeOffset(cueId, sectionIndex, milliseconds);
+
+    public void BeginKaraokeTimelineAdjustment()
+    {
+        if (editor is null || karaokeTimelineTransaction)
+        {
+            return;
+        }
+
+        editor.BeginTransaction("가라오케 타이밍 미세 조정");
+        karaokeTimelineTransaction = true;
+    }
+
+    public void PreviewKaraokeTimelineOffset(Guid cueId, int sectionIndex, double milliseconds)
+        => ApplyKaraokeOffset(cueId, sectionIndex, milliseconds);
+
+    public void EndKaraokeTimelineAdjustment()
+    {
+        if (editor is null || !karaokeTimelineTransaction)
+        {
+            return;
+        }
+
+        editor.EndTransaction();
+        karaokeTimelineTransaction = false;
+        NotifyCommandStates();
+    }
+
+    public void RecordKaraokeTabForSelectedCue()
+    {
+        if (editor is null || SelectedCue is not Cue cue)
+        {
+            return;
+        }
+
+        try
+        {
+            KaraokeEditResult result = editor.RecordKaraokeTab(
+                cue.Id,
+                TimeSpan.FromMilliseconds(Math.Max(0, PositionMilliseconds - cue.Start.TotalMilliseconds)));
+            LogKaraokeCorrections(result);
+            AfterMutation();
+        }
+        catch (InvalidOperationException exception)
+        {
+            Status = exception.Message;
+        }
+    }
+
+    public void CancelLastKaraokeTabForSelectedCue()
+    {
+        if (editor is null || SelectedKaraokeCueId is not Guid cueId)
+        {
+            return;
+        }
+
+        try
+        {
+            editor.CancelLastKaraokeTab(cueId);
+            AfterMutation();
+        }
+        catch (InvalidOperationException exception)
+        {
+            Status = exception.Message;
+        }
+    }
+
+    private void AutoSplitSelectedKaraokeCue()
+    {
+        if (editor is null || SelectedKaraokeCueId is not Guid cueId)
+        {
+            return;
+        }
+
+        KaraokeEditResult result = editor.SplitCueIntoKaraokeSections(cueId);
+        LogKaraokeCorrections(result);
+        AfterMutation(refreshRows: true);
+    }
+
+    private void ApplyKaraokeOffset(Guid cueId, int sectionIndex, double milliseconds)
+    {
+        if (editor is null || !double.IsFinite(milliseconds))
+        {
+            return;
+        }
+
+        KaraokeEditResult result = editor.SetKaraokeOffset(
+            cueId,
+            sectionIndex,
+            TimeSpan.FromMilliseconds(Math.Max(0, milliseconds)));
+        LogKaraokeCorrections(result);
+        AfterMutation();
+    }
+
+    private static void LogKaraokeCorrections(KaraokeEditResult result)
+    {
+        foreach (KaraokeOffsetCorrection correction in result.OffsetCorrections)
+        {
+            Serilog.Log.Information(
+                "Karaoke offset auto-corrected for cue {CueId}, section {SectionIndex}: {PreviousOffset} -> {CorrectedOffset}",
+                result.CueId,
+                correction.SectionIndex,
+                correction.PreviousOffset,
+                correction.CorrectedOffset);
+        }
+    }
+
     public CanvasMovePreview PreviewCanvasMove(double deltaX, double deltaY, bool altPressed)
     {
         CanvasCueItem? primary = CanvasItems.FirstOrDefault(item => item.Id == lastSelectedCueId);
@@ -1032,7 +1508,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                     editor.SetAnchor(id, AnchorPoint.BottomCenter, 50, 90);
                     break;
                 default:
-                    // Only the four shortcuts in SPEC §9.4 (3) reach this method.
+                    // 화면 기준 정렬 단축키 네 개만 이 메서드에 도달한다.
                     break;
             }
         }
@@ -1194,6 +1670,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         disposed = true;
+        Loc.LanguageChanged -= OnLanguageChanged;
+        if (autosave is not null)
+        {
+            autosave.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            // 정상 종료는 스냅샷을 남기지 않아야 한다. 남기면 다음 실행에서
+            // 필요하지도 않은 복구를 제안하게 된다.
+            AutosaveService.ClearSnapshots();
+        }
+
         if (videoSource is not null)
         {
             videoSource.FrameReady -= OnVideoFrameReady;
@@ -1233,6 +1718,31 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        await OpenPathAsync(path);
+    }
+
+    /// <summary>
+    /// 명령줄 인자나 파일 연결로 전달된 경로를 연다.
+    /// 확장자로 프로젝트 패키지와 자막 파일을 구분한다.
+    /// </summary>
+    public async Task OpenPathAsync(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return;
+        }
+
+        if (string.Equals(Path.GetExtension(path), ".yttproj", StringComparison.OrdinalIgnoreCase))
+        {
+            await LoadProjectPackageAsync(path, clearSnapshots: true);
+            return;
+        }
+
+        ImportSubtitle(path);
+    }
+
+    private void ImportSubtitle(string path)
+    {
         try
         {
             ImportResult result = fileService.Import(path);
@@ -1270,6 +1780,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        await LoadVideoAsync(path);
+    }
+
+    /// <summary>공유 소스에 영상을 불러온다. 열기 명령과 프로젝트 재연결이 함께 쓴다.</summary>
+    private async Task LoadVideoAsync(string path)
+    {
+        if (videoSource is null)
+        {
+            return;
+        }
+
         try
         {
             Status = "영상 메타데이터 읽는 중…";
@@ -1287,6 +1808,219 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             Status = $"영상 열기 실패: {exception.Message}";
             RenderFallbackFrame();
             NotifyVideoState();
+        }
+    }
+
+    /// <summary>편집기를 거쳐 큐 텍스트의 모든 일치를 치환해 되돌릴 수 있게 한다.</summary>
+    private void ReplaceAll()
+    {
+        if (editor is null || string.IsNullOrEmpty(searchPattern))
+        {
+            return;
+        }
+
+        try
+        {
+            TextSearchOptions options = new()
+            {
+                UseRegex = useRegex,
+                CaseSensitive = matchCase,
+            };
+            int replaced = editor.ReplaceText(searchPattern, replacementText, options);
+            Status = $"{Loc["ReplaceAll"]}: {replaced}";
+            AfterMutation(refreshRows: true);
+        }
+        catch (ArgumentException exception)
+        {
+            // 잘못된 정규식은 사용자 입력이지 크래시 사유가 아니다.
+            Status = $"{Loc["UseRegex"]} — {exception.Message}";
+        }
+    }
+
+    /// <summary>큐 타이밍을 일괄 이동한다. 편집기가 어떤 큐도 1 ms 이전에 시작하지 않도록 보정한다.</summary>
+    private void ShiftTimes(bool selectedOnly)
+    {
+        if (editor is null || project is null)
+        {
+            return;
+        }
+
+        IEnumerable<Guid> targets = selectedOnly
+            ? selectedCueIds.ToArray()
+            : project.Cues.Select(cue => cue.Id).ToArray();
+
+        TimeSpan applied = editor.ShiftCueTimes(targets, TimeSpan.FromMilliseconds(shiftMilliseconds));
+        Status = $"{Loc["TimeShift"]}: {applied.TotalMilliseconds:0} ms";
+        UpdateMaximum();
+        AfterMutation(refreshRows: true);
+    }
+
+    /// <summary><c>.yttproj</c> 패키지를 열고 필요하면 사라진 영상을 다시 연결한다.</summary>
+    private async Task OpenProjectAsync()
+    {
+        string? path = await dialogs.OpenProjectAsync();
+        if (path is null)
+        {
+            return;
+        }
+
+        await LoadProjectPackageAsync(path, clearSnapshots: true);
+    }
+
+    /// <summary>열려 있는 프로젝트를 <c>.yttproj</c> 패키지로 저장한다.</summary>
+    private async Task SaveProjectAsync()
+    {
+        if (project is null)
+        {
+            return;
+        }
+
+        string suggested = Path.GetFileNameWithoutExtension(projectPath ?? sourcePath ?? "project") + ".yttproj";
+        string? path = await dialogs.SaveProjectAsync(suggested);
+        if (path is null)
+        {
+            return;
+        }
+
+        try
+        {
+            ProjectPackage.Save(project, path, RenderThumbnailPng());
+            projectPath = path;
+            unsavedChanges = false;
+            // 정상 저장은 크래시 스냅샷을 무효화한다.
+            AutosaveService.ClearSnapshots();
+            Status = $"{Loc["SaveProject"]}: {path}";
+        }
+        catch (Exception exception)
+        {
+            Status = $"{Loc["SaveProject"]} — {exception.Message}";
+        }
+    }
+
+    private async Task LoadProjectPackageAsync(string path, bool clearSnapshots)
+    {
+        try
+        {
+            ProjectPackageReadResult result = ProjectPackage.Read(path);
+            project = result.Project;
+            // 패키지 로드는 undo 를 만들지 않는 문맥이므로 편집기를 새로 시작한다.
+            editor = new DocumentEditor(project);
+            projectPath = clearSnapshots ? path : null;
+            sourcePath = path;
+            unsavedChanges = false;
+
+            await RelinkVideoIfMissingAsync();
+
+            UpdateMaximum();
+            selectedCueIds.Clear();
+            lastSelectedCueId = null;
+            RefreshRowsAndStyles();
+            AfterMutation(refreshRows: false);
+
+            string migrated = result.WasMigrated
+                ? $" (v{result.SourceSchemaVersion} → v{result.SchemaVersion})"
+                : string.Empty;
+            Status = $"{Loc["OpenProject"]}: {Path.GetFileName(path)}{migrated}";
+            if (clearSnapshots)
+            {
+                AutosaveService.ClearSnapshots();
+            }
+        }
+        catch (Exception exception)
+        {
+            Status = $"{Loc["OpenProject"]} — {exception.Message}";
+        }
+    }
+
+    /// <summary>
+    /// 패키지는 영상 경로만 저장하므로 끊어진 연결을 복구할 수 있어야 하고
+    /// 조용히 영상 없는 프로젝트로 두지 않는다.
+    /// </summary>
+    private async Task RelinkVideoIfMissingAsync()
+    {
+        string? recorded = project?.VideoPath;
+        if (project is null || string.IsNullOrEmpty(recorded) || File.Exists(recorded))
+        {
+            return;
+        }
+
+        bool relink = await dialogs.ConfirmAsync(
+            Loc["VideoMissingTitle"],
+            $"{Loc["VideoMissingPrompt"]}\n\n{recorded}",
+            Loc["Relink"]);
+        if (!relink)
+        {
+            return;
+        }
+
+        string? replacement = await dialogs.RelinkVideoAsync(recorded);
+        if (replacement is not null)
+        {
+            await LoadVideoAsync(replacement);
+        }
+    }
+
+    /// <summary>
+    /// 비정상 종료가 남긴 스냅샷의 복구를 제안한다.
+    /// 시작 시점에 실행되므로 작업 중인 문서의 실행 취소 기록을 지우지 않는다.
+    /// </summary>
+    public async Task OfferCrashRecoveryAsync()
+    {
+        string? snapshot = AutosaveService.FindLatestSnapshot();
+        if (snapshot is null)
+        {
+            return;
+        }
+
+        bool recover = await dialogs.ConfirmAsync(
+            Loc["RecoveryTitle"],
+            Loc["RecoveryPrompt"],
+            Loc["Recover"]);
+        if (!recover)
+        {
+            AutosaveService.ClearSnapshots();
+            return;
+        }
+
+        await LoadProjectPackageAsync(snapshot, clearSnapshots: false);
+        // 복구된 문서는 정의상 저장되지 않은 상태다.
+        unsavedChanges = true;
+    }
+
+    /// <summary>현재 프레임을 썸네일로 렌더한다. 아직 그릴 것이 없으면 <c>null</c> 이다.</summary>
+    private byte[]? RenderThumbnailPng()
+    {
+        if (project is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            const int width = 320;
+            const int height = 180;
+            using SKSurface surface = SKSurface.Create(new SKImageInfo(width, height));
+            SKCanvas canvas = surface.Canvas;
+            canvas.Clear(new SKColor(24, 24, 24));
+            renderer.Render(
+                canvas,
+                new PlayerViewport(
+                    new SKSize(width, height),
+                    SKRect.Create(width, height),
+                    SKRect.Create(width, height),
+                    PreviewViewportMode.VideoFrame),
+                project,
+                TimeSpan.FromMilliseconds(PositionMilliseconds),
+                new RenderOptions());
+            using SKImage image = surface.Snapshot();
+            using SKData data = image.Encode(SKEncodedImageFormat.Png, 90);
+            return data.ToArray();
+        }
+        catch (Exception exception)
+        {
+            // 썸네일은 부가 정보다. 이것 때문에 저장을 막지 말고, 가짜로 만들지도 마라.
+            Serilog.Log.Warning("{ThumbnailFailure}", exception.Message);
+            return null;
         }
     }
 
@@ -1641,7 +2375,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         double framesPerSecond = project.Video?.NominalFps is > 0 ? project.Video.NominalFps : 30;
         long frameIndex = checked((long)Math.Floor(time.TotalSeconds * framesPerSecond));
         PlayerViewport viewport = PlayerViewport.VideoFrame(bitmap.Width, bitmap.Height);
-        renderer.Render(canvas, viewport, project, time, new RenderOptions { FrameIndex = frameIndex });
+        renderer.Render(canvas, viewport, project, time, new RenderOptions { FrameIndex = frameIndex, ShowSafeArea = showSafeArea, ShowAnchorPoints = showAnchors });
         SubtitleImage = EncodeBitmap(bitmap);
         CanvasItems = renderer.Measure(viewport, project, time)
             .Select(hit => new CanvasCueItem(
@@ -1664,6 +2398,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void AfterMutation(bool refreshRows = false)
     {
+        // 자동 저장은 복구할 내용이 있을 때만 기록한다.
+        unsavedChanges = true;
         if (refreshRows)
         {
             RefreshRowsAndStyles();
@@ -1719,6 +2455,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void NotifySelectionProperties()
     {
+        RefreshKaraokePresentation();
         OnPropertyChanged(nameof(SelectionSummary));
         OnPropertyChanged(nameof(HasMixedSelection));
         OnPropertyChanged(nameof(SelectedText));
@@ -1752,6 +2489,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(ShakeEffectEnabled));
         OnPropertyChanged(nameof(ChromaEffectEnabled));
         OnPropertyChanged(nameof(AnimateEffectEnabled));
+        OnPropertyChanged(nameof(SelectedKaraokeCueId));
+        OnPropertyChanged(nameof(HasKaraokeCue));
+        OnPropertyChanged(nameof(SelectedKaraokeCueDurationMilliseconds));
+        OnPropertyChanged(nameof(SelectedKaraokeTypeOption));
 
         NotifyCommandStates();
     }
@@ -1783,6 +2524,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         BringToFrontCommand.NotifyCanExecuteChanged();
         SendToBackCommand.NotifyCanExecuteChanged();
         ValidateCommand.NotifyCanExecuteChanged();
+        AutoSplitKaraokeCommand.NotifyCanExecuteChanged();
+    }
+
+    private void RefreshKaraokePresentation()
+    {
+        KaraokeSections.Clear();
+        if (SelectedKaraokeCueId is not Guid cueId || project?.Cues[cueId] is not Cue cue)
+        {
+            return;
+        }
+
+        for (int index = 0; index < cue.Sections.Count; index++)
+        {
+            Section section = cue.Sections[index];
+            KaraokeSections.Add(new KaraokeSectionViewModel(
+                this,
+                cue.Id,
+                index,
+                section.Text,
+                section.KaraokeOffset));
+        }
     }
 
     private void NotifyVideoState()

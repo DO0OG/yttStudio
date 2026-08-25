@@ -1,6 +1,6 @@
 namespace YttStudio.Video;
 
-/// <summary>Owns the two reusable latest-frame buffers required by SPEC §8.4.</summary>
+/// <summary>재사용하는 최신 프레임 버퍼 두 개를 소유한다.</summary>
 internal sealed class LatestFrameBuffer
 {
     private readonly object gate = new();
@@ -73,7 +73,7 @@ internal sealed class LatestFrameBuffer
             int requiredLength = checked(stride * height);
             if (slot.Pixels.Length != requiredLength)
             {
-                // SPEC §8.4 [API]: frame storage is reused and reallocates only on a size change.
+                // [API] 프레임 저장소는 재사용하고 크기가 바뀔 때만 다시 할당한다.
                 slot.Pixels = GC.AllocateUninitializedArray<byte>(requiredLength, pinned: true);
             }
 

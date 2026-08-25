@@ -3,13 +3,13 @@ using YttStudio.Core;
 
 namespace YttStudio.Render;
 
-/// <summary>Resolves a YTT font identifier to a concrete Skia typeface.</summary>
+/// <summary>YTT 폰트 식별자를 실제 Skia 타입페이스로 해석한다.</summary>
 public interface IFontResolver
 {
     FontResolution Resolve(YtFont requested);
 }
 
-/// <summary>Describes how a requested YTT font was resolved.</summary>
+/// <summary>요청한 YTT 폰트가 어떻게 해석되었는지 기술한다.</summary>
 public sealed record FontResolution(
     YtFont Requested,
     SKTypeface Typeface,
@@ -19,7 +19,7 @@ public sealed record FontResolution(
     public bool IsApproximation => Status == FontResolutionStatus.ApproximateFallback;
 }
 
-/// <summary>Identifies the fidelity of a resolved font.</summary>
+/// <summary>해석된 폰트의 정확도를 식별한다.</summary>
 public enum FontResolutionStatus
 {
     BundledExact,

@@ -1,6 +1,6 @@
 # PROGRESS.md
 
-YttStudio 마일스톤 진행 체크리스트. SSOT는 `docs/SPEC.md` §16.
+YttStudio 마일스톤 진행 체크리스트.
 
 **규칙:** 각 마일스톤의 "완료 조건"을 만족해야 다음으로 넘어간다.
 체크는 **증거가 있을 때만** 켠다 (빌드 로그 / 테스트 출력 / 스크린샷).
@@ -11,8 +11,8 @@ YttStudio 마일스톤 진행 체크리스트. SSOT는 `docs/SPEC.md` §16.
 | M1 렌더러 (영상 없이) | ✅ 완료 (CI 3개 OS 통과) · tolerance 실측 대기 | `3-m1-렌더러-구현` |
 | M2 영상 + 편집 캔버스 | 🟡 핵심 완료 · 잔여 항목 있음 | `5-m2-영상-파이프라인-및-편집-캔버스` |
 | M3 효과 + 뷰포트 + 검증기 | 🟡 핵심 완료 · 잔여 항목 있음 | `7-m3-효과와-뷰포트와-검증기` |
-| M4 가라오케 | ⬜ 미시작 | `m4/karaoke` |
-| M5 마감 + 배포 | ⬜ 미시작 | `m5/release` |
+| M4 가라오케 | ✅ 완료 | `9-m4-가라오케-편집` |
+| M5 마감 + 배포 | 🟡 UI 연결 완료 · 실제 패키징 미수행 | `9-m4-가라오케-편집` |
 
 ---
 
@@ -29,21 +29,21 @@ YttStudio 마일스톤 진행 체크리스트. SSOT는 `docs/SPEC.md` §16.
 - [x] CI: 3개 OS 빌드 + 테스트 워크플로 구성 및 실행 통과
 - [x] `docs/PROGRESS.md` 갱신
 
-**완료 조건:** `dotnet build` / `dotnet test` 클린 통과. §3 스택이 `DEPENDENCIES.md`에 확정 기록됨.
+**완료 조건:** `dotnet build` / `dotnet test` 클린 통과. 스택이 `DEPENDENCIES.md`에 확정 기록됨.
 
 ## M1 — 렌더러 (영상 없이)
 
-- [x] §6 도메인 모델 (`internal set`), `CueCollection`, `FormatResolver`
+- [x] 도메인 모델 (`internal set`), `CueCollection`, `FormatResolver`
 - [x] `YTSubConverter.Shared` 어댑터 (양방향, `System.Drawing` 격리)
-- [x] `.ytt` / `.ass` import·export (§10), 손실 보고 포함
-- [x] Skia 렌더러: 레이아웃(§7.4) + pen 매핑(§7.5)
-- [x] `IFontResolver` + 폰트 번들링 (§7.5.1) — Roboto·Liberation 3종 + 라이선스 포함
+- [x] `.ytt` / `.ass` import·export, 손실 보고 포함
+- [x] Skia 렌더러: 레이아웃 + pen 매핑
+- [x] `IFontResolver` + 폰트 번들링 — Roboto·Liberation 3종 + 라이선스 포함
 - [x] 좌표 변환, 폰트 크기 공식 적용
 - [x] 앵커 9종, 정렬 3종 정확 동작
-- [x] `DocumentEditor` + Undo (§13)
+- [x] `DocumentEditor` + Undo
 - [x] **`ap`/`ju` 독립성 확보** — 서브모듈 로컬 패치 (V-13, 포크 `c460cca`)
 - [ ] 기준 fixture 세트 작성 후 tolerance 확정 — **잠정값으로 진행, 실측 미수행**
-- [x] Layout / raster / smoke 3계층 테스트 (§15.2) — 63건 통과, Windows·Linux·macOS CI 검증 완료
+- [x] Layout / raster / smoke 3계층 테스트 — 63건 통과, Windows·Linux·macOS CI 검증 완료
 - [x] 최소 Avalonia 창: `.ytt` 열기 → 배경 위 렌더 → 시간 슬라이더 스크럽
 
 **완료 조건 대비:**
@@ -63,21 +63,21 @@ YttStudio 마일스톤 진행 체크리스트. SSOT는 `docs/SPEC.md` §16.
 
 ## M2 — 영상 + 편집 캔버스
 
-- [x] libmpv Render API 파이프라인 (§8.2 스레딩 하드 규칙 준수)
-- [x] `IVideoSource` + latest-frame-wins 백버퍼 (§8.3, §8.4)
-- [x] **성능 spike (§8.6)** — `docs/PERFORMANCE.md`. 3개 해상도 실측, 예산 분리 기록
+- [x] libmpv Render API 파이프라인 (스레딩 하드 규칙 준수)
+- [x] `IVideoSource` + latest-frame-wins 백버퍼
+- [x] **성능 spike** — `docs/PERFORMANCE.md`. 3개 해상도 실측, 예산 분리 기록
 - [x] VFR / frame step용 mpv property 조합 확정 (아래 표)
 - [x] SW vs GPU benchmark 후 기본 경로 결정 — **SW 채택**
 - [x] 영상 위 자막 합성, 재생/시크/프레임 이동/속도 조절
 - [x] 큐 선택, 드래그, 다중 선택, 범위 선택
-- [x] 앵커 UI, 정렬 UI (§9.4) — `ap`/`ju` 독립, 마지막 선택 기준 다중 정렬, 균등 분배
-- [x] 스냅 & 가이드 (§9.3)
+- [x] 앵커 UI, 정렬 UI — `ap`/`ju` 독립, 마지막 선택 기준 다중 정렬, 균등 분배
+- [x] 스냅 & 가이드
 - [x] 속성 패널: 위치/정렬/텍스트/엣지 + 혼합 값 표시
-- [x] 스타일 프리셋 CRUD + 삭제 시 override 굳히기 (§6.5)
-- [x] `DocumentEditor` + Undo/Redo (§13)
+- [x] 스타일 프리셋 CRUD + 삭제 시 override 굳히기
+- [x] `DocumentEditor` + Undo/Redo
 - [x] 자막 목록 그리드, 타임라인 기본형 (Track / ZOrder 분리)
 
-**확정한 mpv property 조합 (§8.5):**
+**확정한 mpv property 조합:**
 
 | 용도 | property |
 |---|---|
@@ -89,7 +89,7 @@ YttStudio 마일스톤 진행 체크리스트. SSOT는 `docs/SPEC.md` §16.
 | FPS | `estimated-vf-fps`, 실패 시 `container-fps` |
 
 VFR 영상에서 frame step이 구간별 33.333ms / 50ms / 16.667ms로 **decoder timestamp 간격을
-따르는 것을 확인**했다 (§8.5의 "단일 `double`로 프레임 경계를 표현할 수 없다" 요구 충족).
+따르는 것을 확인**했다 (의 "단일 `double`로 프레임 경계를 표현할 수 없다" 요구 충족).
 
 **완료 조건 대비:**
 
@@ -107,19 +107,19 @@ VFR 영상에서 frame step이 구간별 33.333ms / 50ms / 16.667ms로 **decoder
 - [ ] Track 추가·삭제 전용 UI
 - [ ] 큐 그리드 다중 행 선택, Enter / Shift+Enter 전용 동작
 - [ ] 타임라인에서 다중 선택 큐 동시 이동
-- [ ] 슬라이더·연속 속성 입력을 입력 종료 시 커맨드 하나로 묶기 (§13 트랜잭션 확장)
-- [ ] 속성별 플랫폼 호환성 배지 전체 (§5.8, §9.5)
+- [ ] 슬라이더·연속 속성 입력을 입력 종료 시 커맨드 하나로 묶기 (트랜잭션 확장)
+- [ ] 속성별 플랫폼 호환성 배지 전체
 - [ ] 실제 유튜브 업로드 검증 (PC / iOS / Android)
 
 ## M3 — 효과 + 뷰포트 + 검증기
 
 - [x] Move / Fade / Shake / Chroma / Animate 모델
-- [x] 각 효과 미리보기 시각화 (§7.6) — **Shake 결정성 확보** (`cueId` + `frameIndex` 시드)
+- [x] 각 효과 미리보기 시각화 — **Shake 결정성 확보** (`cueId` + `frameIndex` 시드)
 - [x] ASS 태그 생성 및 `.ass` 왕복 테스트
-- [x] 검증기 전체 (§11) — 17개 규칙 전부 + 문제 패널 UI
-- [x] `W101` 근사치 표현 및 안전 마진 7168 bit/s (§11.1)
-- [x] mitmproxy 스크립트 — **두 역할 모두** (§14.1)
-- [x] 뷰포트: `PlayerViewport` 구조 + `VideoFrame`만 활성, 나머지 비활성 유지 (§7.8 실측 게이트)
+- [x] 검증기 전체 — 17개 규칙 전부 + 문제 패널 UI
+- [x] `W101` 근사치 표현 및 안전 마진 7168 bit/s
+- [x] mitmproxy 스크립트 — **두 역할 모두**
+- [x] 뷰포트: `PlayerViewport` 구조 + `VideoFrame`만 활성, 나머지 비활성 유지 (실측 게이트)
 - [ ] 효과 세부 파라미터 편집 UI — 활성/비활성 토글만 제공
 - [ ] mitmproxy 어댑터를 실행하는 앱 UI와 안내 화면
 
@@ -166,35 +166,69 @@ VFR 영상에서 frame step이 구간별 33.333ms / 50ms / 16.667ms로 **decoder
 
 컨텍스트 소진으로 M3에서 손대지 못했다. M4 또는 M5로 이월한다.
 
-- [ ] 슬라이더·연속 속성 입력을 커맨드 하나로 묶기 (§13)
-- [ ] 타임라인 프레임 / 큐 경계 / 재생 헤드 스냅 (§9.6)
-- [ ] 속성별 플랫폼 호환성 배지 전체 (§5.8, §9.5)
-- [ ] 큐 그리드 다중 행 선택, Enter / Shift+Enter (§9.8)
-- [ ] Track 추가·삭제 UI (§9.6)
+- [ ] 슬라이더·연속 속성 입력을 커맨드 하나로 묶기
+- [ ] 타임라인 프레임 / 큐 경계 / 재생 헤드 스냅
+- [ ] 속성별 플랫폼 호환성 배지 전체
+- [ ] 큐 그리드 다중 행 선택, Enter / Shift+Enter
+- [ ] Track 추가·삭제 UI
 - [ ] 타임라인 다중 선택 큐 동시 이동
 
 ## M4 — 가라오케
 
-- [ ] 음절 자동 분할 (한글/가나/라틴/한자)
-- [ ] 음절 칩 UI, 분할점 편집
-- [ ] 탭 타이밍 입력 + 수동 편집
-- [ ] 음절 타임라인 바
-- [ ] 가라오케 타입 5종
-- [ ] 오디오 파형 표시
-- [ ] 미리보기 실시간 반영
+- [x] 음절 자동 분할 (한글/가나/라틴/한자)
+- [x] 음절 칩 UI, 분할점 편집
+- [x] 탭 타이밍 입력 + 수동 편집
+- [x] 음절 타임라인 바
+- [x] 가라오케 타입 5종 — Glitch 결정성 확보
+- [x] 미리보기 실시간 반영
+- [ ] 오디오 파형 표시 — **미구현**. 실제 오디오 샘플을 얻지 못해 가짜로 그리지 않았다
+
+**완료 조건:** `dotnet build` 오류 0, `dotnet test` 124건 통과. 커밋 `412d8b3`.
 
 ## M5 — 마감 + 배포
 
-- [ ] 루비, 세로쓰기, 첨자, 패킹 UI
-- [ ] `.yttproj` 저장/열기, 마이그레이션, 자동 저장/복구
-- [ ] 검색·치환, 일괄 시간 이동
-- [ ] 설정 화면 (단축키, 스냅, 기본 스타일)
-- [ ] 한국어/영어 로컬라이제이션
-- [ ] §18 네이티브 배포 전략 확정 및 구현
-- [ ] 사용자 가이드
+UI 연결까지 완료했다. 남은 것은 실제 배포 패키징과 실측이다.
 
----
+- [x] `.yttproj` ZIP 컨테이너 저장/열기 (코어 + **UI 연결**)
+- [x] **60초 자동 저장, 비정상 종료 복구, 누락 영상 재연결**
+- [x] 검색·치환, 일괄 시간 이동 (코어 + **UI 연결**)
+- [x] **설정 UI** — 언어 전환, 스냅 임계값
+- [x] **루비 편집 UI + `PC 전용` 호환성 배지**
+- [x] **로컬라이제이션 — 한국어 / English / 日本語 3개 언어**, UI 문자열 127키 전부
+- [x] **배포 전략 확정** — `docs/DEPENDENCIES.md`
+- [x] **libmpv 버전 게이트 (client-api 2.0 최소) + crash metadata**
+- [x] `docs/USER_GUIDE.md`
+- [x] 미리보기 썸네일 생성 — 실제 렌더 결과를 PNG로 인코딩
+- [x] **앱 아이콘** — 창·실행 파일 아이콘 (`app.ico`, 7종 크기)
+- [x] **README 3개 언어** — 한국어 / English / 日本語, 상호 링크
+- [x] 상단 메뉴 막대 3개 언어, 자막 목록 열 간격 정리, 안전 영역·앵커 토글
+- [ ] 단축키 편집 UI — 미구현
+- [ ] 기본 스타일 설정 항목 — 미구현
+- [ ] 실제 배포 패키지 생성과 플랫폼 검증 (codesign / notarization / AppImage) — **환경상 불가**
+- [ ] M5 독립 리뷰 — 미실행
+
+**완료 조건 대비:**
+
+| 항목 | 결과 |
+|---|---|
+| `dotnet build -c Release` | 경고 0 / 오류 0 |
+| `dotnet test` | **149건 전부 통과** |
+| 배포 전략이 `DEPENDENCIES.md`에 확정 기록 | 완료 |
+| 실제 배포 패키지 검증 | **미수행** — 환경 제약 |
+
+### M2·M3 이월 항목 (여전히 미착수)
+
+- [ ] 슬라이더·연속 속성 입력을 커맨드 하나로 묶기
+- [ ] 타임라인 프레임 / 큐 경계 / 재생 헤드 스냅
+- [ ] 속성별 플랫폼 호환성 배지 전체
+- [ ] 큐 그리드 다중 행 선택, Enter / Shift+Enter
+- [ ] Track 추가·삭제 UI
+- [ ] 타임라인 다중 선택 큐 동시 이동
+- [ ] 효과 세부 파라미터 편집 UI (M3 이월)
+- [ ] `Animate` 엣지 색 전환 렌더 적용, 전경색 보간 시작값 정확도 (M3 이월)
+- [ ] mitmproxy 어댑터 실행 UI + 프록시·인증서 안내 화면 (M3 이월)
+
 
 ## 측정 대기 항목 (`[EMPIRICAL]`)
 
-`docs/YTT-VERIFICATION.md` E-1 ~ E-8. 특히 **E-8(뷰포트 좌표 동작)** 은 §7.8 구현 전 필수 게이트다.
+`docs/YTT-VERIFICATION.md` E-1 ~ E-8. 특히 **E-8(뷰포트 좌표 동작)** 은 구현 전 필수 게이트다.

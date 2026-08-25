@@ -1,6 +1,6 @@
 namespace YttStudio.Core.Editing;
 
-/// <summary>Provides the sole public mutation boundary for a subtitle project.</summary>
+/// <summary>자막 프로젝트의 유일한 공개 변경 경계를 제공한다.</summary>
 public sealed class DocumentEditor
 {
     private readonly SubtitleProject project;
@@ -9,6 +9,7 @@ public sealed class DocumentEditor
     private List<IUndoableCommand>? transactionCommands;
     private string? transactionLabel;
     private int undoFreeDepth;
+    private readonly Dictionary<Guid, KaraokeTabCursor> karaokeTabCursors = [];
 
     public DocumentEditor(SubtitleProject project)
     {
@@ -20,7 +21,7 @@ public sealed class DocumentEditor
     public string? UndoLabel => CanUndo ? undoStack[^1].Label : null;
     public string? RedoLabel => CanRedo ? redoStack[^1].Label : null;
 
-    /// <summary>Creates and adds a cue as one undoable operation.</summary>
+    /// <summary>큐를 만들어 추가하는 것을 하나의 되돌릴 수 있는 작업으로 처리한다.</summary>
     public Cue AddCue(TimeSpan start, TimeSpan end, string text)
     {
         if (end <= start)
@@ -34,18 +35,18 @@ public sealed class DocumentEditor
         return cue;
     }
 
-    /// <summary>Removes a cue.</summary>
+    /// <summary>큐를 제거한다.</summary>
     public void RemoveCue(Guid cueId)
     {
         Cue cue = GetCue(cueId);
         Execute(new RemoveCueCommand(project.Cues, cue));
     }
 
-    /// <summary>Removes multiple cues as one undoable operation.</summary>
+    /// <summary>여러 큐를 하나의 되돌릴 수 있는 작업으로 제거한다.</summary>
     public void RemoveCues(IEnumerable<Guid> cueIds)
         => ExecuteForCues("자막 삭제", cueIds, cue => new RemoveCueCommand(project.Cues, cue));
 
-    /// <summary>Duplicates selected cues and returns the created copies.</summary>
+    /// <summary>선택한 큐를 복제하고 만들어진 사본을 돌려준다.</summary>
     public IReadOnlyList<Cue> DuplicateCues(IEnumerable<Guid> cueIds)
     {
         List<Cue> copies = cueIds.Distinct().Select(GetCue).Select(CloneCue).ToList();
@@ -53,7 +54,7 @@ public sealed class DocumentEditor
         return copies;
     }
 
-    /// <summary>Moves a cue anchor to a new YTT coordinate.</summary>
+    /// <summary>큐 앵커를 새 YTT 좌표로 옮긴다.</summary>
     public void MoveCue(Guid cueId, double positionX, double positionY)
     {
         if (positionX is < 0 or > 100 || positionY is < 0 or > 100)
@@ -64,7 +65,7 @@ public sealed class DocumentEditor
         Execute(new MoveCueCommand(GetCue(cueId), positionX, positionY));
     }
 
-    /// <summary>Moves multiple cues as one undoable operation.</summary>
+    /// <summary>여러 큐를 하나의 되돌릴 수 있는 작업으로 옮긴다.</summary>
     public void MoveCues(IReadOnlyDictionary<Guid, CanvasPoint> positions)
     {
         ArgumentNullException.ThrowIfNull(positions);
@@ -72,23 +73,23 @@ public sealed class DocumentEditor
             new MoveCueCommand(GetCue(item.Key), item.Value.X, item.Value.Y))));
     }
 
-    /// <summary>Changes a cue anchor and coordinates while preserving caller-measured box placement.</summary>
+    /// <summary>호출자가 측정한 박스 위치를 유지하면서 큐의 앵커와 좌표를 바꾼다.</summary>
     public void SetAnchor(Guid cueId, AnchorPoint anchor, double positionX, double positionY)
         => Execute(new SetAnchorCommand(GetCue(cueId), anchor, positionX, positionY));
 
-    /// <summary>Changes box-internal text justification.</summary>
+    /// <summary>박스 내부 텍스트 정렬을 바꾼다.</summary>
     public void SetJustification(IEnumerable<Guid> cueIds, Justification justification)
         => ExecuteForCues("내부 정렬 변경", cueIds, cue => new SetJustificationCommand(cue, justification));
 
-    /// <summary>Changes text progression direction of selected cues.</summary>
+    /// <summary>선택한 큐의 문자 진행 방향을 바꾼다.</summary>
     public void SetDirection(IEnumerable<Guid> cueIds, TextDirection direction)
         => ExecuteForCues("텍스트 방향 변경", cueIds, cue => new SetDirectionCommand(cue, direction));
 
-    /// <summary>Changes drawing order of selected cues.</summary>
+    /// <summary>선택한 큐의 그리기 순서를 바꾼다.</summary>
     public void SetZOrder(IEnumerable<Guid> cueIds, int zOrder)
         => ExecuteForCues("그리기 순서 변경", cueIds, cue => new SetZOrderCommand(cue, zOrder));
 
-    /// <summary>Changes cue time bounds and track.</summary>
+    /// <summary>큐의 시간 범위와 트랙을 바꾼다.</summary>
     public void SetTiming(Guid cueId, TimeSpan start, TimeSpan end, int track)
     {
         if (end <= start)
@@ -99,7 +100,7 @@ public sealed class DocumentEditor
         Execute(new SetTimingCommand(project.Cues, GetCue(cueId), start, end, Math.Max(0, track)));
     }
 
-    /// <summary>Moves selected cues by a percentage delta.</summary>
+    /// <summary>선택한 큐를 백분율 증분만큼 옮긴다.</summary>
     public void Nudge(IEnumerable<Guid> cueIds, double deltaX, double deltaY)
     {
         Dictionary<Guid, CanvasPoint> positions = cueIds.Select(GetCue).ToDictionary(
@@ -109,7 +110,7 @@ public sealed class DocumentEditor
         MoveCues(positions);
     }
 
-    /// <summary>Applies explicit section format values to all sections of selected cues.</summary>
+    /// <summary>선택한 큐의 모든 섹션에 명시적 서식 값을 적용한다.</summary>
     public void ApplyFormat(IEnumerable<Guid> cueIds, SectionFormatPatch patch)
     {
         ArgumentNullException.ThrowIfNull(patch);
@@ -127,7 +128,7 @@ public sealed class DocumentEditor
         Execute(new CompositeCommand("자막 서식 변경", commands));
     }
 
-    /// <summary>Applies a style preset to selected cues.</summary>
+    /// <summary>선택한 큐에 스타일 프리셋을 적용한다.</summary>
     public void ApplyStyle(IEnumerable<Guid> cueIds, Guid? styleId)
     {
         if (styleId is Guid id && project.Styles[id] is null)
@@ -138,7 +139,7 @@ public sealed class DocumentEditor
         ExecuteForCues("스타일 적용", cueIds, cue => new SetStyleCommand(cue, styleId));
     }
 
-    /// <summary>Creates a named style preset.</summary>
+    /// <summary>이름이 있는 스타일 프리셋을 만든다.</summary>
     public StylePreset AddStyle(string name)
     {
         StylePreset style = new(Guid.NewGuid()) { Name = NormalizeStyleName(name) };
@@ -146,14 +147,14 @@ public sealed class DocumentEditor
         return style;
     }
 
-    /// <summary>Renames a style preset.</summary>
+    /// <summary>스타일 프리셋의 이름을 바꾼다.</summary>
     public void RenameStyle(Guid styleId, string name)
     {
         StylePreset style = GetMutableStyle(styleId);
         Execute(new RenameStyleCommand(style, NormalizeStyleName(name)));
     }
 
-    /// <summary>Updates selected fields of a style preset.</summary>
+    /// <summary>스타일 프리셋의 선택한 필드를 갱신한다.</summary>
     public void UpdateStyle(
         Guid styleId,
         SectionFormatPatch patch,
@@ -165,21 +166,32 @@ public sealed class DocumentEditor
         Execute(new UpdateStyleCommand(style, patch, defaultAnchor, defaultJustify));
     }
 
-    /// <summary>Deletes a style while freezing its resolved appearance into section overrides.</summary>
+    /// <summary>해석된 외형을 섹션 재정의로 굳히면서 스타일을 삭제한다.</summary>
     public void DeleteStyle(Guid styleId)
     {
         StylePreset style = GetMutableStyle(styleId);
         Execute(new DeleteStyleCommand(project, style));
     }
 
-    /// <summary>Changes the text of one section.</summary>
+    /// <summary>섹션 하나의 텍스트를 바꾼다.</summary>
     public void SetText(Guid cueId, int sectionIndex, string text)
     {
         Section section = GetSection(cueId, sectionIndex);
         Execute(new SetTextCommand(cueId, section, text ?? string.Empty));
     }
 
-    /// <summary>Replaces the explicit format overrides of one section.</summary>
+    /// <summary>
+    /// 섹션 하나의 루비 역할과 루비 텍스트를 설정한다.
+    /// [UPSTREAM] <c>rb</c> 는 PC 전용이므로 호출자가 호환성 배지를 노출한다.
+    /// 모델은 내보내기를 위해 값을 그대로 기록한다.
+    /// </summary>
+    public void SetRuby(Guid cueId, int sectionIndex, RubyRole role, string? rubyText)
+    {
+        Section section = GetSection(cueId, sectionIndex);
+        Execute(new SetRubyCommand(cueId, section, role, rubyText));
+    }
+
+    /// <summary>섹션 하나의 명시적 서식 재정의를 교체한다.</summary>
     public void SetFormatOverrides(Guid cueId, int sectionIndex, SectionOverrides overrides)
     {
         ArgumentNullException.ThrowIfNull(overrides);
@@ -187,7 +199,213 @@ public sealed class DocumentEditor
         Execute(new SetOverridesCommand(cueId, section, overrides.Clone()));
     }
 
-    /// <summary>Applies a supported validation repair as one undoable operation.</summary>
+    /// <summary>섹션 텍스트의 리터럴 또는 정규식 일치를 하나의 실행 취소 단위로 치환한다.</summary>
+    /// <returns>치환된 일치 개수다.</returns>
+    public int ReplaceText(string pattern, string replacement, TextSearchOptions? options = null)
+    {
+        IReadOnlyList<TextSearch.TextReplacementPlan> plans =
+            TextSearch.PlanReplacement(project, pattern, replacement, options);
+        if (plans.Count == 0)
+        {
+            return 0;
+        }
+
+        IUndoableCommand[] commands = plans
+            .Select(plan => (IUndoableCommand)new SetTextCommand(
+                plan.CueId,
+                plan.Section,
+                plan.ReplacementText))
+            .ToArray();
+        Execute(new CompositeCommand("검색 및 치환", commands));
+        return plans.Sum(plan => plan.MatchCount);
+    }
+
+    /// <summary>길이와 트랙을 유지하면서 선택한 큐를 공통 증분만큼 옮긴다.</summary>
+    /// <returns>가장 이른 큐를 1 ms 경계로 보정한 뒤의 실제 이동량이다.</returns>
+    public TimeSpan ShiftCueTimes(IEnumerable<Guid> cueIds, TimeSpan requestedDelta)
+    {
+        ArgumentNullException.ThrowIfNull(cueIds);
+        Cue[] cues = cueIds.Distinct().Select(GetCue).ToArray();
+        if (cues.Length == 0)
+        {
+            return TimeSpan.Zero;
+        }
+
+        TimeSpan minimumStart = TimeSpan.FromMilliseconds(YttConstants.MinimumCueStartMilliseconds);
+        TimeSpan earliest = cues.Min(cue => cue.Start);
+        TimeSpan effectiveDelta = earliest + requestedDelta < minimumStart
+            ? minimumStart - earliest
+            : requestedDelta;
+        IUndoableCommand[] commands = cues.Select(cue => (IUndoableCommand)new SetTimingCommand(
+            project.Cues,
+            cue,
+            cue.Start + effectiveDelta,
+            cue.End + effectiveDelta,
+            cue.Track)).ToArray();
+        Execute(new CompositeCommand("자막 일괄 시간 이동", commands));
+        return effectiveDelta;
+    }
+
+    /// <summary>분할기가 만든 가라오케 칩으로 큐의 섹션을 교체한다.</summary>
+    /// <remarks>
+    /// 원본 섹션의 서식은 생성된 모든 칩에 복사된다. 기존 가라오케 오프셋은
+    /// 첫 칩에만 유지된다. 이후 칩은 탭이나 수동 오프셋 API 로 기록한다.
+    /// </remarks>
+    public KaraokeEditResult SplitCueIntoKaraokeSections(Guid cueId)
+    {
+        Cue cue = GetCue(cueId);
+        KaraokeSplitter splitter = new();
+        List<Section> replacements = [];
+        foreach (Section source in cue.Sections)
+        {
+            IReadOnlyList<string> chips = splitter.Split(source.Text);
+            if (chips.Count == 0)
+            {
+                replacements.Add(CloneSection(source, string.Empty, source.KaraokeOffset));
+                continue;
+            }
+
+            replacements.AddRange(chips.Select((chip, index) => CloneSection(
+                source,
+                chip,
+                index == 0 ? source.KaraokeOffset : null)));
+        }
+
+        return ReplaceKaraokeSections(cue, replacements);
+    }
+
+    /// <summary>편집기 클라이언트가 쓰는 <see cref="SplitCueIntoKaraokeSections"/> 별칭이다.</summary>
+    public KaraokeEditResult AutoSplitKaraokeSections(Guid cueId)
+        => SplitCueIntoKaraokeSections(cueId);
+
+    /// <summary>가라오케 칩 하나를 UTF-16 텍스트 경계에서 분할한다.</summary>
+    public KaraokeEditResult SplitKaraokeSection(Guid cueId, int sectionIndex, int textOffset)
+    {
+        Cue cue = GetCue(cueId);
+        Section source = GetSection(cueId, sectionIndex);
+        if ((uint)textOffset >= (uint)source.Text.Length || textOffset == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(textOffset), "The split must be inside the section text.");
+        }
+
+        if (!System.Globalization.StringInfo.ParseCombiningCharacters(source.Text).Contains(textOffset))
+        {
+            throw new ArgumentException("The split must be on a Unicode text-element boundary.", nameof(textOffset));
+        }
+
+        List<Section> replacements = cue.Sections.ToList();
+        Section left = CloneSection(source, source.Text[..textOffset], source.KaraokeOffset);
+        Section right = CloneSection(source, source.Text[textOffset..], null);
+        replacements.RemoveAt(sectionIndex);
+        replacements.InsertRange(sectionIndex, [left, right]);
+        return ReplaceKaraokeSections(cue, replacements);
+    }
+
+    /// <summary>가라오케 칩 하나를 바로 오른쪽 이웃과 병합한다.</summary>
+    public KaraokeEditResult MergeKaraokeSections(Guid cueId, int leftSectionIndex)
+    {
+        Cue cue = GetCue(cueId);
+        if ((uint)leftSectionIndex >= (uint)(cue.Sections.Count - 1))
+        {
+            throw new ArgumentOutOfRangeException(nameof(leftSectionIndex), "A right neighbour is required to merge sections.");
+        }
+
+        Section left = cue.Sections[leftSectionIndex];
+        Section right = cue.Sections[leftSectionIndex + 1];
+        List<Section> replacements = cue.Sections.ToList();
+        replacements.RemoveRange(leftSectionIndex, 2);
+        replacements.Insert(leftSectionIndex, CloneSection(
+            left,
+            left.Text + right.Text,
+            left.KaraokeOffset));
+        return ReplaceKaraokeSections(cue, replacements);
+    }
+
+    /// <summary>섹션 하나의 가라오케 오프셋을 설정하고 증가하지 않는 이웃을 보정한다.</summary>
+    /// <remarks>
+    /// <para>
+    /// [UPSTREAM] 인접한 가라오케 오프셋이 같거나 줄어들면 +1 ms 로 보정해
+    /// 내보낸 YTT 섹션에 길이 0 인 전환이 생기지 않게 한다.
+    /// </para>
+    /// </remarks>
+    public KaraokeEditResult SetKaraokeOffset(Guid cueId, int sectionIndex, TimeSpan offset)
+    {
+        if (offset < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(offset), "Karaoke offsets cannot be negative.");
+        }
+
+        Cue cue = GetCue(cueId);
+        _ = GetSection(cueId, sectionIndex);
+        TimeSpan?[] nextOffsets = cue.Sections.Select(section => section.KaraokeOffset).ToArray();
+        nextOffsets[sectionIndex] = offset;
+        List<KaraokeOffsetCorrection> corrections = NormalizeKaraokeOffsets(nextOffsets);
+        Execute(new SetKaraokeOffsetsCommand(
+            this,
+            cue,
+            nextOffsets,
+            karaokeTabCursors.GetValueOrDefault(cue.Id),
+            newCursor: null));
+        return CreateKaraokeResult(cue, corrections);
+    }
+
+    /// <summary>큐의 탭 기록 커서를 돌려준다.</summary>
+    public KaraokeTabState GetKaraokeTabState(Guid cueId)
+    {
+        Cue cue = GetCue(cueId);
+        KaraokeTabCursor? cursor = karaokeTabCursors.GetValueOrDefault(cueId);
+        int nextIndex = cursor?.NextSectionIndex ?? FindNextUnrecordedSection(cue);
+        int lastIndex = cursor?.History.LastOrDefault()?.SectionIndex ?? -1;
+        return new KaraokeTabState(cueId, nextIndex, lastIndex, cursor?.History.Count > 0);
+    }
+
+    /// <summary>다음 가라오케 칩에 탭 타이밍을 기록한다.</summary>
+    public KaraokeEditResult RecordKaraokeTab(Guid cueId, TimeSpan offset)
+    {
+        Cue cue = GetCue(cueId);
+        KaraokeTabCursor? oldCursor = karaokeTabCursors.GetValueOrDefault(cueId);
+        KaraokeTabCursor cursor = oldCursor ?? new KaraokeTabCursor(FindNextUnrecordedSection(cue), []);
+        if ((uint)cursor.NextSectionIndex >= (uint)cue.Sections.Count)
+        {
+            throw new InvalidOperationException("All karaoke sections already have recorded offsets.");
+        }
+
+        TimeSpan?[] previousOffsets = cue.Sections.Select(section => section.KaraokeOffset).ToArray();
+        TimeSpan?[] nextOffsets = previousOffsets.ToArray();
+        nextOffsets[cursor.NextSectionIndex] = offset;
+        List<KaraokeOffsetCorrection> corrections = NormalizeKaraokeOffsets(nextOffsets);
+        KaraokeTabCursor nextCursor = new(
+            FindNextUnrecordedSection(nextOffsets),
+            [.. cursor.History, new KaraokeTabEntry(cursor.NextSectionIndex, previousOffsets)]);
+        Execute(new RecordKaraokeTabCommand(this, cue, nextOffsets, oldCursor, nextCursor));
+        return CreateKaraokeResult(cue, corrections);
+    }
+
+    /// <summary>큐의 가장 최근 탭 타이밍을 취소한다.</summary>
+    public KaraokeEditResult CancelLastKaraokeTab(Guid cueId)
+    {
+        Cue cue = GetCue(cueId);
+        if (!karaokeTabCursors.TryGetValue(cueId, out KaraokeTabCursor? cursor) ||
+            cursor.History.Count == 0)
+        {
+            throw new InvalidOperationException("There is no karaoke tab timing to cancel.");
+        }
+
+        KaraokeTabEntry cancelled = cursor.History[^1];
+        TimeSpan?[] nextOffsets = cancelled.PreviousOffsets.ToArray();
+        KaraokeTabEntry[] remaining = cursor.History.Take(cursor.History.Count - 1).ToArray();
+        KaraokeTabCursor? nextCursor = remaining.Length > 0
+            ? new KaraokeTabCursor(cancelled.SectionIndex, remaining)
+            : null;
+        Execute(new RecordKaraokeTabCommand(this, cue, nextOffsets, cursor, nextCursor));
+        return CreateKaraokeResult(cue, []);
+    }
+
+    /// <summary>큐의 가라오케 효과 모드를 하나의 되돌릴 수 있는 작업으로 설정한다.</summary>
+    public void SetKaraokeType(Guid cueId, KaraokeType type)
+        => Execute(new SetKaraokeTypeCommand(GetCue(cueId), type));
+
+    /// <summary>지원되는 검증 보정을 하나의 되돌릴 수 있는 작업으로 적용한다.</summary>
     public bool ApplyValidationFix(Validation.ValidationIssue issue)
     {
         ArgumentNullException.ThrowIfNull(issue);
@@ -251,7 +469,7 @@ public sealed class DocumentEditor
                 }
                 break;
             default:
-                // Only the codes listed above expose an automatic fix (SPEC §11).
+                // 위에 나열한 코드만 자동 수정을 제공한다.
                 break;
         }
 
@@ -264,7 +482,7 @@ public sealed class DocumentEditor
         return true;
     }
 
-    /// <summary>Enables or removes one M3 cue effect for all selected cues.</summary>
+    /// <summary>선택한 모든 큐에서 큐 효과 하나를 켜거나 제거한다.</summary>
     public void SetEffectEnabled(IEnumerable<Guid> cueIds, CueEffectKind kind, bool enabled)
     {
         ArgumentNullException.ThrowIfNull(cueIds);
@@ -281,7 +499,7 @@ public sealed class DocumentEditor
         Execute(new CompositeCommand("효과 변경", commands));
     }
 
-    /// <summary>Begins grouping subsequent commands into one undo step.</summary>
+    /// <summary>이후 커맨드를 하나의 실행 취소 단위로 묶기 시작한다.</summary>
     public void BeginTransaction(string label)
     {
         if (transactionCommands is not null)
@@ -293,7 +511,7 @@ public sealed class DocumentEditor
         transactionCommands = [];
     }
 
-    /// <summary>Commits the current group as one undo step.</summary>
+    /// <summary>현재 그룹을 하나의 실행 취소 단위로 확정한다.</summary>
     public void EndTransaction()
     {
         if (transactionCommands is null)
@@ -312,14 +530,14 @@ public sealed class DocumentEditor
         }
     }
 
-    /// <summary>Creates a scope whose mutations do not create undo entries.</summary>
+    /// <summary>변경이 실행 취소 기록을 만들지 않는 범위를 연다.</summary>
     public IDisposable BeginUndoFreeMutation()
     {
         undoFreeDepth++;
         return new UndoFreeScope(this);
     }
 
-    /// <summary>Undoes the latest mutation.</summary>
+    /// <summary>가장 최근 변경을 되돌린다.</summary>
     public void Undo()
     {
         if (!CanUndo)
@@ -333,7 +551,7 @@ public sealed class DocumentEditor
         redoStack.Add(command);
     }
 
-    /// <summary>Reapplies the latest undone mutation.</summary>
+    /// <summary>가장 최근에 취소한 변경을 다시 적용한다.</summary>
     public void Redo()
     {
         if (!CanRedo)
@@ -483,7 +701,117 @@ public sealed class DocumentEditor
             });
         }
 
+        foreach (CueEffect effect in source.Effects)
+        {
+            copy.AddEffect(CloneEffect(effect));
+        }
+
         return copy;
+    }
+
+    private static CueEffect CloneEffect(CueEffect effect) => effect switch
+    {
+        MoveEffect move => new MoveEffect(move.FromX, move.FromY, move.ToX, move.ToY, move.StartTime, move.EndTime),
+        FadeEffect fade => new FadeEffect(fade.FadeIn, fade.FadeOut)
+        {
+            Alpha1 = fade.Alpha1,
+            Alpha2 = fade.Alpha2,
+            Alpha3 = fade.Alpha3,
+            T1 = fade.T1,
+            T2 = fade.T2,
+            T3 = fade.T3,
+            T4 = fade.T4,
+        },
+        ShakeEffect shake => new ShakeEffect(
+            shake.RadiusX, shake.RadiusY, shake.StartTime, shake.EndTime),
+        ChromaEffect chroma => new ChromaEffect(
+            chroma.OffsetX,
+            chroma.OffsetY,
+            chroma.InTime,
+            chroma.OutTime,
+            chroma.CustomColors?.ToArray()),
+        AnimateEffect animate => new AnimateEffect(animate.Start, animate.End, animate.Accel)
+        {
+            ToForeground = animate.ToForeground,
+            ToEdgeColor = animate.ToEdgeColor,
+            ToSizePercent = animate.ToSizePercent,
+        },
+        KaraokeSettings karaoke => new KaraokeSettings(karaoke.Type)
+        {
+            CursorText = karaoke.CursorText,
+            CursorInterval = karaoke.CursorInterval,
+        },
+        _ => throw new NotSupportedException($"Unsupported cue effect type {effect.GetType().Name}."),
+    };
+
+    private KaraokeEditResult ReplaceKaraokeSections(Cue cue, IReadOnlyList<Section> replacements)
+    {
+        TimeSpan?[] offsets = replacements.Select(section => section.KaraokeOffset).ToArray();
+        List<KaraokeOffsetCorrection> corrections = NormalizeKaraokeOffsets(offsets);
+        Section[] normalized = replacements.Select((section, index) =>
+            CloneSection(section, section.Text, offsets[index])).ToArray();
+        Execute(new ReplaceSectionsCommand(cue, normalized));
+        karaokeTabCursors.Remove(cue.Id);
+        return CreateKaraokeResult(cue, corrections);
+    }
+
+    private static Section CloneSection(Section source, string text, TimeSpan? karaokeOffset)
+        => new()
+        {
+            Text = text,
+            KaraokeOffset = karaokeOffset,
+            Overrides = source.Overrides.Clone(),
+            Ruby = source.Ruby,
+            RubyText = source.RubyText,
+            StyleIdOverride = source.StyleIdOverride,
+        };
+
+    private static List<KaraokeOffsetCorrection> NormalizeKaraokeOffsets(TimeSpan?[] offsets)
+    {
+        List<KaraokeOffsetCorrection> corrections = [];
+        TimeSpan? previous = null;
+        TimeSpan step = TimeSpan.FromMilliseconds(YttConstants.KaraokeOffsetStepMilliseconds);
+        for (int index = 0; index < offsets.Length; index++)
+        {
+            if (offsets[index] is not TimeSpan current)
+            {
+                previous = null;
+                continue;
+            }
+
+            if (previous is TimeSpan previousValue && current <= previousValue)
+            {
+                TimeSpan corrected = previousValue + step;
+                corrections.Add(new KaraokeOffsetCorrection(index, current, corrected));
+                offsets[index] = corrected;
+                current = corrected;
+            }
+
+            previous = current;
+        }
+
+        return corrections;
+    }
+
+    private static KaraokeEditResult CreateKaraokeResult(
+        Cue cue,
+        IReadOnlyList<KaraokeOffsetCorrection> corrections)
+        => new(cue.Id, cue.Sections.ToArray(), corrections);
+
+    private static int FindNextUnrecordedSection(Cue cue)
+        => FindNextUnrecordedSection(cue.Sections.Select(section => section.KaraokeOffset).ToArray());
+
+    private static int FindNextUnrecordedSection(IReadOnlyList<TimeSpan?> offsets)
+    {
+        for (int index = 0; index < offsets.Count; index++)
+        {
+            if (!offsets[index].HasValue)
+            {
+                return index;
+            }
+        }
+
+        return offsets.Count;
     }
 
     private static bool ClampAlpha(ref SectionOverrides overrides, ResolvedFormat resolved)
@@ -882,6 +1210,30 @@ public sealed class DocumentEditor
         public bool TryMergeWith(IUndoableCommand previous) => false;
     }
 
+    private sealed class SetRubyCommand(Guid cueId, Section section, RubyRole role, string? rubyText)
+        : IUndoableCommand
+    {
+        private readonly RubyRole oldRole = section.Ruby;
+        private readonly string? oldText = section.RubyText;
+
+        public string Label => "루비 변경";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [cueId];
+
+        public void Execute()
+        {
+            section.Ruby = role;
+            section.RubyText = string.IsNullOrEmpty(rubyText) ? null : rubyText;
+        }
+
+        public void Undo()
+        {
+            section.Ruby = oldRole;
+            section.RubyText = oldText;
+        }
+
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+    }
+
     private sealed class SetKaraokeOffsetCommand(Guid cueId, Section section, TimeSpan offset) : IUndoableCommand
     {
         private readonly TimeSpan? oldOffset = section.KaraokeOffset;
@@ -892,6 +1244,122 @@ public sealed class DocumentEditor
         public void Undo() => section.KaraokeOffset = oldOffset;
         public bool TryMergeWith(IUndoableCommand previous) => false;
     }
+
+    private sealed class ReplaceSectionsCommand(Cue cue, IReadOnlyList<Section> replacements) : IUndoableCommand
+    {
+        private readonly Section[] oldSections = cue.Sections.ToArray();
+        private readonly Section[] newSections = replacements.ToArray();
+
+        public string Label => "가라오케 음절 편집";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [cue.Id];
+        public void Execute() => cue.ReplaceSections(newSections);
+        public void Undo() => cue.ReplaceSections(oldSections);
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+    }
+
+    private sealed class SetKaraokeOffsetsCommand(
+        DocumentEditor owner,
+        Cue cue,
+        IReadOnlyList<TimeSpan?> offsets,
+        KaraokeTabCursor? oldCursor,
+        KaraokeTabCursor? newCursor) : IUndoableCommand
+    {
+        private readonly TimeSpan?[] oldOffsets = cue.Sections.Select(section => section.KaraokeOffset).ToArray();
+        private readonly TimeSpan?[] newOffsets = offsets.ToArray();
+
+        public string Label => "가라오케 타이밍 변경";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [cue.Id];
+        public void Execute() => Apply(newOffsets, newCursor);
+        public void Undo() => Apply(oldOffsets, oldCursor);
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+
+        private void Apply(IReadOnlyList<TimeSpan?> values, KaraokeTabCursor? cursor)
+        {
+            for (int index = 0; index < cue.Sections.Count; index++)
+            {
+                cue.Sections[index].KaraokeOffset = values[index];
+            }
+
+            if (cursor is null)
+            {
+                owner.karaokeTabCursors.Remove(cue.Id);
+            }
+            else
+            {
+                owner.karaokeTabCursors[cue.Id] = cursor;
+            }
+        }
+    }
+
+    private sealed class RecordKaraokeTabCommand(
+        DocumentEditor owner,
+        Cue cue,
+        IReadOnlyList<TimeSpan?> offsets,
+        KaraokeTabCursor? oldCursor,
+        KaraokeTabCursor? newCursor) : IUndoableCommand
+    {
+        private readonly TimeSpan?[] oldOffsets = cue.Sections.Select(section => section.KaraokeOffset).ToArray();
+        private readonly TimeSpan?[] newOffsets = offsets.ToArray();
+
+        public string Label => "가라오케 탭 입력";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [cue.Id];
+        public void Execute() => Apply(newOffsets, newCursor);
+        public void Undo() => Apply(oldOffsets, oldCursor);
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+
+        private void Apply(IReadOnlyList<TimeSpan?> values, KaraokeTabCursor? cursor)
+        {
+            for (int index = 0; index < cue.Sections.Count; index++)
+            {
+                cue.Sections[index].KaraokeOffset = values[index];
+            }
+
+            if (cursor is null)
+            {
+                owner.karaokeTabCursors.Remove(cue.Id);
+            }
+            else
+            {
+                owner.karaokeTabCursors[cue.Id] = cursor;
+            }
+        }
+    }
+
+    private sealed class SetKaraokeTypeCommand : IUndoableCommand
+    {
+        private readonly Cue cue;
+        private readonly CueEffect[] oldEffects;
+        private readonly CueEffect[] newEffects;
+
+        public SetKaraokeTypeCommand(Cue cue, KaraokeType type)
+        {
+            this.cue = cue;
+            AffectedCueIds = [cue.Id];
+            oldEffects = cue.Effects.ToArray();
+            KaraokeSettings? existing = oldEffects.OfType<KaraokeSettings>().LastOrDefault();
+            List<CueEffect> next = oldEffects.Where(effect => effect is not KaraokeSettings).ToList();
+            if (type != KaraokeType.None)
+            {
+                next.Add(new KaraokeSettings(type)
+                {
+                    CursorText = existing?.CursorText,
+                    CursorInterval = existing?.CursorInterval,
+                });
+            }
+
+            newEffects = next.ToArray();
+        }
+
+        public string Label => "가라오케 타입 변경";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; }
+        public void Execute() => cue.ReplaceEffects(newEffects);
+        public void Undo() => cue.ReplaceEffects(oldEffects);
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+    }
+
+    private sealed record KaraokeTabCursor(int NextSectionIndex, IReadOnlyList<KaraokeTabEntry> History);
+
+    private sealed record KaraokeTabEntry(int SectionIndex, IReadOnlyList<TimeSpan?> PreviousOffsets);
 
     private sealed class ReplaceEffectsCommand(Cue cue, IReadOnlyList<CueEffect> effects) : IUndoableCommand
     {

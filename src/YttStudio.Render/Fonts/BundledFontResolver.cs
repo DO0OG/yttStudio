@@ -4,7 +4,7 @@ using YttStudio.Core;
 
 namespace YttStudio.Render;
 
-/// <summary>Loads redistributable fonts from assembly resources and reports explicit fallbacks.</summary>
+/// <summary>재배포 가능한 폰트를 어셈블리 리소스에서 불러오고 대체 여부를 명시적으로 알린다.</summary>
 public sealed class BundledFontResolver : IFontResolver, IDisposable
 {
     private static readonly IReadOnlyDictionary<YtFont, BundledFont> BundledFonts =

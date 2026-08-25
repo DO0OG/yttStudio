@@ -9,7 +9,19 @@ public interface IFileDialogService
     Task<string?> OpenSubtitleAsync();
     Task<string?> OpenVideoAsync();
     Task<string?> SaveYttAsync(string? suggestedName);
-    Task<bool> ConfirmAsync(string title, string message);
+    Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "삭제");
+
+    /// <summary>열 <c>.yttproj</c> 패키지를 고른다.</summary>
+    Task<string?> OpenProjectAsync();
+
+    /// <summary><c>.yttproj</c> 패키지를 저장할 위치를 고른다.</summary>
+    Task<string?> SaveProjectAsync(string? suggestedName);
+
+    /// <summary>
+    /// 기록된 영상 경로를 더 이상 찾을 수 없는 프로젝트를 다시 연결한다.
+    /// 패키지는 경로만 저장하므로 끊어진 연결을 복구할 수 있어야 한다.
+    /// </summary>
+    Task<string?> RelinkVideoAsync(string missingPath);
 }
 
 public sealed class FileDialogService : IFileDialogService
@@ -64,7 +76,47 @@ public sealed class FileDialogService : IFileDialogService
         return file?.Path.LocalPath;
     }
 
-    public Task<bool> ConfirmAsync(string title, string message)
+    public async Task<string?> OpenProjectAsync()
+    {
+        IReadOnlyList<IStorageFile> files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "프로젝트 열기",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("YttStudio 프로젝트") { Patterns = ["*.yttproj"] }],
+        });
+        return files.Count == 0 ? null : files[0].Path.LocalPath;
+    }
+
+    public async Task<string?> SaveProjectAsync(string? suggestedName)
+    {
+        IStorageFile? file = await owner.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "프로젝트 저장",
+            SuggestedFileName = suggestedName,
+            DefaultExtension = "yttproj",
+            FileTypeChoices = [new FilePickerFileType("YttStudio 프로젝트") { Patterns = ["*.yttproj"] }],
+        });
+        return file?.Path.LocalPath;
+    }
+
+    public async Task<string?> RelinkVideoAsync(string missingPath)
+    {
+        IReadOnlyList<IStorageFile> files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = $"영상을 찾을 수 없습니다 — 다시 찾기: {Path.GetFileName(missingPath)}",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("영상")
+                {
+                    Patterns = ["*.mp4", "*.mkv", "*.webm", "*.mov", "*.avi", "*.m4v"],
+                },
+            ],
+        });
+        return files.Count == 0 ? null : files[0].Path.LocalPath;
+    }
+
+    public Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "삭제")
     {
         Window dialog = new()
         {
@@ -75,7 +127,7 @@ public sealed class FileDialogService : IFileDialogService
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
         };
         Button cancel = new() { Content = "취소", MinWidth = 80 };
-        Button confirm = new() { Content = "삭제", MinWidth = 80 };
+        Button confirm = new() { Content = confirmLabel, MinWidth = 80 };
         cancel.Click += (_, _) => dialog.Close(false);
         confirm.Click += (_, _) => dialog.Close(true);
         dialog.Content = new StackPanel

@@ -1,6 +1,6 @@
 namespace YttStudio.Core.Editing;
 
-/// <summary>Represents one reversible domain mutation.</summary>
+/// <summary>되돌릴 수 있는 도메인 변경 하나다.</summary>
 public interface IUndoableCommand
 {
     string Label { get; }
@@ -10,7 +10,7 @@ public interface IUndoableCommand
     bool TryMergeWith(IUndoableCommand previous);
 }
 
-/// <summary>Groups multiple commands into one undo step.</summary>
+/// <summary>여러 커맨드를 하나의 실행 취소 단위로 묶는다.</summary>
 public sealed class CompositeCommand : IUndoableCommand
 {
     private readonly List<IUndoableCommand> commands;

@@ -54,7 +54,8 @@ public sealed class CueRowViewModel : INotifyPropertyChanged
         set => UpdateTiming(StartMilliseconds, EndMilliseconds, value);
     }
 
-    public string Style => Cue.StyleId?.ToString("N")[..8] ?? "Default";
+    /// <summary>큐에 적용된 스타일 이름이다. 식별자 대신 사람이 읽는 이름을 보여준다.</summary>
+    public string Style => owner.StyleNameOf(Cue.StyleId);
 
     public string Text
     {
