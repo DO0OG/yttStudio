@@ -27,12 +27,14 @@ public sealed class VideoSourceLifetimeTests
         FakeVideoSource source = new();
         long oldEpoch = source.Epoch;
         Assert.True(source.Publish(1, 1, oldEpoch));
+        Assert.True(source.TryLockLatestFrame(out VideoFrameLock oldFrame));
 
         source.Seek();
 
         Assert.False(source.TryLockLatestFrame(out _));
         Assert.False(source.Publish(2, 2, oldEpoch));
         Assert.True(source.Publish(3, 3, source.Epoch));
+        oldFrame.Dispose();
     }
 
     [Fact]
