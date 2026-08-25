@@ -296,6 +296,21 @@ SPEC v1.0 §8은 이 규칙을 전혀 기술하지 않았다. **정정 필요.**
 
 ---
 
+## V-13. `<wp ap>`와 `<ws ju>` 독립성의 upstream 모델 손실
+
+**결론: `[UPSTREAM]` 모델 제한 확인. SPEC §5.3의 독립성을 현재 pin의 공개 모델만으로는 export할 수 없다.**
+
+- `Line`에는 `AnchorPoint`만 있고 별도 justification 프로퍼티가 없다.
+- `YttDocument.ReadWindowStyle()`은 `pd`와 `sd`만 읽고 `ju`를 읽지 않는다.
+- `YttDocument.WriteWindowStyle()`은 `ju`를 `GetJustificationId(style.AnchorPoint)`로 계산한다.
+- 따라서 `ap=7`(하단 중앙)과 `ju=0`(왼쪽 정렬)처럼 열이 다른 조합은 `YttDocument.Save()` 경로에서 하나의 `AnchorPoint`로 합쳐진다.
+
+M1 import는 `.ytt` XML을 읽기 전용으로 보조 파싱해 `ju`를 도메인에 보존한다. 하지만 export는 직접 XML 조립 금지와 `YttDocument.Save()` 위임 규칙을 지키므로 독립 조합을 완전히 기록할 수 없다.
+
+**정정/후속 제안:** pin된 converter에 `Line.Justification`을 추가하고 reader/writer가 이를 사용하도록 upstream 변경을 먼저 반영하거나, SPEC에 현재 writer 경로의 제한을 명시해야 한다. YttStudio에서 head writer를 복제하는 우회는 §5.1/§10.2에 위배되므로 채택하지 않는다.
+
+---
+
 ## 미검증 항목 (`[EMPIRICAL]` 필요)
 
 아래는 upstream 주석·README에만 근거하며 실제 재현 테스트를 하지 않았다. M1~M3 진행 중 실제 업로드로 확인하고 이 문서를 갱신할 것.

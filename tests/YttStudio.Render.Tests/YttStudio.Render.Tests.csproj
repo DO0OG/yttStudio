@@ -18,4 +18,12 @@
     <ProjectReference Include="..\..\src\YttStudio.Render\YttStudio.Render.csproj" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
+    <Content Include="Fixtures\*.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(OS)' != 'Windows_NT'">
+    <Compile Remove="RasterGoldenTests.cs" />
+  </ItemGroup>
+
 </Project>

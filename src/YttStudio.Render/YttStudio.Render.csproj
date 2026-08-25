@@ -8,6 +8,11 @@
     <ProjectReference Include="..\YttStudio.Core\YttStudio.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Fonts\*.ttf" />
+    <EmbeddedResource Include="Assets\Fonts\LICENSE-*.txt" />
+  </ItemGroup>
+
   <PropertyGroup />
 
 </Project>

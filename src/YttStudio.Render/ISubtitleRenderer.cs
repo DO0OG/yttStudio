@@ -6,6 +6,9 @@ namespace YttStudio.Render;
 /// <summary>Renders and measures active subtitles for an editor viewport.</summary>
 public interface ISubtitleRenderer
 {
+    /// <summary>Gets the font resolutions observed while measuring or rendering.</summary>
+    IReadOnlyList<FontResolution> FontResolutions { get; }
+
     /// <summary>Renders the active cues at the requested time.</summary>
     void Render(SKCanvas canvas, PlayerViewport viewport, SubtitleProject project, TimeSpan time, RenderOptions options);
 
