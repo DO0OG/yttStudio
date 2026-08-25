@@ -125,6 +125,17 @@ license:          LGPLv2.1+ (빌드 구성에 따라 GPL) — 배포 시 라이�
 
 **M0에서 확인할 것:** 3개 OS에서 로드가 되는가만. 버전 정책·probing·codesign은 M5.
 
+### M2 확정 사항
+
+- **렌더 백엔드: `MPV_RENDER_API_TYPE_SW`.** 근거는 `docs/PERFORMANCE.md`.
+  SW 복사 비용이 GPU readback보다 전 해상도에서 낮았고, §8.1 airspace 제약상
+  어차피 픽셀을 CPU로 가져와야 하므로 GPU 경로의 이점이 상쇄된다.
+- **개발용 probing 순서:** `YTTSTUDIO_MPV_PATH` (파일 또는 디렉터리) → 앱 실행 디렉터리 →
+  OS 표준 탐색. libmpv 부재 시 크래시하지 않고 배경 모드로 폴백한다.
+- **로컬 검증에 사용한 libmpv:** Jellyfin Media Player 번들 `libmpv-2.dll`.
+  **저장소에 포함하지 않았다** (LGPL 배포 + 서드파티 빌드). 배포 방식은 M5 §18에서 확정.
+- **mpv property 조합:** `docs/PROGRESS.md` M2 절의 표 참조.
+
 **crash log에 libmpv 버전을 반드시 기록한다** — 네이티브 크래시의 대부분이 버전/드라이버 문제다.
 
 지원 아키텍처는 M5에서 확정하되, 후보:
