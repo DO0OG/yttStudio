@@ -10,13 +10,29 @@ public sealed class AsyncCommand(Func<Task> execute, Func<bool>? canExecute = nu
 
     public bool CanExecute(object? parameter) => !executing && (canExecute?.Invoke() ?? true);
 
-    public async void Execute(object? parameter)
+    /// <summary>
+    /// <see cref="ICommand"/> forces a void return, so the awaitable work lives in
+    /// <see cref="ExecuteAsync"/> and this fire-and-forget call observes its faults.
+    /// Without the continuation an exception on the awaited task would go unobserved and
+    /// could tear down the process.
+    /// </summary>
+    public void Execute(object? parameter)
     {
         if (!CanExecute(parameter))
         {
             return;
         }
 
+        _ = ExecuteAsync().ContinueWith(
+            task => Serilog.Log.Error(task.Exception, "Async command failed"),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
+    }
+
+    /// <summary>Runs the command body while holding the re-entrancy guard.</summary>
+    public async Task ExecuteAsync()
+    {
         executing = true;
         CanExecuteChanged?.Invoke(this, EventArgs.Empty);
         try
