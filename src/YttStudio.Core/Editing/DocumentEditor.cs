@@ -187,6 +187,97 @@ public sealed class DocumentEditor
         Execute(new SetOverridesCommand(cueId, section, overrides.Clone()));
     }
 
+    /// <summary>Applies a supported validation repair as one undoable operation.</summary>
+    public bool ApplyValidationFix(Validation.ValidationIssue issue)
+    {
+        ArgumentNullException.ThrowIfNull(issue);
+        if (!issue.HasAutoFix || issue.CueId is not Guid cueId || project.Cues[cueId] is not Cue cue)
+        {
+            return false;
+        }
+
+        List<IUndoableCommand> commands = [];
+        switch (issue.Code)
+        {
+            case Validation.ValidationCodes.E001:
+                TimeSpan minimumStart = TimeSpan.FromMilliseconds(YttConstants.MinimumStartTimeMilliseconds);
+                if (cue.Start < minimumStart && cue.End > minimumStart)
+                {
+                    commands.Add(new SetTimingCommand(project.Cues, cue, minimumStart, cue.End, cue.Track));
+                }
+                break;
+            case Validation.ValidationCodes.E003:
+                TimeSpan? previous = null;
+                foreach (Section section in cue.Sections)
+                {
+                    if (section.KaraokeOffset is not TimeSpan current)
+                    {
+                        continue;
+                    }
+
+                    TimeSpan repaired = previous is TimeSpan prior && current <= prior
+                        ? prior + TimeSpan.FromMilliseconds(1)
+                        : current;
+                    if (repaired != current)
+                    {
+                        commands.Add(new SetKaraokeOffsetCommand(cue.Id, section, repaired));
+                    }
+                    previous = repaired;
+                }
+                break;
+            case Validation.ValidationCodes.E004:
+            case Validation.ValidationCodes.E005:
+                foreach (Section section in cue.Sections)
+                {
+                    ResolvedFormat resolved = FormatResolver.Resolve(
+                        project.GetStyle(section.StyleIdOverride ?? cue.StyleId).BaseFormat,
+                        section.Overrides);
+                    SectionOverrides repaired = section.Overrides.Clone();
+                    bool changed = false;
+                    if (issue.Code == Validation.ValidationCodes.E004 && IsPureWhite(resolved.Foreground))
+                    {
+                        repaired.Foreground = new RgbaColor(254, 254, 254, resolved.Foreground.Alpha);
+                        changed = true;
+                    }
+                    else if (issue.Code == Validation.ValidationCodes.E005)
+                    {
+                        changed |= ClampAlpha(ref repaired, resolved);
+                    }
+
+                    if (changed)
+                    {
+                        commands.Add(new SetOverridesCommand(cue.Id, section, repaired));
+                    }
+                }
+                break;
+        }
+
+        if (commands.Count == 0)
+        {
+            return false;
+        }
+
+        Execute(new CompositeCommand($"{issue.Code} 자동 수정", commands));
+        return true;
+    }
+
+    /// <summary>Enables or removes one M3 cue effect for all selected cues.</summary>
+    public void SetEffectEnabled(IEnumerable<Guid> cueIds, CueEffectKind kind, bool enabled)
+    {
+        ArgumentNullException.ThrowIfNull(cueIds);
+        List<IUndoableCommand> commands = [];
+        foreach (Cue cue in cueIds.Select(GetCue))
+        {
+            List<CueEffect> next = cue.Effects.Where(effect => GetEffectKind(effect) != kind).ToList();
+            if (enabled)
+            {
+                next.Add(CreateDefaultEffect(kind, cue));
+            }
+            commands.Add(new ReplaceEffectsCommand(cue, next));
+        }
+        Execute(new CompositeCommand("효과 변경", commands));
+    }
+
     /// <summary>Begins grouping subsequent commands into one undo step.</summary>
     public void BeginTransaction(string label)
     {
@@ -391,6 +482,62 @@ public sealed class DocumentEditor
 
         return copy;
     }
+
+    private static bool ClampAlpha(ref SectionOverrides overrides, ResolvedFormat resolved)
+    {
+        bool changed = false;
+        if (resolved.Foreground.Alpha == byte.MaxValue)
+        {
+            overrides.Foreground = WithAlpha(resolved.Foreground, YttConstants.MaximumOpacity);
+            changed = true;
+        }
+        if (resolved.Background.Alpha == byte.MaxValue)
+        {
+            overrides.Background = WithAlpha(resolved.Background, YttConstants.MaximumOpacity);
+            changed = true;
+        }
+        if (resolved.SecondaryColor.Alpha == byte.MaxValue)
+        {
+            overrides.SecondaryColor = WithAlpha(resolved.SecondaryColor, YttConstants.MaximumOpacity);
+            changed = true;
+        }
+        if (resolved.EdgeColor.Alpha == byte.MaxValue)
+        {
+            overrides.EdgeColor = WithAlpha(resolved.EdgeColor, YttConstants.MaximumOpacity);
+            changed = true;
+        }
+        return changed;
+    }
+
+    private static bool IsPureWhite(RgbaColor color)
+        => color.Red == byte.MaxValue && color.Green == byte.MaxValue && color.Blue == byte.MaxValue;
+
+    private static RgbaColor WithAlpha(RgbaColor color, byte alpha)
+        => new(color.Red, color.Green, color.Blue, alpha);
+
+    private static CueEffectKind? GetEffectKind(CueEffect effect) => effect switch
+    {
+        MoveEffect => CueEffectKind.Move,
+        FadeEffect => CueEffectKind.Fade,
+        ShakeEffect => CueEffectKind.Shake,
+        ChromaEffect => CueEffectKind.Chroma,
+        AnimateEffect => CueEffectKind.Animate,
+        _ => null,
+    };
+
+    private static CueEffect CreateDefaultEffect(CueEffectKind kind, Cue cue) => kind switch
+    {
+        CueEffectKind.Move => new MoveEffect(
+            YttMath.ToPixelCoordinate(checked((int)Math.Round(cue.PositionX)), YttConstants.ReferenceWidth),
+            YttMath.ToPixelCoordinate(checked((int)Math.Round(cue.PositionY)), YttConstants.ReferenceHeight),
+            YttMath.ToPixelCoordinate(checked((int)Math.Round(cue.PositionX)), YttConstants.ReferenceWidth) + 50,
+            YttMath.ToPixelCoordinate(checked((int)Math.Round(cue.PositionY)), YttConstants.ReferenceHeight)),
+        CueEffectKind.Fade => new FadeEffect(TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(250)),
+        CueEffectKind.Shake => new ShakeEffect(),
+        CueEffectKind.Chroma => new ChromaEffect(),
+        CueEffectKind.Animate => new AnimateEffect(TimeSpan.Zero, cue.End - cue.Start) { ToSizePercent = 125 },
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
 
     private sealed class UndoFreeScope(DocumentEditor owner) : IDisposable
     {
@@ -729,6 +876,29 @@ public sealed class DocumentEditor
         public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [cueId];
         public void Execute() => section.Text = text;
         public void Undo() => section.Text = oldText;
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+    }
+
+    private sealed class SetKaraokeOffsetCommand(Guid cueId, Section section, TimeSpan offset) : IUndoableCommand
+    {
+        private readonly TimeSpan? oldOffset = section.KaraokeOffset;
+
+        public string Label => "가라오케 오프셋 수정";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [cueId];
+        public void Execute() => section.KaraokeOffset = offset;
+        public void Undo() => section.KaraokeOffset = oldOffset;
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+    }
+
+    private sealed class ReplaceEffectsCommand(Cue cue, IReadOnlyList<CueEffect> effects) : IUndoableCommand
+    {
+        private readonly CueEffect[] oldEffects = cue.Effects.ToArray();
+        private readonly CueEffect[] newEffects = effects.ToArray();
+
+        public string Label => "효과 변경";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [cue.Id];
+        public void Execute() => cue.ReplaceEffects(newEffects);
+        public void Undo() => cue.ReplaceEffects(oldEffects);
         public bool TryMergeWith(IUndoableCommand previous) => false;
     }
 

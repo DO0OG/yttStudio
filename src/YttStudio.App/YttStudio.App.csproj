@@ -20,4 +20,11 @@
     <ProjectReference Include="..\YttStudio.Video\YttStudio.Video.csproj" />
     <ProjectReference Include="..\YttStudio.Core\YttStudio.Core.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Preview\Assets\mitmproxy_script.py">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
 </Project>

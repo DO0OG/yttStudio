@@ -31,23 +31,26 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         IReadOnlyList<CueLayout> layouts = GetLayouts(viewport, project, time, options);
         foreach (CueLayout layout in layouts)
         {
+            CueEffectState effect = CueEffectEvaluator.Evaluate(layout.Cue, time, options.FrameIndex,
+                layout.AnchorScreenPoint);
+            int saveCount = canvas.Save();
+            canvas.Translate(effect.Translation);
+            if (effect.Scale != 1)
+            {
+                canvas.Scale(effect.Scale, effect.Scale, layout.Bounds.MidX, layout.Bounds.MidY);
+            }
+            if (effect.Alpha < 1)
+            {
+                using SKPaint alphaPaint = new() { Color = SKColors.White.WithAlpha((byte)Math.Round(effect.Alpha * 255)) };
+                canvas.SaveLayer(alphaPaint);
+            }
+            DrawChroma(canvas, layout, effect);
             DrawBackground(canvas, layout);
-        }
-
-        foreach (CueLayout layout in layouts)
-        {
             DrawEdges(canvas, layout);
-        }
-
-        foreach (CueLayout layout in layouts)
-        {
-            DrawBody(canvas, layout, time);
-        }
-
-        foreach (CueLayout layout in layouts)
-        {
+            DrawBody(canvas, layout, time, effect);
             DrawUnderlines(canvas, layout);
             DrawRuby(canvas, layout);
+            canvas.RestoreToCount(saveCount);
         }
 
         if (options.ShowSafeArea)
@@ -59,8 +62,9 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
                 StrokeWidth = 1,
                 IsAntialias = true,
             };
-            canvas.DrawRect(SKRect.Create(viewport.Width * 0.05f, viewport.Height * 0.05f,
-                viewport.Width * 0.9f, viewport.Height * 0.9f), safeAreaPaint);
+            SKRect space = viewport.SubtitleSpace;
+            canvas.DrawRect(SKRect.Create(space.Left + (space.Width * 0.05f), space.Top + (space.Height * 0.05f),
+                space.Width * 0.9f, space.Height * 0.9f), safeAreaPaint);
         }
 
         if (options.ShowAnchorPoints)
@@ -169,7 +173,7 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         canvas.RestoreToCount(saveCount);
     }
 
-    private void DrawBody(SKCanvas canvas, CueLayout layout, TimeSpan time)
+    private void DrawBody(SKCanvas canvas, CueLayout layout, TimeSpan time, CueEffectState effect)
     {
         int saveCount = ApplyTextTransform(canvas, layout);
         TimeSpan elapsed = time - layout.Cue.Start;
@@ -178,10 +182,43 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
             FormatResources resources = GetResources(run.Format, run.FontSize);
             SKTextBlob blob = GetBlob(run, resources.Font);
             bool sung = run.Section.KaraokeOffset is null || elapsed >= run.Section.KaraokeOffset.Value;
-            canvas.DrawText(blob, run.Origin.X, run.Origin.Y, sung ? resources.Foreground : resources.Secondary);
+            if (sung && effect.Foreground is RgbaColor animated)
+            {
+                using SKPaint paint = new() { Color = ToSkColor(animated), IsAntialias = true };
+                canvas.DrawText(blob, run.Origin.X, run.Origin.Y, paint);
+            }
+            else
+            {
+                canvas.DrawText(blob, run.Origin.X, run.Origin.Y, sung ? resources.Foreground : resources.Secondary);
+            }
         }
 
         canvas.RestoreToCount(saveCount);
+    }
+
+    private void DrawChroma(SKCanvas canvas, CueLayout layout, CueEffectState effect)
+    {
+        if (effect.Chroma is not ChromaEffect chroma || effect.ChromaAmount <= 0)
+        {
+            return;
+        }
+        IReadOnlyList<RgbaColor> colors = chroma.CustomColors is { Count: > 0 } custom
+            ? custom
+            : [new RgbaColor(254, 0, 0, 128), new RgbaColor(0, 254, 0, 128), new RgbaColor(0, 0, 254, 128)];
+        float center = (colors.Count - 1) / 2f;
+        foreach (RunLayout run in layout.Lines.SelectMany(line => line.Runs))
+        {
+            FormatResources resources = GetResources(run.Format, run.FontSize);
+            SKTextBlob blob = GetBlob(run, resources.Font);
+            for (int index = 0; index < colors.Count; index++)
+            {
+                float direction = colors.Count == 1 ? 1 : (index - center) / Math.Max(center, 1);
+                using SKPaint paint = new() { Color = ToSkColor(colors[index]), IsAntialias = true };
+                canvas.DrawText(blob,
+                    run.Origin.X + ((float)chroma.OffsetX * effect.ChromaAmount * direction),
+                    run.Origin.Y + ((float)chroma.OffsetY * effect.ChromaAmount * direction), paint);
+            }
+        }
     }
 
     private void DrawUnderlines(SKCanvas canvas, CueLayout layout)
