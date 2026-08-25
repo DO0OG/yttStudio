@@ -9,7 +9,7 @@ YttStudio 마일스톤 진행 체크리스트. SSOT는 `docs/SPEC.md` §16.
 |---|---|---|
 | M0 스캐폴딩 + Compatibility Spike | ✅ 완료 (CI 3개 OS 통과) | `1-m0-스캐폴딩-및-호환성-스파이크` |
 | M1 렌더러 (영상 없이) | ✅ 완료 (CI 3개 OS 통과) · tolerance 실측 대기 | `3-m1-렌더러-구현` |
-| M2 영상 + 편집 캔버스 | ⬜ 미시작 | `m2/canvas` |
+| M2 영상 + 편집 캔버스 | 🟡 핵심 완료 · 잔여 항목 있음 | `5-m2-영상-파이프라인-및-편집-캔버스` |
 | M3 효과 + 뷰포트 + 검증기 | ⬜ 미시작 | `m3/effects` |
 | M4 가라오케 | ⬜ 미시작 | `m4/karaoke` |
 | M5 마감 + 배포 | ⬜ 미시작 | `m5/release` |
@@ -63,19 +63,53 @@ YttStudio 마일스톤 진행 체크리스트. SSOT는 `docs/SPEC.md` §16.
 
 ## M2 — 영상 + 편집 캔버스
 
-- [ ] libmpv Render API 파이프라인 (§8.2 스레딩 하드 규칙)
-- [ ] `IVideoSource` + latest-frame-wins 백버퍼 (§8.3, §8.4)
-- [ ] 성능 spike (§8.6)
-- [ ] VFR / frame step용 mpv property 조합 확정 → §8.5 기록
-- [ ] SW vs GPU 백엔드 benchmark 후 기본 경로 결정
-- [ ] 영상 위 자막 합성, 재생/시크/프레임 이동/속도 조절
-- [ ] 큐 선택, 드래그, 다중 선택
-- [ ] 앵커 UI, 정렬 UI 전체 (§9.4)
-- [ ] 스냅 & 가이드 (§9.3)
-- [ ] 속성 패널: 위치/정렬/텍스트/엣지
-- [ ] 스타일 프리셋 CRUD + 삭제 시 override 굳히기 (§6.5)
-- [ ] `DocumentEditor` + Undo/Redo (§13)
-- [ ] 자막 목록 그리드, 타임라인 기본형 (Track / ZOrder 분리)
+- [x] libmpv Render API 파이프라인 (§8.2 스레딩 하드 규칙 준수)
+- [x] `IVideoSource` + latest-frame-wins 백버퍼 (§8.3, §8.4)
+- [x] **성능 spike (§8.6)** — `docs/PERFORMANCE.md`. 3개 해상도 실측, 예산 분리 기록
+- [x] VFR / frame step용 mpv property 조합 확정 (아래 표)
+- [x] SW vs GPU benchmark 후 기본 경로 결정 — **SW 채택**
+- [x] 영상 위 자막 합성, 재생/시크/프레임 이동/속도 조절
+- [x] 큐 선택, 드래그, 다중 선택, 범위 선택
+- [x] 앵커 UI, 정렬 UI (§9.4) — `ap`/`ju` 독립, 마지막 선택 기준 다중 정렬, 균등 분배
+- [x] 스냅 & 가이드 (§9.3)
+- [x] 속성 패널: 위치/정렬/텍스트/엣지 + 혼합 값 표시
+- [x] 스타일 프리셋 CRUD + 삭제 시 override 굳히기 (§6.5)
+- [x] `DocumentEditor` + Undo/Redo (§13)
+- [x] 자막 목록 그리드, 타임라인 기본형 (Track / ZOrder 분리)
+
+**확정한 mpv property 조합 (§8.5):**
+
+| 용도 | property |
+|---|---|
+| 프레임 전진 | `frame-step` |
+| 프레임 후진 | `frame-back-step` |
+| 현재 PTS | `playback-time` |
+| 빠른 scrub | `seek absolute+keyframes` |
+| 최종 seek | `seek absolute+exact` |
+| FPS | `estimated-vf-fps`, 실패 시 `container-fps` |
+
+VFR 영상에서 frame step이 구간별 33.333ms / 50ms / 16.667ms로 **decoder timestamp 간격을
+따르는 것을 확인**했다 (§8.5의 "단일 `double`로 프레임 경계를 표현할 수 없다" 요구 충족).
+
+**완료 조건 대비:**
+
+| 항목 | 결과 |
+|---|---|
+| `dotnet build -c Release` | 경고 0 / 오류 0 |
+| `dotnet test` | 80건 전부 통과 |
+| 영상 열고 마우스만으로 배치·스타일링 후 `.ytt` 저장 | 확인 (`docs/render-comparison/m2-canvas.png`) |
+| 성능 spike 문서화 | `docs/PERFORMANCE.md` |
+| 유튜브 업로드 후 의도대로 표시 | **미수행** — `[EMPIRICAL]`, `MANUAL_QA.md` |
+
+**잔여 항목 (M3 이후로 이월):**
+
+- [ ] 타임라인의 프레임 / 큐 경계 / 재생 헤드 스냅
+- [ ] Track 추가·삭제 전용 UI
+- [ ] 큐 그리드 다중 행 선택, Enter / Shift+Enter 전용 동작
+- [ ] 타임라인에서 다중 선택 큐 동시 이동
+- [ ] 슬라이더·연속 속성 입력을 입력 종료 시 커맨드 하나로 묶기 (§13 트랜잭션 확장)
+- [ ] 속성별 플랫폼 호환성 배지 전체 (§5.8, §9.5)
+- [ ] 실제 유튜브 업로드 검증 (PC / iOS / Android)
 
 ## M3 — 효과 + 뷰포트 + 검증기
 
