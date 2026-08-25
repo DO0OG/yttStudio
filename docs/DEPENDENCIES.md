@@ -91,6 +91,8 @@ M0 compatibility spike와 실제 NuGet restore로 다음 버전을 **확정**했
 | Avalonia | **12.1.1** | `Avalonia`, `Avalonia.Desktop`, `Avalonia.Themes.Fluent` 모두 12.1.1 |
 | Avalonia.Skia | **12.1.1** (전이) | `Avalonia.Desktop`에서 실제 해석 |
 | SkiaSharp | **3.119.4** | `Avalonia.Skia 12.1.1`의 전이 버전과 Render의 명시 버전 일치 |
+| SkiaSharp.NativeAssets.Linux | **3.119.4** | Linux Render 테스트용 네이티브 자산, 관리형 SkiaSharp와 버전 일치 |
+| SkiaSharp.NativeAssets.macOS | **3.119.4** | macOS Render 테스트용 네이티브 자산, 관리형 SkiaSharp와 버전 일치 |
 | CommunityToolkit.Mvvm | **8.4.2** | 실제 restore 통과 |
 | xUnit | **xunit.v3 4.0.0** | .NET 10 Microsoft.Testing.Platform runner로 테스트 3건 통과 |
 | Microsoft.NET.Test.Sdk | **17.14.1** | 실제 restore 통과 |
