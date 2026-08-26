@@ -1,4 +1,4 @@
-# YttStudio 사용자 가이드
+# yttStudio 사용자 가이드
 
 YouTube YTT(SRV3) 자막 전용 WYSIWYG 에디터. 영상 위에서 직접 배치·스타일링하고 `.ytt`를 뽑습니다.
 
@@ -235,7 +235,7 @@ Lucida Console · Comic Sans MS · Monotype Corsiva는 재배포가 불가능해
 
 ### libmpv 자동 설치와 라이선스
 
-공식 Windows mpv 빌드는 **GPLv2+** 입니다. 그래서 YttStudio 배포물에는 libmpv 바이너리가
+공식 Windows mpv 빌드는 **GPLv2+** 입니다. 그래서 yttStudio 배포물에는 libmpv 바이너리가
 들어 있지 않습니다. 설정 창의 자동 설치는 출처와 라이선스를 표시한 뒤 **버튼을 눌렀을 때만**
 내려받아 사용자 컴퓨터에 설치합니다. macOS 와 Linux 에서는 자동 설치 대신 패키지 매니저
 명령을 안내합니다. 설치하거나 경로를 바꾸면 재시작 없이 다시 탐색합니다.

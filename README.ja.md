@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="docs/assets/logo.png" width="112" alt="YttStudio" />
+<img src="docs/assets/logo.png" width="112" alt="yttStudio" />
 
-# YttStudio
+# yttStudio
 
 **YouTube の YTT (SRV3) 字幕専用 WYSIWYG エディタ**
 
@@ -11,7 +11,8 @@
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![Avalonia](https://img.shields.io/badge/Avalonia-12-8B44AC)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
-![Tests](https://img.shields.io/badge/tests-236%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-244%20passing-brightgreen)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/bd1f9a95330940aeab504f29f2e57d1a)](https://app.codacy.com/gh/DO0OG/yttStudio/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 [한국어](README.md) · [English](README.en.md) · **日本語**
 
@@ -27,7 +28,7 @@ YouTube 標準の字幕エディタには装飾機能がありません。しか
 「凝った字幕」はこの形式で作られています。
 
 既存のエコシステムには**コンバータ**はあっても、**映像の上で直接配置できるエディタ**が
-ありませんでした。YttStudio はその空白を埋めます。
+ありませんでした。yttStudio はその空白を埋めます。
 
 ## スクリーンショット
 
@@ -73,6 +74,26 @@ YouTube 標準の字幕エディタには装飾機能がありません。しか
 
 ファイルドロップは字幕 `.ytt` / `.srv3` / `.ass` と動画 `.mp4` / `.mkv` / `.webm` / `.mov` / `.avi` / `.m4v` に対応します。`.yttproj` はプロジェクトを開く操作を使ってください。
 
+## キャンバスのクイック編集
+
+- プレビューの空白部分をダブルクリックすると、現在の再生時刻から2秒間のcueをクリック位置に作成し、すぐに文字を入力できます。
+- cueはシングルクリックで選択し、ドラッグで位置を移動します。既存のcueをダブルクリックするとインライン編集になります。
+- プレビューキャンバスにフォーカスがあり、cueを1つだけ選択した状態で `F2` または `Enter` を押すと、そのcueのインライン編集を開始します。入力欄はcueの画面ボックスを基準に配置され、プレビュー領域内に収まるよう自動的にクランプされます。
+- 編集中は `Enter` で確定し、`Shift+Enter` では確定せず改行を入力します。`Esc` はキャンセルで、既存のcueは編集前のテキストに戻り、新しく追加したcueは追加自体がロールバックされます。入力欄がフォーカスを失うと編集内容を確定します。
+- 入力中のテキストはプレビューへリアルタイムに反映されます。確定した編集セッション全体はundo履歴1件として記録されるため、`Ctrl+Z` 1回で編集前の状態に戻せます。
+- `Ctrl+Z`で元に戻し、`Ctrl+Y`または`Ctrl+Shift+Z`でやり直します。テキストボックスにフォーカスがある場合は、標準の文字編集履歴を使用します。
+- インライン編集では、cueそのものに重なる実際の Avalonia `TextBox` を使います。解決済みのフォント・サイズ・前景色/不透明度・整列・改行をプレビュー倍率に合わせ、韓国語や日本語の IME 変換は TextBox に任せます。編集中の cue は `SubtitleImage` のラスタから除外されるため、二重に描画されません。
+- インラインの `適用` ボタンは表示しません。`Enter` または外側のクリックで確定し、`Esc` でキャンセルします。
+- TextBox では YTT のエッジ・シャドウ・アウトラインを正確に再現できません。複数 section の混在スタイルやカラオケの音節単位の表現も、インライン編集中は正確に再現されません。これは文書化された制約です。
+- cue リストにフォーカスがあり行の TextBox 以外を選んで `Delete` を押すと、選択した cue を削除します。開始/終了/Track/テキスト欄やインラインエディタにフォーカスがある場合、`Delete` は文字削除として働き、cue は削除しません。
+- 選択ボックスには 3x3 で 9 個の点が付きます。**外側の 8 個は四角形**でサイズ調整点、**中央の 1 個は円形**でアンカー専用です。
+- 外側の点をドラッグすると**掴んだ点の反対側が固定**され、ドラッグした方向にだけ大きくなります。右中央の点なら左辺が、左上の角なら右下の角がその場に留まります。`Shift` でより細かく調整できます。
+- 同じ点をドラッグせずにクリックすると、サイズはそのままでその点がアンカーになります。1 つの点が両方を兼ねます。
+- YTT は自由なボックススケールを表現できないため、サイズ変更は `SizePercent` のフォント倍率のみを変更し、縦横比は保たれます。サイズを変えてもアンカーの種類 (`ap`) は変わりません。
+- プレビューキャンバスにフォーカスがあり cue が選択されている状態で `Delete` を押すと、その cue を削除します。インライン編集中は文字だけが削除されます。
+
+---
+
 ## はじめかた
 
 ### 必要環境
@@ -85,8 +106,8 @@ YouTube 標準の字幕エディタには装飾機能がありません。しか
 ### ビルドと実行
 
 ```bash
-git clone --recursive https://github.com/DO0OG/YttStudio.git
-cd YttStudio
+git clone --recursive https://github.com/DO0OG/yttStudio.git
+cd yttStudio
 dotnet build -c Release
 dotnet run --project src/YttStudio.App
 ```
@@ -116,7 +137,7 @@ export YTTSTUDIO_MPV_PATH=/usr/lib/libmpv.so.2
 2.0 未満のバージョンは拒否します。見つからない場合は映像機能のみを無効化し、
 単色またはチェッカーボードの背景にフォールバックします。
 
-> **ライセンスについて。** 公式の Windows 向け mpv ビルドは GPLv2+ です。そのため YttStudio は
+> **ライセンスについて。** 公式の Windows 向け mpv ビルドは GPLv2+ です。そのため yttStudio は
 > libmpv のバイナリを配布物に含めません。設定ウィンドウの自動インストールは、利用者が出典と
 > ライセンスを確認してボタンを押したときにのみ実行され、利用者自身の環境に導入します。
 > macOS と Linux では自動インストールの代わりにパッケージマネージャのコマンドを案内します。
@@ -166,18 +187,3 @@ export YTTSTUDIO_MPV_PATH=/usr/lib/libmpv.so.2
 ## コントリビューター
 
 - [DO0OG](https://github.com/DO0OG)
-
----
-
-## キャンバスのクイック編集
-
-- プレビューの空白部分をダブルクリックすると、現在の再生時刻から2秒間のcueをクリック位置に作成し、すぐに文字を入力できます。
-- cueはシングルクリックで選択し、ドラッグで位置を移動します。既存のcueをダブルクリックするとインライン編集になります。
-- プレビューキャンバスにフォーカスがあり、cueを1つだけ選択した状態で `F2` または `Enter` を押すと、そのcueのインライン編集を開始します。入力欄はcueの画面ボックスを基準に配置され、プレビュー領域内に収まるよう自動的にクランプされます。
-- 編集中は `Enter` で確定し、`Shift+Enter` では確定せず改行を入力します。`Esc` はキャンセルで、既存のcueは編集前のテキストに戻り、新しく追加したcueは追加自体がロールバックされます。入力欄がフォーカスを失うと編集内容を確定します。
-- 入力中のテキストはプレビューへリアルタイムに反映されます。確定した編集セッション全体はundo履歴1件として記録されるため、`Ctrl+Z` 1回で編集前の状態に戻せます。
-- `Ctrl+Z`で元に戻し、`Ctrl+Y`または`Ctrl+Shift+Z`でやり直します。テキストボックスにフォーカスがある場合は、標準の文字編集履歴を使用します。
-- インライン編集では、cueそのものに重なる実際の Avalonia `TextBox` を使います。解決済みのフォント・サイズ・前景色/不透明度・整列・改行をプレビュー倍率に合わせ、韓国語や日本語の IME 変換は TextBox に任せます。編集中の cue は `SubtitleImage` のラスタから除外されるため、二重に描画されません。
-- インラインの `適用` ボタンは表示しません。`Enter` または外側のクリックで確定し、`Esc` でキャンセルします。
-- TextBox では YTT のエッジ・シャドウ・アウトラインを正確に再現できません。複数 section の混在スタイルやカラオケの音節単位の表現も、インライン編集中は正確に再現されません。これは文書化された制約です。
-- cue リストにフォーカスがあり行の TextBox 以外を選んで `Delete` を押すと、選択した cue を削除します。開始/終了/Track/テキスト欄やインラインエディタにフォーカスがある場合、`Delete` は文字削除として働き、cue は削除しません。

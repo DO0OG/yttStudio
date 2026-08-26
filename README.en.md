@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="docs/assets/logo.png" width="112" alt="YttStudio" />
+<img src="docs/assets/logo.png" width="112" alt="yttStudio" />
 
-# YttStudio
+# yttStudio
 
 **A WYSIWYG editor built for YouTube YTT (SRV3) subtitles**
 
@@ -11,7 +11,8 @@ Position and style captions directly on the video, then export `.ytt` — on the
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![Avalonia](https://img.shields.io/badge/Avalonia-12-8B44AC)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
-![Tests](https://img.shields.io/badge/tests-236%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-244%20passing-brightgreen)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/bd1f9a95330940aeab504f29f2e57d1a)](https://app.codacy.com/gh/DO0OG/yttStudio/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 [한국어](README.md) · **English** · [日本語](README.ja.md)
 
@@ -27,7 +28,7 @@ writing through **YTT (YouTube Timed Text, internally SRV3)** — the XML format
 elaborate captions you see on music videos and covers.
 
 The existing ecosystem has **converters**, but no editor that lets you **place captions on
-the video itself**. YttStudio fills that gap.
+the video itself**. yttStudio fills that gap.
 
 ## Screenshots
 
@@ -73,6 +74,26 @@ timeline and cue list below.
 
 File drop supports subtitle files `.ytt` / `.srv3` / `.ass` and video files `.mp4` / `.mkv` / `.webm` / `.mov` / `.avi` / `.m4v`. Open `.yttproj` files through the project command.
 
+## Quick canvas editing
+
+- Double-click an empty area of the preview to create a two-second cue at the current playback time and clicked position, then start typing immediately.
+- Single-click a cue to select it and drag it to reposition it. Double-click an existing cue to edit its text inline.
+- With the preview canvas focused and exactly one cue selected, press `F2` or `Enter` to start inline editing for that cue. The editor is positioned from the cue's screen box and clamped inside the preview area.
+- While editing, `Enter` commits and `Shift+Enter` inserts a newline without committing. `Esc` cancels: an existing cue returns to its original text, while a newly added cue is rolled back entirely. Losing focus from the editor commits the edit.
+- Text changes are reflected in the preview live as you type. A committed editing session is one undo entry, so one `Ctrl+Z` returns the cue to its pre-edit state.
+- Use `Ctrl+Z` to undo and `Ctrl+Y` or `Ctrl+Shift+Z` to redo. When a text box has focus, its native text history remains in control.
+- Inline editing uses a real Avalonia `TextBox` over the cue itself. The resolved font family, size, foreground colour/opacity, alignment and line wrapping follow the preview scale, and Korean/Japanese IME composition remains native to the control. The cue being edited is excluded from the `SubtitleImage` raster so it is not drawn twice.
+- The inline `Apply` button is intentionally absent. Press `Enter` or click outside to commit, and press `Esc` to cancel.
+- A TextBox cannot exactly reproduce YTT edge, shadow or outline rendering. Mixed section styles and karaoke syllable-level styling are likewise not reproduced exactly during inline editing; these are documented limitations.
+- With focus on the cue list, `Delete` removes the selected cues unless focus is inside a row TextBox. In the start/end/Track/text fields and in the inline editor, `Delete` remains character deletion and never deletes the cue.
+- The selection box carries nine dots in a 3x3 grid. The **eight outer dots are squares** and resize the cue; the **centre dot is a circle** and only picks the anchor.
+- Dragging an outer dot keeps **the opposite side pinned** and grows the cue towards your drag. Drag the right-middle dot and the left edge stays put; drag the top-left corner and the bottom-right corner stays put. Hold `Shift` for finer control.
+- Clicking the same dot without dragging leaves the size alone and makes that dot the anchor, so one dot serves both purposes.
+- YTT cannot express a free box scale, so resizing only changes the `SizePercent` font multiplier and the aspect ratio is preserved. Resizing never changes the anchor kind (`ap`).
+- With the preview canvas focused and a cue selected, `Delete` removes the cue. While inline editing it deletes characters instead.
+
+---
+
 ## Getting started
 
 ### Requirements
@@ -85,8 +106,8 @@ File drop supports subtitle files `.ytt` / `.srv3` / `.ass` and video files `.mp
 ### Build and run
 
 ```bash
-git clone --recursive https://github.com/DO0OG/YttStudio.git
-cd YttStudio
+git clone --recursive https://github.com/DO0OG/yttStudio.git
+cd yttStudio
 dotnet build -c Release
 dotnet run --project src/YttStudio.App
 ```
@@ -116,7 +137,7 @@ export YTTSTUDIO_MPV_PATH=/usr/lib/libmpv.so.2
 Versions below 2.0 are rejected. If no library is found, only the video features are disabled
 and the canvas falls back to a solid or checkerboard background.
 
-> **Licensing note.** Official Windows mpv builds are GPLv2+, so YttStudio never ships a libmpv
+> **Licensing note.** Official Windows mpv builds are GPLv2+, so yttStudio never ships a libmpv
 > binary. The optional download in the settings window runs only after you have seen the source
 > and licence and pressed the button yourself, and it installs into your own machine.
 > On macOS and Linux the app points you at your package manager instead.
@@ -166,18 +187,3 @@ See [LICENSE](LICENSE). Notices for bundled fonts and external libraries are in
 ## Contributors
 
 - [DO0OG](https://github.com/DO0OG)
-
----
-
-## Quick canvas editing
-
-- Double-click an empty area of the preview to create a two-second cue at the current playback time and clicked position, then start typing immediately.
-- Single-click a cue to select it and drag it to reposition it. Double-click an existing cue to edit its text inline.
-- With the preview canvas focused and exactly one cue selected, press `F2` or `Enter` to start inline editing for that cue. The editor is positioned from the cue's screen box and clamped inside the preview area.
-- While editing, `Enter` commits and `Shift+Enter` inserts a newline without committing. `Esc` cancels: an existing cue returns to its original text, while a newly added cue is rolled back entirely. Losing focus from the editor commits the edit.
-- Text changes are reflected in the preview live as you type. A committed editing session is one undo entry, so one `Ctrl+Z` returns the cue to its pre-edit state.
-- Use `Ctrl+Z` to undo and `Ctrl+Y` or `Ctrl+Shift+Z` to redo. When a text box has focus, its native text history remains in control.
-- Inline editing uses a real Avalonia `TextBox` over the cue itself. The resolved font family, size, foreground colour/opacity, alignment and line wrapping follow the preview scale, and Korean/Japanese IME composition remains native to the control. The cue being edited is excluded from the `SubtitleImage` raster so it is not drawn twice.
-- The inline `Apply` button is intentionally absent. Press `Enter` or click outside to commit, and press `Esc` to cancel.
-- A TextBox cannot exactly reproduce YTT edge, shadow or outline rendering. Mixed section styles and karaoke syllable-level styling are likewise not reproduced exactly during inline editing; these are documented limitations.
-- With focus on the cue list, `Delete` removes the selected cues unless focus is inside a row TextBox. In the start/end/Track/text fields and in the inline editor, `Delete` remains character deletion and never deletes the cue.

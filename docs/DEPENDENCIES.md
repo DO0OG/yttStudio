@@ -206,7 +206,7 @@ M5 배포 정책은 다음처럼 고정한다.
 배포 단위로 취급해야 한다.
 
 ```
-YttStudio 실행 파일/앱 번들
+yttStudio 실행 파일/앱 번들
 libmpv sidecar (RID별 실제 시험 빌드)
 THIRD-PARTY-NOTICES.txt 및 licenses/libmpv/*
 ```
@@ -304,7 +304,7 @@ libmpv client-api=2.0 path=... os=... arch=...
 
 | 대상 | 라이선스 |
 |---|---|
-| YttStudio | 저장소 `LICENSE` |
+| yttStudio | 저장소 `LICENSE` |
 | YTSubConverter (fork) | MIT |
 | Roboto | Apache-2.0 (`src/YttStudio.Render/Assets/Fonts/LICENSE-Roboto.txt`) |
 | Liberation Sans/Serif/Mono | SIL OFL 1.1 (`LICENSE-Liberation.txt`) |

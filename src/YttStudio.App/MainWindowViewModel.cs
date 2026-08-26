@@ -469,7 +469,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task ShowAboutAsync()
     {
-        await dialogs.ConfirmAsync(Loc["MenuAbout"], Loc["AboutBody"], Loc["Close"]);
+        string body = string.Join(
+            Environment.NewLine + Environment.NewLine,
+            Loc["AboutBody"],
+            $"{Loc["AboutVersion"]} v{AppVersion.Current}");
+        await dialogs.ConfirmAsync(Loc["MenuAbout"], body, Loc["Close"]);
     }
 
     private Cue? SingleSelectedCue()

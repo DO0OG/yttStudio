@@ -203,6 +203,7 @@ public sealed class Localizer : System.ComponentModel.INotifyPropertyChanged
         ["MenuHelp"] = new("도움말(_H)", "_Help", "ヘルプ(_H)"),
         ["MenuExit"] = new("끝내기", "Exit", "終了"),
         ["MenuAbout"] = new("정보", "About", "情報"),
+        ["AboutVersion"] = new("버전", "Version", "バージョン"),
         ["MenuUserGuide"] = new("사용자 가이드", "User Guide", "ユーザーガイド"),
         ["MenuSafeArea"] = new("세이프 에어리어 표시", "Show Safe Area", "セーフエリアを表示"),
         ["MenuAnchors"] = new("앵커 마커 표시", "Show Anchor Markers", "アンカーマーカーを表示"),

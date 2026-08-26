@@ -1,6 +1,6 @@
 # THIRD-PARTY-NOTICES
 
-이 문서는 YttStudio 배포물에 포함해야 할 third-party 고지와 라이선스 payload의
+이 문서는 yttStudio 배포물에 포함해야 할 third-party 고지와 라이선스 payload의
 출발점이다. **현재 저장소에는 libmpv 바이너리가 없고 특정 libmpv 빌드의 원문
 라이선스 파일도 아직 없다.** 따라서 이 파일만으로 배포 의무를 충족했다고 보지
 않으며, 릴리스 빌드가 선택한 정확한 산출물의 고지·라이선스·소스 제공 정보를

@@ -14,7 +14,7 @@ YTT/SRV3 비공개 포맷 규칙의 근거 기록.
 | `[EMPIRICAL]` | 실제 YouTube 업로드 또는 실제 플레이어에서 재현 확인 (**아직 미수행 항목 있음 — 표시함**) |
 | `[API]` | Microsoft / mpv / Avalonia 공식 문서로 확인 |
 | `[HEURISTIC]` | 완전한 규칙이 아니라 안전측 추정 |
-| `[PRODUCT]` | YttStudio 자체 설계 선택. 포맷 제약 아님 |
+| `[PRODUCT]` | yttStudio 자체 설계 선택. 포맷 제약 아님 |
 
 ---
 
@@ -62,7 +62,7 @@ private void WriteHead(XmlWriter writer, ...)
 
 문자 그대로 읽으면 `<head>` 전체에서 ID가 증가해야 하지만, 실제 writer 출력은 `wp0..wpN, ws0..wsM, pen0..penK`로 **각 풀마다 0부터 다시 시작**한다. 즉 전역 증가가 아니다. 따라서 이 규칙은 **타입별 풀 내부 규칙**으로 읽어야 하며, "각 풀 내에서 id는 엄격히 증가"가 upstream 주석보다 정확하다.
 
-**미검증:** 순서를 어겼을 때 실제로 YouTube가 재번호를 매기는지는 `[EMPIRICAL]` 미확인. upstream 주석에만 근거한다. 그러나 YttStudio는 writer에 위임하므로 실무상 위험 없음.
+**미검증:** 순서를 어겼을 때 실제로 YouTube가 재번호를 매기는지는 `[EMPIRICAL]` 미확인. upstream 주석에만 근거한다. 그러나 yttStudio는 writer에 위임하므로 실무상 위험 없음.
 
 ---
 
@@ -74,7 +74,7 @@ V-01에 인용한 코드 주석이 명시적이다: *"we write a dummy (unused) 
 
 **리뷰가 왜 틀렸는가:** V-01과 동일한 원인. `ytt.ytt`에서 pen이 id=1부터, ws가 id=1부터 시작하는 것을 보고 "pool마다 dummy가 아니다"라고 결론냈으나, 그건 문서 파일이지 writer 출력이 아니다.
 
-**부작용 주의:** 이 규칙은 YttStudio가 지킬 필요가 없다. `YttDocument.Save()`가 알아서 한다. 다만 **테스트에서 손으로 만든 `.ytt` 픽스처**를 쓸 때는 동일한 형태여야 golden 비교가 성립한다.
+**부작용 주의:** 이 규칙은 yttStudio가 지킬 필요가 없다. `YttDocument.Save()`가 알아서 한다. 다만 **테스트에서 손으로 만든 `.ytt` 픽스처**를 쓸 때는 동일한 형태여야 golden 비교가 성립한다.
 
 ---
 
@@ -235,7 +235,7 @@ YTSubConverter.Tests/*.csproj                       →  v4.8 (레거시 .NET Fr
 
 핵심 두 가지:
 1. `Shared`가 `netstandard2.0`이므로 .NET 8이든 10이든 **양쪽 다 참조 가능**하다. 리뷰가 우려한 호환성 리스크는 이 의존성에는 없다.
-2. **upstream UI 프로젝트는 이미 `net10.0`으로 이주했다.** YttStudio가 .NET 8을 고르면 오히려 upstream보다 뒤처진다.
+2. **upstream UI 프로젝트는 이미 `net10.0`으로 이주했다.** yttStudio가 .NET 8을 고르면 오히려 upstream보다 뒤처진다.
 
 ### System.Drawing 사용 실태 (2026-08-24 추가 검증)
 
@@ -290,7 +290,7 @@ Bitmap / Graphics / Brush / Pen / Image / Icon  →  0건
 호환성 표는 `ytt.ytt:42-67`, `:88-93` 주석과 README에 근거한다. 그러나 iOS/Android 유튜브 앱은 업데이트로 동작이 바뀔 수 있으므로 **영구 규격이 아니라 "2026-08-24 시점의 관찰"** 로 취급한다. 리뷰 의 권고를 수용한다.
 
 재검증이 필요한 시점:
-- YttStudio가 호환성 경고를 근거로 사용자 선택을 제약할 때
+- yttStudio가 호환성 경고를 근거로 사용자 선택을 제약할 때
 - 사용자로부터 "경고와 실제가 다르다"는 리포트가 올 때
 - YTSubConverter pin을 갱신할 때
 

@@ -5,5 +5,7 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- 릴리즈 워크플로가 태그에서 -p:Version 으로 덮어쓴다. 로컬 빌드 기본값이다. -->
+    <Version>0.1.0</Version>
   </PropertyGroup>
 </Project>

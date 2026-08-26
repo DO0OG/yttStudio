@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="docs/assets/logo.png" width="112" alt="YttStudio" />
+<img src="docs/assets/logo.png" width="112" alt="yttStudio" />
 
-# YttStudio
+# yttStudio
 
 **유튜브 YTT(SRV3) 자막 전용 WYSIWYG 에디터**
 
@@ -11,7 +11,8 @@
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![Avalonia](https://img.shields.io/badge/Avalonia-12-8B44AC)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
-![Tests](https://img.shields.io/badge/tests-236%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-244%20passing-brightgreen)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/bd1f9a95330940aeab504f29f2e57d1a)](https://app.codacy.com/gh/DO0OG/yttStudio/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 **한국어** · [English](README.en.md) · [日本語](README.ja.md)
 
@@ -27,7 +28,7 @@
 "화려한 자막"이 이 포맷으로 만들어진 것입니다.
 
 기존 생태계에는 **변환기**는 있어도 **영상 위에서 직접 배치하는 편집기가 없었습니다.**
-YttStudio 는 그 자리를 채웁니다.
+yttStudio 는 그 자리를 채웁니다.
 
 ## 화면
 
@@ -73,6 +74,26 @@ YttStudio 는 그 자리를 채웁니다.
 
 파일 드롭은 `.ytt` / `.srv3` / `.ass` 자막과 `.mp4` / `.mkv` / `.webm` / `.mov` / `.avi` / `.m4v` 영상을 지원합니다. `.yttproj`는 프로젝트 열기로 여세요.
 
+## 캔버스 빠른 편집
+
+- 미리보기의 빈 영역을 더블클릭하면 현재 재생 시각부터 2초 길이의 새 cue가 클릭한 위치에 만들어지고, 바로 텍스트를 입력할 수 있습니다.
+- cue를 한 번 클릭하면 선택하고, 드래그하면 위치를 옮깁니다. cue를 더블클릭하면 기존 텍스트를 인라인으로 편집합니다.
+- 미리보기 캔버스에 포커스가 있고 cue를 정확히 하나 선택한 상태에서 `F2` 또는 `Enter`를 누르면 해당 cue의 인라인 편집을 시작합니다. 입력 상자는 cue의 화면 박스를 기준으로 배치되며 프리뷰 영역 안으로 자동 조정됩니다.
+- 편집 중 `Enter`는 커밋하고, `Shift+Enter`는 커밋하지 않고 줄바꿈을 넣습니다. `Esc`는 편집을 취소하며, 기존 cue는 편집 전 텍스트로 돌아가고 새로 만든 cue는 추가 자체가 롤백됩니다. 입력 상자가 포커스를 잃으면 편집 내용이 커밋됩니다.
+- 입력 중인 텍스트는 프리뷰에 실시간으로 반영됩니다. 커밋된 편집 세션 전체는 undo 기록 하나로 남으므로 `Ctrl+Z` 한 번으로 편집 전 상태로 되돌릴 수 있습니다.
+- `Ctrl+Z`는 실행 취소, `Ctrl+Y` 또는 `Ctrl+Shift+Z`는 다시 실행입니다. 텍스트 상자에 포커스가 있을 때는 상자의 기본 편집 기록을 사용합니다.
+- 인라인 편집은 실제 Avalonia `TextBox`가 자막 위치에 겹쳐 보이는 방식입니다. 큐의 해석된 폰트·크기·전경색·불투명도·정렬·줄바꿈을 프리뷰 배율에 맞춰 적용하고, 한글·일본어 IME 조합 입력도 TextBox가 처리합니다. 편집 중인 cue는 `SubtitleImage` 래스터에서 제외되어 글자가 겹치지 않습니다.
+- 인라인 `적용` 버튼은 표시하지 않습니다. `Enter` 또는 바깥 클릭으로 확정하고 `Esc`로 취소합니다.
+- TextBox만으로 엣지·그림자·외곽선을 정확히 재현할 수 없으며, 여러 section의 혼합 스타일이나 가라오케 음절 단위도 제자리 편집에서 정확히 재현되지 않습니다. 이런 차이는 문서화된 한계입니다.
+- 큐 목록에 포커스가 있고 행의 TextBox가 아닌 곳에서 `Delete`를 누르면 선택된 cue를 삭제합니다. 시작/끝/Track/텍스트 행 TextBox나 인라인 편집기에 포커스가 있으면 `Delete`는 문자를 지우고 cue를 삭제하지 않습니다.
+- 선택 박스에는 3x3으로 점 아홉 개가 붙습니다. **바깥 여덟 개는 사각형**으로 그려지는 크기 조절점이고, **가운데 하나는 원**으로 그려지는 앵커 전용 점입니다.
+- 바깥 점을 끌면 **잡은 점의 맞은편이 고정된 채** 끄는 방향으로 자랍니다. 오른쪽 가운데 점을 끌면 왼쪽 변이 제자리에 있고, 왼쪽 위 모서리를 끌면 오른쪽 아래 모서리가 제자리에 있습니다. `Shift`를 누르면 더 정밀하게 조절됩니다.
+- 같은 점을 끌지 않고 그냥 클릭하면 크기는 그대로이고 그 점이 앵커가 됩니다. 점 하나가 두 가지를 겸합니다.
+- YTT는 자유로운 박스 스케일을 표현하지 못하므로 크기 변경은 `SizePercent` 폰트 배율만 바꾸며 가로세로 비율은 유지됩니다. 크기를 바꿔도 앵커 종류(`ap`)는 바뀌지 않습니다.
+- 프리뷰 캔버스에 포커스가 있고 cue가 선택된 상태에서 `Delete`를 누르면 선택한 cue를 삭제합니다. 인라인 편집 중에는 문자만 지워집니다.
+
+---
+
 ## 시작하기
 
 ### 요구 사항
@@ -85,8 +106,8 @@ YttStudio 는 그 자리를 채웁니다.
 ### 빌드와 실행
 
 ```bash
-git clone --recursive https://github.com/DO0OG/YttStudio.git
-cd YttStudio
+git clone --recursive https://github.com/DO0OG/yttStudio.git
+cd yttStudio
 dotnet build -c Release
 dotnet run --project src/YttStudio.App
 ```
@@ -115,7 +136,7 @@ export YTTSTUDIO_MPV_PATH=/usr/lib/libmpv.so.2
 
 2.0 미만 버전은 거부하며, 찾지 못하면 영상 기능만 끄고 단색·체커보드 배경으로 폴백합니다.
 
-> **라이선스 안내.** 공식 Windows mpv 빌드는 GPLv2+ 입니다. 그래서 YttStudio 는
+> **라이선스 안내.** 공식 Windows mpv 빌드는 GPLv2+ 입니다. 그래서 yttStudio 는
 > libmpv 바이너리를 배포물에 포함하지 않습니다. 설정 창의 자동 설치는 사용자가
 > 출처와 라이선스를 확인하고 직접 버튼을 눌렀을 때만 내려받아 사용자 컴퓨터에 설치합니다.
 > macOS 와 Linux 에서는 자동 설치 대신 패키지 매니저 명령을 안내합니다.
@@ -165,18 +186,3 @@ export YTTSTUDIO_MPV_PATH=/usr/lib/libmpv.so.2
 ## 기여자
 
 - [DO0OG](https://github.com/DO0OG)
-
----
-
-## 캔버스 빠른 편집
-
-- 미리보기의 빈 영역을 더블클릭하면 현재 재생 시각부터 2초 길이의 새 cue가 클릭한 위치에 만들어지고, 바로 텍스트를 입력할 수 있습니다.
-- cue를 한 번 클릭하면 선택하고, 드래그하면 위치를 옮깁니다. cue를 더블클릭하면 기존 텍스트를 인라인으로 편집합니다.
-- 미리보기 캔버스에 포커스가 있고 cue를 정확히 하나 선택한 상태에서 `F2` 또는 `Enter`를 누르면 해당 cue의 인라인 편집을 시작합니다. 입력 상자는 cue의 화면 박스를 기준으로 배치되며 프리뷰 영역 안으로 자동 조정됩니다.
-- 편집 중 `Enter`는 커밋하고, `Shift+Enter`는 커밋하지 않고 줄바꿈을 넣습니다. `Esc`는 편집을 취소하며, 기존 cue는 편집 전 텍스트로 돌아가고 새로 만든 cue는 추가 자체가 롤백됩니다. 입력 상자가 포커스를 잃으면 편집 내용이 커밋됩니다.
-- 입력 중인 텍스트는 프리뷰에 실시간으로 반영됩니다. 커밋된 편집 세션 전체는 undo 기록 하나로 남으므로 `Ctrl+Z` 한 번으로 편집 전 상태로 되돌릴 수 있습니다.
-- `Ctrl+Z`는 실행 취소, `Ctrl+Y` 또는 `Ctrl+Shift+Z`는 다시 실행입니다. 텍스트 상자에 포커스가 있을 때는 상자의 기본 편집 기록을 사용합니다.
-- 인라인 편집은 실제 Avalonia `TextBox`가 자막 위치에 겹쳐 보이는 방식입니다. 큐의 해석된 폰트·크기·전경색·불투명도·정렬·줄바꿈을 프리뷰 배율에 맞춰 적용하고, 한글·일본어 IME 조합 입력도 TextBox가 처리합니다. 편집 중인 cue는 `SubtitleImage` 래스터에서 제외되어 글자가 겹치지 않습니다.
-- 인라인 `적용` 버튼은 표시하지 않습니다. `Enter` 또는 바깥 클릭으로 확정하고 `Esc`로 취소합니다.
-- TextBox만으로 엣지·그림자·외곽선을 정확히 재현할 수 없으며, 여러 section의 혼합 스타일이나 가라오케 음절 단위도 제자리 편집에서 정확히 재현되지 않습니다. 이런 차이는 문서화된 한계입니다.
-- 큐 목록에 포커스가 있고 행의 TextBox가 아닌 곳에서 `Delete`를 누르면 선택된 cue를 삭제합니다. 시작/끝/Track/텍스트 행 TextBox나 인라인 편집기에 포커스가 있으면 `Delete`는 문자를 지우고 cue를 삭제하지 않습니다.

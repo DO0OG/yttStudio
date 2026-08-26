@@ -58,18 +58,18 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifacts | Out-Null
-          Compress-Archive -Path "publish/${{ matrix.rid }}/*" -DestinationPath "artifacts/YttStudio-${{ steps.version.outputs.tag }}-${{ matrix.rid }}.zip"
+          Compress-Archive -Path "publish/${{ matrix.rid }}/*" -DestinationPath "artifacts/yttStudio-${{ steps.version.outputs.tag }}-${{ matrix.rid }}.zip"
 
       - name: 압축 (tar.gz)
         if: matrix.archive == 'tar'
         shell: bash
         run: |
           mkdir -p artifacts
-          tar -czf "artifacts/YttStudio-${{ steps.version.outputs.tag }}-${{ matrix.rid }}.tar.gz" -C "publish/${{ matrix.rid }}" .
+          tar -czf "artifacts/yttStudio-${{ steps.version.outputs.tag }}-${{ matrix.rid }}.tar.gz" -C "publish/${{ matrix.rid }}" .
 
       - uses: actions/upload-artifact@v4
         with:
-          name: YttStudio-${{ matrix.rid }}
+          name: yttStudio-${{ matrix.rid }}
           path: artifacts/*
           if-no-files-found: error
 
@@ -91,4 +91,4 @@ jobs:
         shell: bash
         run: |
           tag="${{ github.event.inputs.tag || github.ref_name }}"
-          gh release create "$tag" --repo "${{ github.repository }}" --title "YttStudio $tag" --notes-file .github/RELEASE_NOTES.md artifacts/*
+          gh release create "$tag" --repo "${{ github.repository }}" --title "yttStudio $tag" --notes-file .github/RELEASE_NOTES.md artifacts/*
