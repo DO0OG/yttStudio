@@ -162,3 +162,11 @@ See [LICENSE](LICENSE). Notices for bundled fonts and external libraries are in
 ## Contributors
 
 - [DO0OG](https://github.com/DO0OG)
+
+---
+
+## Quick canvas editing
+
+- Double-click an empty area of the preview to create a two-second cue at the current playback time and clicked position, then start typing immediately.
+- Single-click a cue to select it and drag it to reposition it. Double-click an existing cue to edit its text inline.
+- Use `Ctrl+Z` to undo and `Ctrl+Y` or `Ctrl+Shift+Z` to redo. When a text box has focus, its native text history remains in control.

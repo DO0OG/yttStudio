@@ -156,6 +156,18 @@ public sealed class PreviewCanvas : Control
         }
         else
         {
+            if (e.ClickCount == 2)
+            {
+                Guid? addedCueId = viewModel.AddCueAtCanvasPoint(reference.X, reference.Y);
+                if (addedCueId is Guid id)
+                {
+                    viewModel.BeginInlineEdit(id, screen.X, screen.Y, 180);
+                }
+
+                e.Handled = true;
+                return;
+            }
+
             selectingRange = true;
             pointerStart = screen;
             selectionRectangle = new Rect(screen, screen);

@@ -32,6 +32,15 @@ public sealed class CanvasGeometryTests
     }
 
     [Fact]
+    public void CanvasPointOutsidePreviewIsClampedToYttBounds()
+    {
+        CanvasPoint ytt = CanvasGeometry.ToYttPoint(-40, 900, 1280, 720);
+
+        Assert.Equal(0, ytt.X);
+        Assert.Equal(100, ytt.Y);
+    }
+
+    [Fact]
     public void AnchorChangePreservesBoxScreenPosition()
     {
         CanvasRect box = new(200, 100, 300, 120);

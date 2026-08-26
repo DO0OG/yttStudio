@@ -1612,6 +1612,32 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public void ApplySelectedJustification(Justification justification)
         => SelectedJustification = justification;
 
+    public Guid? AddCueAtCanvasPoint(double canvasX, double canvasY)
+    {
+        if (editor is null)
+        {
+            project ??= new SubtitleProject();
+            editor = new DocumentEditor(project);
+        }
+
+        CanvasPoint position = CanvasGeometry.ToYttPoint(
+            canvasX,
+            canvasY,
+            YttConstants.ReferenceWidth,
+            YttConstants.ReferenceHeight);
+        TimeSpan start = TimeSpan.FromMilliseconds(PositionMilliseconds);
+        Cue cue;
+        editor.BeginTransaction("자막 추가 및 위치 지정");
+        cue = editor.AddCue(start, start + TimeSpan.FromSeconds(2), "새 자막");
+        editor.MoveCue(cue.Id, position.X, position.Y);
+        editor.EndTransaction();
+
+        RefreshRowsAndStyles();
+        SelectCue(cue.Id, toggle: false);
+        AfterMutation(refreshRows: false);
+        return cue.Id;
+    }
+
     public void BeginInlineEdit(Guid cueId, double left, double top, double width)
     {
         SelectCue(cueId, toggle: false);
@@ -2776,6 +2802,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             RefreshRowsAndStyles();
         }
 
+        ReconcileSelection();
+
         UpdateMaximum();
         RenderSubtitlePreview();
         NotifySelectionProperties();
@@ -2816,6 +2844,34 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(SelectedStyleId));
         OnPropertyChanged(nameof(SelectedStyleOption));
         OnPropertyChanged(nameof(SelectedStyleName));
+    }
+
+    private void ReconcileSelection()
+    {
+        lastSelectedCueId = ReconcileCueSelection(project, selectedCueIds, lastSelectedCueId);
+
+        selectedCueRow = lastSelectedCueId is Guid selectedId
+            ? CueRows.FirstOrDefault(row => row.Id == selectedId)
+            : null;
+        OnPropertyChanged(nameof(SelectedCueRow));
+    }
+
+    internal static Guid? ReconcileCueSelection(
+        SubtitleProject? project,
+        HashSet<Guid> selectedCueIds,
+        Guid? lastSelectedCueId)
+    {
+        ArgumentNullException.ThrowIfNull(selectedCueIds);
+        if (project is null)
+        {
+            selectedCueIds.Clear();
+            return null;
+        }
+
+        selectedCueIds.RemoveWhere(id => project.Cues[id] is null);
+        return lastSelectedCueId is Guid selected && selectedCueIds.Contains(selected)
+            ? selected
+            : selectedCueIds.Count == 0 ? null : selectedCueIds.Last();
     }
 
     private void RefreshCanvasSelection()

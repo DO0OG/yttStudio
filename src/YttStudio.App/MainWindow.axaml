@@ -158,7 +158,7 @@
                           Width="{Binding InlineEditorWidth}"
                           Orientation="Horizontal"
                           Spacing="4">
-                <TextBox Text="{Binding InlineText}" AcceptsReturn="True" MinWidth="120" />
+                <TextBox x:Name="InlineEditorTextBox" Text="{Binding InlineText}" AcceptsReturn="True" MinWidth="120" />
                 <Button Content="{Binding Loc[Apply]}" Command="{Binding CommitInlineEditCommand}" />
               </StackPanel>
             </Canvas>

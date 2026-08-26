@@ -55,4 +55,30 @@ public sealed class DocumentTransactionTests
         Assert.Equal(Justification.Left, first.Justify);
         Assert.Equal(Justification.Left, second.Justify);
     }
+
+    [Fact]
+    public void AddAndPositionTransactionUndoesAsOneStep()
+    {
+        SubtitleProject project = new();
+        DocumentEditor editor = new(project);
+        editor.BeginTransaction("add and position");
+        Cue cue = editor.AddCue(TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5), "new");
+        editor.MoveCue(cue.Id, 0, 100);
+        editor.EndTransaction();
+
+        Assert.Single(project.Cues);
+        Assert.Equal(0, cue.PositionX);
+        Assert.Equal(100, cue.PositionY);
+
+        editor.Undo();
+
+        Assert.Empty(project.Cues);
+        Assert.True(editor.CanRedo);
+
+        editor.Redo();
+
+        Assert.Single(project.Cues);
+        Assert.Equal(0, cue.PositionX);
+        Assert.Equal(100, cue.PositionY);
+    }
 }
