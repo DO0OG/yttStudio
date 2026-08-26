@@ -14,8 +14,14 @@ public sealed class TimelineControl : Control
     private const double HeaderWidth = 64;
     private const double RulerHeight = 22;
     private const double TrackHeight = 28;
+    private const double MaxZoom = 16;
+    private const double WheelPanFraction = 0.1;
+    private const double ScrollBarHeight = 12;
+    private const double ScrollBarMargin = 4;
+    private const double MinimumThumbWidth = 24;
     private double zoom = 1;
     private double viewportStartMilliseconds;
+    private double verticalViewportStart;
     private Guid? dragCueId;
     private DragMode dragMode;
     private Point dragStart;
@@ -26,11 +32,20 @@ public sealed class TimelineControl : Control
     private int originalTrack;
     private int previewTrack;
     private bool scrubbing;
+    private bool panning;
+    private bool scrollBarDragging;
+    private bool spacePressed;
+    private Point panStart;
+    private double panViewportStart;
+    private double panVerticalViewportStart;
+    private double scrollBarGrabOffset;
     private MainWindowViewModel? observedViewModel;
     private readonly HashSet<CueRowViewModel> observedCueRows = [];
 
     public TimelineControl()
     {
+        Focusable = true;
+        IsTabStop = true;
         MinHeight = 110;
         ClipToBounds = true;
         DataContextChanged += (_, _) => ObserveViewModel();
@@ -163,41 +178,49 @@ public sealed class TimelineControl : Control
 
         double maximum = Math.Max(1, viewModel.MaximumMilliseconds);
         ClampViewport(maximum);
-        int trackCount = Math.Max(1, viewModel.CueRows
-            .Select(GetRenderedTrack)
-            .DefaultIfEmpty(0)
-            .Max() + 1);
+        int trackCount = GetTrackCount(viewModel);
+        ClampVerticalViewport(trackCount);
 
-        for (int track = 0; track < trackCount; track++)
+        using (context.PushClip(new Rect(0, RulerHeight, Bounds.Width,
+                   Math.Max(0, Bounds.Height - RulerHeight))))
         {
-            double top = RulerHeight + track * TrackHeight;
-            Rect band = new(HeaderWidth, top, Math.Max(0, Bounds.Width - HeaderWidth), TrackHeight);
-            Rect label = new(0, top, Math.Min(HeaderWidth, Bounds.Width), TrackHeight);
-            context.FillRectangle(track % 2 == 0
-                ? new SolidColorBrush(Color.Parse("#222222"))
-                : new SolidColorBrush(Color.Parse("#292929")), band);
-            context.FillRectangle(new SolidColorBrush(Color.Parse("#303030")), label);
-            context.DrawLine(new Pen(Brushes.DimGray, 1), new Point(0, band.Bottom),
-                new Point(Bounds.Width, band.Bottom));
-            context.DrawText(CreateLabel($"Track {track}", 10, Brushes.LightGray),
-                new Point(7, top + 7));
+            for (int track = 0; track < trackCount; track++)
+            {
+                double top = GetTrackTop(track);
+                Rect band = new(HeaderWidth, top, Math.Max(0, Bounds.Width - HeaderWidth), TrackHeight);
+                Rect label = new(0, top, Math.Min(HeaderWidth, Bounds.Width), TrackHeight);
+                context.FillRectangle(track % 2 == 0
+                    ? new SolidColorBrush(Color.Parse("#222222"))
+                    : new SolidColorBrush(Color.Parse("#292929")), band);
+                context.FillRectangle(new SolidColorBrush(Color.Parse("#303030")), label);
+                context.DrawLine(new Pen(Brushes.DimGray, 1), new Point(0, band.Bottom),
+                    new Point(Bounds.Width, band.Bottom));
+                context.DrawText(CreateLabel($"Track {track}", 10, Brushes.LightGray),
+                    new Point(7, top + 7));
+            }
         }
 
         DrawTimeRuler(context, maximum);
 
-        foreach (CueRowViewModel row in viewModel.CueRows)
+        using (context.PushClip(new Rect(0, RulerHeight, Bounds.Width,
+                   Math.Max(0, Bounds.Height - RulerHeight))))
         {
-            double start = dragCueId == row.Id ? previewStart : row.StartMilliseconds;
-            double end = dragCueId == row.Id ? previewEnd : row.EndMilliseconds;
-            int track = GetRenderedTrack(row);
-            Rect block = GetCueRect(start, end, track, maximum);
-            IBrush fill = viewModel.SelectedCueIds.Contains(row.Id) ? Brushes.DeepSkyBlue : Brushes.SlateBlue;
-            context.DrawRectangle(fill, new Pen(Brushes.White, 1), block, 3, 3);
+            foreach (CueRowViewModel row in viewModel.CueRows)
+            {
+                double start = dragCueId == row.Id ? previewStart : row.StartMilliseconds;
+                double end = dragCueId == row.Id ? previewEnd : row.EndMilliseconds;
+                int track = GetRenderedTrack(row);
+                Rect block = GetCueRect(start, end, track, maximum);
+                IBrush fill = viewModel.SelectedCueIds.Contains(row.Id) ? Brushes.DeepSkyBlue : Brushes.SlateBlue;
+                context.DrawRectangle(fill, new Pen(Brushes.White, 1), block, 3, 3);
+            }
+
+            double playheadX = TimeToX(viewModel.PositionMilliseconds, maximum);
+            context.DrawLine(new Pen(Brushes.OrangeRed, 2), new Point(playheadX, RulerHeight),
+                new Point(playheadX, Bounds.Height));
         }
 
-        double playheadX = TimeToX(viewModel.PositionMilliseconds, maximum);
-        context.DrawLine(new Pen(Brushes.OrangeRed, 2), new Point(playheadX, RulerHeight),
-            new Point(playheadX, Bounds.Height));
+        DrawHorizontalScrollBar(context, maximum);
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -211,9 +234,45 @@ public sealed class TimelineControl : Control
         Point point = e.GetPosition(this);
         double maximum = Math.Max(1, viewModel.MaximumMilliseconds);
         ClampViewport(maximum);
+        ClampVerticalViewport(GetTrackCount(viewModel));
+        Focus();
+
+        if (TryBeginScrollBarDrag(e, point, maximum))
+        {
+            return;
+        }
+
+        if (TryBeginPan(e, point))
+        {
+            return;
+        }
+
+        BeginTimelineInteraction(viewModel, e, point, maximum);
+    }
+
+    private bool TryBeginPan(PointerPressedEventArgs e, Point point)
+    {
+        if (!spacePressed && !IsMiddleButtonPressed(e))
+        {
+            return false;
+        }
+
+        CancelTimelineInteractionForNavigation();
+        BeginPan(point);
+        e.Pointer.Capture(this);
+        e.Handled = true;
+        return true;
+    }
+
+    private void BeginTimelineInteraction(
+        MainWindowViewModel viewModel,
+        PointerPressedEventArgs e,
+        Point point,
+        double maximum)
+    {
         CueRowViewModel? hit = viewModel.CueRows.Reverse().FirstOrDefault(row =>
             GetCueRect(row.StartMilliseconds, row.EndMilliseconds, row.Track,
-                maximum).Contains(point));
+                maximum).Contains(point) && point.Y >= RulerHeight);
         if (hit is null)
         {
             scrubbing = true;
@@ -252,6 +311,21 @@ public sealed class TimelineControl : Control
         Point point = e.GetPosition(this);
         double maximum = Math.Max(1, viewModel.MaximumMilliseconds);
         ClampViewport(maximum);
+        ClampVerticalViewport(GetTrackCount(viewModel));
+        if (scrollBarDragging)
+        {
+            UpdateScrollBarDrag(point, maximum);
+            e.Handled = true;
+            return;
+        }
+
+        if (panning)
+        {
+            UpdatePan(point, maximum);
+            e.Handled = true;
+            return;
+        }
+
         if (scrubbing)
         {
             viewModel.PositionMilliseconds = XToTime(point.X, maximum);
@@ -288,6 +362,23 @@ public sealed class TimelineControl : Control
     protected override async void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+        if (scrollBarDragging)
+        {
+            EndScrollBarDrag();
+            e.Pointer.Capture(null);
+            e.Handled = true;
+            return;
+        }
+
+        if (panning)
+        {
+            EndPan();
+            e.Pointer.Capture(null);
+            InvalidateVisual();
+            e.Handled = true;
+            return;
+        }
+
         if (DataContext is MainWindowViewModel viewModel)
         {
             if (scrubbing)
@@ -306,16 +397,12 @@ public sealed class TimelineControl : Control
         previewTrack = 0;
         e.Pointer.Capture(null);
         InvalidateVisual();
+        e.Handled = true;
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
-        if (!e.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            return;
-        }
-
         if (DataContext is not MainWindowViewModel viewModel)
         {
             return;
@@ -323,20 +410,173 @@ public sealed class TimelineControl : Control
 
         double maximum = Math.Max(1, viewModel.MaximumMilliseconds);
         ClampViewport(maximum);
-        double oldViewportDuration = GetViewportDuration(maximum);
-        double playhead = Math.Clamp(viewModel.PositionMilliseconds, 0, maximum);
-        double playheadRatio = Math.Clamp(
-            (playhead - viewportStartMilliseconds) / oldViewportDuration, 0, 1);
-        zoom = Math.Clamp(zoom * (e.Delta.Y > 0 ? 1.2 : 1 / 1.2), 1, 16);
-        double newViewportDuration = GetViewportDuration(maximum);
-        viewportStartMilliseconds = playhead - playheadRatio * newViewportDuration;
-        ClampViewport(maximum);
+        double wheelDelta = GetWheelDelta(e);
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control) ||
+            e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+        {
+            ZoomAt(e.GetPosition(this), maximum, wheelDelta);
+        }
+        else if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            PanHorizontally(wheelDelta, maximum);
+        }
+        else
+        {
+            PanVertically(wheelDelta, GetTrackCount(viewModel));
+        }
+
         InvalidateVisual();
         e.Handled = true;
     }
 
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Key == Key.Space)
+        {
+            spacePressed = true;
+        }
+    }
+
+    protected override void OnKeyUp(KeyEventArgs e)
+    {
+        base.OnKeyUp(e);
+        if (e.Key == Key.Space)
+        {
+            spacePressed = false;
+        }
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        if (scrollBarDragging)
+        {
+            EndScrollBarDrag();
+        }
+
+        if (panning)
+        {
+            EndPan();
+            InvalidateVisual();
+        }
+    }
+
+    private void BeginPan(Point point)
+    {
+        panning = true;
+        panStart = point;
+        panViewportStart = viewportStartMilliseconds;
+        panVerticalViewportStart = verticalViewportStart;
+        Cursor = new Cursor(StandardCursorType.Hand);
+    }
+
+    private void UpdatePan(Point point, double maximum)
+    {
+        double horizontalWidth = Math.Max(1, Bounds.Width - HeaderWidth);
+        double duration = GetViewportDuration(maximum);
+        viewportStartMilliseconds = panViewportStart -
+            ((point.X - panStart.X) / horizontalWidth * duration);
+        verticalViewportStart = panVerticalViewportStart - (point.Y - panStart.Y);
+        ClampViewport(maximum);
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            ClampVerticalViewport(GetTrackCount(viewModel));
+        }
+
+        InvalidateVisual();
+    }
+
+    private void EndPan()
+    {
+        panning = false;
+        Cursor = null;
+    }
+
+    private bool TryBeginScrollBarDrag(
+        PointerPressedEventArgs e,
+        Point point,
+        double maximum)
+    {
+        PointerPoint pointerPoint = e.GetCurrentPoint(this);
+        Rect track = GetScrollBarTrack();
+        if (!pointerPoint.Properties.IsLeftButtonPressed || !track.Contains(point))
+        {
+            return false;
+        }
+
+        Rect thumb = GetScrollBarThumb(maximum);
+        CancelTimelineInteractionForNavigation();
+        scrollBarGrabOffset = thumb.Contains(point) ? point.X - thumb.X : thumb.Width / 2;
+        scrollBarDragging = zoom > 1;
+        if (scrollBarDragging)
+        {
+            UpdateScrollBarDrag(point, maximum);
+            Cursor = new Cursor(StandardCursorType.Hand);
+            e.Pointer.Capture(this);
+        }
+
+        e.Handled = true;
+        return true;
+    }
+
+    private void CancelTimelineInteractionForNavigation()
+    {
+        scrubbing = false;
+        dragCueId = null;
+        dragMode = DragMode.None;
+    }
+
+    private void UpdateScrollBarDrag(Point point, double maximum)
+    {
+        Rect track = GetScrollBarTrack();
+        Rect thumb = GetScrollBarThumb(maximum);
+        double travel = Math.Max(0, track.Width - thumb.Width);
+        double thumbLeft = Math.Clamp(point.X - scrollBarGrabOffset - track.X, 0, travel);
+        double maximumStart = Math.Max(0, maximum - GetViewportDuration(maximum));
+        viewportStartMilliseconds = travel > 0 ? thumbLeft / travel * maximumStart : 0;
+        ClampViewport(maximum);
+        InvalidateVisual();
+    }
+
+    private void EndScrollBarDrag()
+    {
+        scrollBarDragging = false;
+        Cursor = null;
+        InvalidateVisual();
+    }
+
+    private void ZoomAt(Point point, double maximum, double wheelDelta)
+    {
+        double horizontalWidth = Math.Max(1, Bounds.Width - HeaderWidth);
+        double anchorX = Math.Clamp(point.X, HeaderWidth, Bounds.Width);
+        double anchorRatio = Math.Clamp((anchorX - HeaderWidth) / horizontalWidth, 0, 1);
+        double anchorTime = XToTime(anchorX, maximum);
+        zoom = Math.Clamp(zoom * (wheelDelta > 0 ? 1.2 : 1 / 1.2), 1, MaxZoom);
+        viewportStartMilliseconds = anchorTime - anchorRatio * GetViewportDuration(maximum);
+        ClampViewport(maximum);
+    }
+
+    private void PanHorizontally(double wheelDelta, double maximum)
+    {
+        viewportStartMilliseconds -= GetViewportDuration(maximum) * wheelDelta * WheelPanFraction;
+        ClampViewport(maximum);
+    }
+
+    private void PanVertically(double wheelDelta, int trackCount)
+    {
+        verticalViewportStart -= wheelDelta * TrackHeight * 3;
+        ClampVerticalViewport(trackCount);
+    }
+
+    private bool IsMiddleButtonPressed(PointerPressedEventArgs e)
+        => e.GetCurrentPoint(this).Properties.PointerUpdateKind == PointerUpdateKind.MiddleButtonPressed;
+
+    private static double GetWheelDelta(PointerWheelEventArgs e)
+        => Math.Abs(e.Delta.Y) > double.Epsilon ? e.Delta.Y : e.Delta.X;
+
     private Rect GetCueRect(double start, double end, int track, double maximum)
-        => new(TimeToX(start, maximum), RulerHeight + (Math.Max(0, track) * TrackHeight) + 4,
+        => new(TimeToX(start, maximum), GetTrackTop(track) + 4,
             Math.Max(4, TimeToX(end, maximum) - TimeToX(start, maximum)), TrackHeight - 8);
 
     private double TimeToX(double milliseconds, double maximum)
@@ -351,6 +591,15 @@ public sealed class TimelineControl : Control
     private int GetRenderedTrack(CueRowViewModel row)
         => dragCueId == row.Id ? previewTrack : row.Track;
 
+    private int GetTrackCount(MainWindowViewModel viewModel)
+        => Math.Max(1, viewModel.CueRows
+            .Select(GetRenderedTrack)
+            .DefaultIfEmpty(0)
+            .Max() + 1);
+
+    private double GetTrackTop(int track)
+        => RulerHeight + (Math.Max(0, track) * TrackHeight) - verticalViewportStart;
+
     private double GetViewportDuration(double maximum)
         => Math.Max(1, maximum) / zoom;
 
@@ -360,6 +609,14 @@ public sealed class TimelineControl : Control
         double duration = GetViewportDuration(safeMaximum);
         viewportStartMilliseconds = Math.Clamp(viewportStartMilliseconds, 0,
             Math.Max(0, safeMaximum - duration));
+    }
+
+    private void ClampVerticalViewport(int trackCount)
+    {
+        double contentHeight = Math.Max(1, trackCount) * TrackHeight;
+        double visibleHeight = Math.Max(0, Bounds.Height - RulerHeight);
+        verticalViewportStart = Math.Clamp(verticalViewportStart, 0,
+            Math.Max(0, contentHeight - visibleHeight));
     }
 
     private void DrawTimeRuler(DrawingContext context, double maximum)
@@ -389,6 +646,36 @@ public sealed class TimelineControl : Control
             context.DrawText(CreateLabel(FormatTick(tick, step), 10, Brushes.LightGray),
                 new Point(x + 3, 3));
         }
+    }
+
+    private void DrawHorizontalScrollBar(DrawingContext context, double maximum)
+    {
+        Rect track = GetScrollBarTrack();
+        Rect thumb = GetScrollBarThumb(maximum);
+        context.DrawRectangle(Brushes.Black, new Pen(Brushes.DimGray, 1), track, 3, 3);
+        context.DrawRectangle(
+            scrollBarDragging ? Brushes.LightGray : Brushes.Gray,
+            null,
+            thumb,
+            3,
+            3);
+    }
+
+    private Rect GetScrollBarTrack()
+    {
+        double width = Math.Max(1, Bounds.Width - HeaderWidth - (ScrollBarMargin * 2));
+        double y = Math.Max(RulerHeight, Bounds.Height - ScrollBarHeight - ScrollBarMargin);
+        return new Rect(HeaderWidth + ScrollBarMargin, y, width, ScrollBarHeight);
+    }
+
+    private Rect GetScrollBarThumb(double maximum)
+    {
+        Rect track = GetScrollBarTrack();
+        double thumbWidth = Math.Clamp(track.Width / zoom, MinimumThumbWidth, track.Width);
+        double maximumStart = Math.Max(0, maximum - GetViewportDuration(maximum));
+        double ratio = maximumStart > 0 ? viewportStartMilliseconds / maximumStart : 0;
+        double x = track.X + (Math.Clamp(ratio, 0, 1) * (track.Width - thumbWidth));
+        return new Rect(x, track.Y, thumbWidth, track.Height);
     }
 
     private static double GetTickStep(double visibleDuration)

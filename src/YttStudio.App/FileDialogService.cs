@@ -17,6 +17,9 @@ public interface IFileDialogService
     /// <summary><c>.yttproj</c> 패키지를 저장할 위치를 고른다.</summary>
     Task<string?> SaveProjectAsync(string? suggestedName);
 
+    /// <summary>사용자가 libmpv 네이티브 라이브러리 파일 또는 포함 폴더를 선택하게 한다.</summary>
+    Task<string?> OpenMpvLibraryAsync();
+
     /// <summary>
     /// 기록된 영상 경로를 더 이상 찾을 수 없는 프로젝트를 다시 연결한다.
     /// 패키지는 경로만 저장하므로 끊어진 연결을 복구할 수 있어야 한다.
@@ -97,6 +100,34 @@ public sealed class FileDialogService : IFileDialogService
             FileTypeChoices = [new FilePickerFileType("YttStudio 프로젝트") { Patterns = ["*.yttproj"] }],
         });
         return file?.Path.LocalPath;
+    }
+
+    public async Task<string?> OpenMpvLibraryAsync()
+    {
+        IReadOnlyList<IStorageFile> files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "libmpv library",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("libmpv native library")
+                {
+                    Patterns = ["*.dll", "*.so", "*.so.*", "*.dylib"],
+                },
+            ],
+        });
+        if (files.Count > 0)
+        {
+            return files[0].Path.LocalPath;
+        }
+
+        IReadOnlyList<IStorageFolder> folders = await owner.StorageProvider.OpenFolderPickerAsync(
+            new FolderPickerOpenOptions
+            {
+                Title = "libmpv folder",
+                AllowMultiple = false,
+            });
+        return folders.Count == 0 ? null : folders[0].Path.LocalPath;
     }
 
     public async Task<string?> RelinkVideoAsync(string missingPath)

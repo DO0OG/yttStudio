@@ -30,6 +30,12 @@ public interface IVideoSource : IAsyncDisposable
     /// <summary>재생 속도를 설정한다.</summary>
     void SetSpeed(double speed);
 
+    /// <summary>재생 볼륨을 0부터 100 사이로 설정한다.</summary>
+    void SetVolume(double volume);
+
+    /// <summary>음소거 상태를 설정한다.</summary>
+    void SetMuted(bool muted);
+
     /// <summary>더 새로운 프레임을 잠글 수 있음을 알린다.</summary>
     event Action FrameReady;
 

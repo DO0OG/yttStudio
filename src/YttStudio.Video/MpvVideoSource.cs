@@ -53,6 +53,7 @@ public sealed class MpvVideoSource : IVideoSource
             SetOption("vo", "libmpv");
             SetOption("audio-display", "no");
             SetOption("keep-open", "yes");
+            SetOption("pause", "yes");
             SetOption("hwdec", "no");
             Check(native.Initialize(mpvHandle), "mpv_initialize");
             LibraryVersion = ReadStringProperty("mpv-version") ?? GetApiVersionText(native.ClientApiVersion());
@@ -167,6 +168,7 @@ public sealed class MpvVideoSource : IVideoSource
             VideoInfo current = Info;
             if (current.Width > 0 && current.Height > 0 && current.Duration > TimeSpan.Zero)
             {
+                Pause();
                 return;
             }
 
@@ -231,6 +233,23 @@ public sealed class MpvVideoSource : IVideoSource
         }
 
         SetProperty("speed", speed.ToString("R", CultureInfo.InvariantCulture));
+    }
+
+    public void SetVolume(double volume)
+    {
+        ThrowIfStopping();
+        if (!double.IsFinite(volume) || volume is < 0 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(volume), "Volume must be from 0 through 100.");
+        }
+
+        SetProperty("volume", volume.ToString("R", CultureInfo.InvariantCulture));
+    }
+
+    public void SetMuted(bool muted)
+    {
+        ThrowIfStopping();
+        SetProperty("mute", muted ? "yes" : "no");
     }
 
     public bool TryLockLatestFrame(out VideoFrameLock frame)

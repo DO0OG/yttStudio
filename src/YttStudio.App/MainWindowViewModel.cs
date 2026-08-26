@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -18,7 +19,12 @@ namespace YttStudio.App;
 
 public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
+    private const string PlayIcon = "▶";
+    private const string PauseIcon = "⏸";
+
     private readonly IFileDialogService dialogs;
+    private readonly PreferencesStore preferencesStore;
+    private readonly AppPreferences preferences;
     private readonly SubtitleFileService fileService = new();
     private readonly SkiaSubtitleRenderer renderer;
     private readonly HashSet<Guid> selectedCueIds = [];
@@ -44,6 +50,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private double maximumMilliseconds = 1;
     private double positionMilliseconds;
     private double playbackSpeed = 1;
+    private double volume = 100;
+    private bool isMuted;
     private bool useCheckerboard;
     private bool videoLoaded;
     private bool updatingFromVideo;
@@ -60,20 +68,36 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private double inlineEditorWidth = 180;
     private bool disposed;
     private bool karaokeTimelineTransaction;
+    private AppThemeMode themeMode;
+    private string mpvPath = string.Empty;
+    private string? loadedVideoPath;
+    private SettingsWindow? settingsWindow;
+    private readonly MpvAutoInstaller? mpvAutoInstaller =
+        MpvAutoInstaller.IsWindowsInstallationSupported ? new MpvAutoInstaller() : null;
 
     public MainWindowViewModel(IFileDialogService dialogs)
     {
         this.dialogs = dialogs;
+        preferencesStore = new PreferencesStore();
+        preferences = preferencesStore.Load();
+        preferences.AutosaveIntervalSeconds = NormalizeAutosaveIntervalSeconds(
+            preferences.AutosaveIntervalSeconds);
+        themeMode = preferences.Theme;
+        snapThreshold = Math.Clamp(preferences.SnapThreshold, 0, 64);
+        volume = double.IsFinite(preferences.Volume) ? Math.Clamp(preferences.Volume, 0, 100) : 100;
+        isMuted = preferences.IsMuted;
+        mpvPath = NormalizeMpvPath(preferences.MpvPath);
+        if (!string.IsNullOrWhiteSpace(mpvPath))
+        {
+            Environment.SetEnvironmentVariable("YTTSTUDIO_MPV_PATH", mpvPath);
+        }
+        Loc.Language = preferences.Language;
         // 모든 표시 문자열은 로컬라이저를 거친다. 그래야 언어를
         // 전환하면 화면을 다시 만들지 않고도 전체 바인딩을 다시 읽는다.
         Loc.LanguageChanged += OnLanguageChanged;
         renderer = new SkiaSubtitleRenderer(new BundledFontResolver(
             message => Serilog.Log.Information("{FontResolution}", message)));
-        autosave = new AutosaveService(
-            () => project,
-            () => unsavedChanges,
-            message => Serilog.Log.Warning("{Autosave}", message));
-        autosave.Start();
+        RestartAutosave(preferences.AutosaveEnabled, preferences.AutosaveIntervalSeconds);
         ExitCommand = new DelegateCommand(RequestShutdown);
         AboutCommand = new AsyncCommand(ShowAboutAsync);
         OpenProjectCommand = new AsyncCommand(OpenProjectAsync);
@@ -129,6 +153,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         AutoSplitKaraokeCommand = new DelegateCommand(
             AutoSplitSelectedKaraokeCue,
             () => HasKaraokeCue);
+        SelectMpvPathCommand = new AsyncCommand(SelectMpvPathAsync);
+        ApplyMpvPathCommand = new AsyncCommand(ApplyMpvPathAsync);
+        OpenMpvInstallationGuideCommand = new DelegateCommand(OpenMpvInstallationGuide);
+        OpenSettingsCommand = new AsyncCommand(OpenSettingsAsync);
         InitializeVideoSource();
         RenderFallbackFrame();
     }
@@ -287,6 +315,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             }
 
             snapThreshold = clamped;
+            preferences.SnapThreshold = clamped;
+            SavePreferences();
             OnPropertyChanged();
         }
     }
@@ -346,6 +376,72 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    private async Task OpenSettingsAsync()
+    {
+        if (settingsWindow is not null)
+        {
+            settingsWindow.Activate();
+            return;
+        }
+
+        Window? owner = GetMainWindow();
+        if (owner is null)
+        {
+            return;
+        }
+
+        await ShowSettingsDialogAsync(owner);
+    }
+
+    private static Window? GetMainWindow()
+        => Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            ? desktop.MainWindow
+            : null;
+
+    private SettingsViewModel CreateSettingsViewModel()
+        => new(
+            Loc,
+            preferences,
+            dialogs,
+            language => Language = language,
+            theme => ThemeMode = theme,
+            ApplyMpvPathFromSettingsAsync,
+            () => SnapThreshold,
+            value => SnapThreshold = value,
+            ApplyAutosaveSettings,
+            () => VideoStatus,
+            mpvAutoInstaller is null ? null : InstallMpvAndApplyAsync);
+
+    private async Task ShowSettingsDialogAsync(Window owner)
+    {
+        SettingsViewModel settingsViewModel = CreateSettingsViewModel();
+        SettingsWindow window = new() { DataContext = settingsViewModel };
+        settingsWindow = window;
+        settingsViewModel.CloseRequested += window.Close;
+        window.Closed += (_, _) =>
+        {
+            settingsViewModel.Dispose();
+            if (ReferenceEquals(settingsWindow, window))
+            {
+                settingsWindow = null;
+            }
+        };
+
+        try
+        {
+            await window.ShowDialog(owner);
+        }
+        finally
+        {
+            settingsViewModel.Dispose();
+            if (ReferenceEquals(settingsWindow, window))
+            {
+                settingsWindow = null;
+            }
+        }
+    }
+
     private async Task ShowAboutAsync()
     {
         await dialogs.ConfirmAsync(Loc["MenuAbout"], Loc["AboutBody"], Loc["Close"]);
@@ -372,7 +468,45 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public AppLanguage Language
     {
         get => Loc.Language;
-        set => Loc.Language = value;
+        set
+        {
+            if (Loc.Language == value)
+            {
+                return;
+            }
+
+            Loc.Language = value;
+            preferences.Language = value;
+            SavePreferences();
+        }
+    }
+
+    public IReadOnlyList<AppThemeMode> ThemeModes { get; } =
+        [AppThemeMode.Default, AppThemeMode.Light, AppThemeMode.Dark];
+
+    public AppThemeMode ThemeMode
+    {
+        get => themeMode;
+        set
+        {
+            if (!SetField(ref themeMode, value))
+            {
+                return;
+            }
+
+            preferences.Theme = value;
+            SavePreferences();
+            if (Avalonia.Application.Current is App app)
+            {
+                app.ApplyTheme(value);
+            }
+        }
+    }
+
+    public string MpvPath
+    {
+        get => mpvPath;
+        set => SetField(ref mpvPath, value ?? string.Empty);
     }
 
     private void OnLanguageChanged()
@@ -381,6 +515,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged("Item[]");
         OnPropertyChanged(nameof(Loc));
         OnPropertyChanged(nameof(Language));
+        OnPropertyChanged(nameof(PlayPauseActionText));
+        OnPropertyChanged(string.Empty);
     }
 
     public DelegateCommand ExitCommand { get; }
@@ -421,6 +557,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public DelegateCommand ApplyValidationFixCommand { get; }
     public DelegateCommand GoToValidationIssueCommand { get; }
     public DelegateCommand AutoSplitKaraokeCommand { get; }
+    public AsyncCommand SelectMpvPathCommand { get; }
+    public AsyncCommand ApplyMpvPathCommand { get; }
+    public DelegateCommand OpenMpvInstallationGuideCommand { get; }
+    public AsyncCommand OpenSettingsCommand { get; }
     public ObservableCollection<CueRowViewModel> CueRows { get; } = [];
     public ObservableCollection<StyleOption> Styles { get; } = [];
     public ObservableCollection<ValidationIssue> ValidationIssues { get; } = [];
@@ -445,7 +585,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool HasProject => project is not null;
     public bool HasVideo => videoLoaded;
     public bool IsPlaying => videoSource?.IsPlaying == true;
-    public string PlayPauseLabel => IsPlaying ? "일시정지" : "재생";
+    public string PlayPauseLabel => IsPlaying ? PauseIcon : PlayIcon;
+    public string PlayPauseActionText => IsPlaying ? Loc["Pause"] : Loc["Play"];
 
     public Guid? SelectedKaraokeCueId => selectedCueIds.Count == 1 ? lastSelectedCueId : null;
 
@@ -1671,19 +1812,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         disposed = true;
         Loc.LanguageChanged -= OnLanguageChanged;
+        settingsWindow?.Close();
+        settingsWindow = null;
         if (autosave is not null)
         {
             autosave.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            // 정상 종료는 스냅샷을 남기지 않아야 한다. 남기면 다음 실행에서
-            // 필요하지도 않은 복구를 제안하게 된다.
-            AutosaveService.ClearSnapshots();
         }
 
-        if (videoSource is not null)
-        {
-            videoSource.FrameReady -= OnVideoFrameReady;
-            videoSource.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        }
+        // 정상 종료는 스냅샷을 남기지 않아야 한다. 남기면 다음 실행에서
+        // 필요하지도 않은 복구를 제안하게 된다.
+        AutosaveService.ClearSnapshots();
+
+        DisposeVideoSource();
 
         VideoFrameImage?.Dispose();
         SubtitleImage?.Dispose();
@@ -1709,6 +1849,203 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         OpenVideoCommand.NotifyCanExecuteChanged();
     }
+
+    private void DisposeVideoSource()
+    {
+        MpvVideoSource? source = videoSource;
+        videoSource = null;
+        videoLoaded = false;
+        if (source is not null)
+        {
+            source.FrameReady -= OnVideoFrameReady;
+            source.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+
+        NotifyVideoState();
+    }
+
+    private async Task SelectMpvPathAsync()
+    {
+        string? selectedPath = await dialogs.OpenMpvLibraryAsync();
+        if (selectedPath is null)
+        {
+            return;
+        }
+
+        MpvPath = selectedPath;
+        await ApplyMpvPathAsync();
+    }
+
+    private Task ApplyMpvPathAsync()
+        => ApplyMpvPathFromSettingsAsync(MpvPath);
+
+    internal async Task<string> ApplyMpvPathFromSettingsAsync(string path)
+    {
+        MpvPath = path;
+        string selectedPath = NormalizeMpvPath(path);
+        if (!string.IsNullOrWhiteSpace(selectedPath)
+            && !File.Exists(selectedPath)
+            && !Directory.Exists(selectedPath))
+        {
+            Status = Loc["MpvPathInvalid"];
+            return Status;
+        }
+
+        MpvPath = selectedPath;
+        preferences.MpvPath = selectedPath;
+        SavePreferences();
+        Environment.SetEnvironmentVariable(
+            "YTTSTUDIO_MPV_PATH",
+            string.IsNullOrWhiteSpace(selectedPath) ? null : selectedPath);
+
+        string? videoToReload = loadedVideoPath;
+        double positionToRestore = PositionMilliseconds;
+        DisposeVideoSource();
+        InitializeVideoSource();
+        RenderFallbackFrame();
+
+        if (videoToReload is not null && videoSource is not null && File.Exists(videoToReload))
+        {
+            await LoadVideoAsync(videoToReload);
+            if (videoLoaded)
+            {
+                await SeekAsync(positionToRestore, exact: false);
+            }
+        }
+
+        Status = videoSource is null ? Loc["MpvReloadFailed"] : Loc["MpvReloaded"];
+        return Status;
+    }
+
+    private void OpenMpvInstallationGuide()
+    {
+        if (!MpvInstallationGuide.TryOpen(out string? error))
+        {
+            Status = $"{Loc["MpvGuide"]}: {error}";
+        }
+    }
+
+    public double Volume
+    {
+        get => volume;
+        set
+        {
+            double clamped = double.IsFinite(value) ? Math.Clamp(value, 0, 100) : 100;
+            if (!SetField(ref volume, clamped))
+            {
+                return;
+            }
+
+            preferences.Volume = clamped;
+            SavePreferences();
+            if (videoLoaded)
+            {
+                videoSource?.SetVolume(clamped);
+            }
+        }
+    }
+
+    public bool IsMuted
+    {
+        get => isMuted;
+        set
+        {
+            if (!SetField(ref isMuted, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(MuteLabel));
+            preferences.IsMuted = value;
+            SavePreferences();
+            if (videoLoaded)
+            {
+                videoSource?.SetMuted(value);
+            }
+        }
+    }
+
+    public string MuteLabel => IsMuted ? Loc["Unmute"] : Loc["Mute"];
+
+    private async Task<string?> InstallMpvAndApplyAsync(IProgress<MpvInstallProgress> progress)
+    {
+        if (mpvAutoInstaller is null)
+        {
+            return Loc["MpvAutoInstallUnavailable"];
+        }
+
+        try
+        {
+            Status = Loc["MpvAutoInstall"];
+            string installedPath = await mpvAutoInstaller.InstallAsync(progress);
+            return await ApplyMpvPathFromSettingsAsync(installedPath);
+        }
+        catch (MpvAutoInstallException exception)
+        {
+            Serilog.Log.Warning(exception, "libmpv 자동 설치 실패: {Kind}", exception.Kind);
+            Status = Loc["MpvAutoInstallFailed"];
+            return Status;
+        }
+        catch (OperationCanceledException)
+        {
+            Status = Loc["MpvAutoInstallCanceled"];
+            return Status;
+        }
+        catch (Exception exception)
+        {
+            Serilog.Log.Warning(exception, "libmpv 자동 설치 중 처리되지 않은 오류");
+            Status = Loc["MpvAutoInstallFailed"];
+            return Status;
+        }
+    }
+
+    private void SavePreferences()
+    {
+        if (!preferencesStore.TrySave(preferences, out string? error))
+        {
+            Status = $"{Loc["Settings"]}: {error}";
+        }
+    }
+
+    private void ApplyAutosaveSettings(bool enabled, int intervalSeconds)
+    {
+        int normalizedInterval = NormalizeAutosaveIntervalSeconds(intervalSeconds);
+        if (preferences.AutosaveEnabled == enabled
+            && preferences.AutosaveIntervalSeconds == normalizedInterval)
+        {
+            return;
+        }
+
+        preferences.AutosaveEnabled = enabled;
+        preferences.AutosaveIntervalSeconds = normalizedInterval;
+        RestartAutosave(enabled, normalizedInterval);
+        SavePreferences();
+    }
+
+    private void RestartAutosave(bool enabled, int intervalSeconds)
+    {
+        AutosaveService? previous = autosave;
+        autosave = null;
+        previous?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+        if (!enabled)
+        {
+            return;
+        }
+
+        autosave = new AutosaveService(
+            () => project,
+            () => unsavedChanges,
+            message => Serilog.Log.Warning("{Autosave}", message),
+            TimeSpan.FromSeconds(NormalizeAutosaveIntervalSeconds(intervalSeconds)));
+        autosave.Start();
+    }
+
+    private static int NormalizeAutosaveIntervalSeconds(int seconds)
+        => seconds is 15 or 30 or 60 or 120 or 300 or 600 ? seconds : 60;
+
+    private static string NormalizeMpvPath(string? path)
+        => string.IsNullOrWhiteSpace(path) ? string.Empty : path.Trim().Trim('"');
 
     private async Task OpenSubtitleAsync()
     {
@@ -1796,6 +2133,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             Status = "영상 메타데이터 읽는 중…";
             await videoSource.LoadAsync(path, CancellationToken.None);
             videoLoaded = true;
+            videoSource.SetVolume(volume);
+            videoSource.SetMuted(isMuted);
+            loadedVideoPath = Path.GetFullPath(path);
             UpdateMaximum();
             VideoStatus = $"{Path.GetFileName(path)} · {videoSource.Info.Width}×{videoSource.Info.Height} · " +
                 $"{videoSource.Info.NominalFps:0.###} fps (표시용)";
@@ -2269,16 +2609,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task SeekAsync(double milliseconds, bool exact)
     {
+        if (videoSource is null || !videoLoaded)
+        {
+            return;
+        }
+
         try
         {
-            if (videoSource is not null)
-            {
-                await videoSource.SeekAsync(TimeSpan.FromMilliseconds(milliseconds), exact);
-            }
+            await videoSource.SeekAsync(TimeSpan.FromMilliseconds(milliseconds), exact);
         }
         catch (Exception exception)
         {
-            Status = $"시크 실패: {exception.Message}";
+            if (videoLoaded)
+            {
+                Status = $"{Loc["SeekFailed"]}: {exception.Message}";
+            }
         }
     }
 
@@ -2552,6 +2897,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(HasVideo));
         OnPropertyChanged(nameof(IsPlaying));
         OnPropertyChanged(nameof(PlayPauseLabel));
+        OnPropertyChanged(nameof(PlayPauseActionText));
         NotifyCommandStates();
     }
 

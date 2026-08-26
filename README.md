@@ -11,7 +11,7 @@
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![Avalonia](https://img.shields.io/badge/Avalonia-12-8B44AC)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
-![Tests](https://img.shields.io/badge/tests-149%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-150%20passing-brightgreen)
 
 **한국어** · [English](README.en.md) · [日本語](README.ja.md)
 
@@ -58,12 +58,15 @@ YttStudio 는 그 자리를 채웁니다.
 | | |
 |---|---|
 | **영상 위 편집** | libmpv 로 재생하면서 자막을 드래그·다중 선택·스냅 정렬 |
+| **타임라인** | 확대·좌우 팬·스크롤바 드래그, 블록 이동과 끝 트림. 패널 크기는 경계를 끌어 조절 |
 | **포맷 규칙 강제** | 좌표 변환, 폰트 배율 압축, 불투명도 상한 등 YTT 제약을 코드에서 검사 |
 | **가라오케** | 음절 자동 분할(한글·가나·라틴·한자), 재생 중 탭 입력, 5가지 진행 방식 |
 | **효과** | 이동 · 페이드 · 흔들림 · 색수차 · 애니메이션. 흔들림은 결정적이라 되감아도 같은 결과 |
 | **검증기** | 유튜브 제약 17개 규칙 검사와 되돌릴 수 있는 자동 수정 |
 | **왕복 변환** | `.ytt` / `.srv3` / `.ass` 가져오기·내보내기, 손실은 경고로 명시 |
-| **프로젝트** | `.yttproj` 패키지, 60초 자동 저장, 비정상 종료 복구 |
+| **프로젝트** | `.yttproj` 패키지, 자동 저장(간격 조절 가능), 비정상 종료 복구 |
+| **환경설정** | 언어 · 테마 · libmpv 경로 · 자동 저장을 창에서 설정하고 다음 실행까지 유지 |
+| **테마** | 시스템 기본 · 라이트 · 다크. 재시작 없이 즉시 전환 |
 | **3개 언어** | 한국어 · English · 日本語 실시간 전환 |
 
 ## 시작하기
@@ -92,7 +95,11 @@ dotnet run --project src/YttStudio.App -- samples/showcase.ass
 
 ### libmpv 지정
 
-탐색 순서는 `YTTSTUDIO_MPV_PATH` → 실행 디렉터리 → OS 표준 경로입니다.
+가장 쉬운 방법은 **도구 → 설정 → 영상** 탭입니다. 경로를 직접 고르거나, Windows 에서는
+내려받아 설치할 수 있습니다. 설정한 경로는 다음 실행에도 유지됩니다.
+
+환경 변수로도 지정할 수 있습니다. 탐색 순서는
+설정에 저장된 경로 → `YTTSTUDIO_MPV_PATH` → 실행 디렉터리 → OS 표준 경로입니다.
 
 ```bash
 # Windows
@@ -103,6 +110,11 @@ export YTTSTUDIO_MPV_PATH=/usr/lib/libmpv.so.2
 ```
 
 2.0 미만 버전은 거부하며, 찾지 못하면 영상 기능만 끄고 단색·체커보드 배경으로 폴백합니다.
+
+> **라이선스 안내.** 공식 Windows mpv 빌드는 GPLv2+ 입니다. 그래서 YttStudio 는
+> libmpv 바이너리를 배포물에 포함하지 않습니다. 설정 창의 자동 설치는 사용자가
+> 출처와 라이선스를 확인하고 직접 버튼을 눌렀을 때만 내려받아 사용자 컴퓨터에 설치합니다.
+> macOS 와 Linux 에서는 자동 설치 대신 패키지 매니저 명령을 안내합니다.
 
 ## 알아두면 좋은 것
 

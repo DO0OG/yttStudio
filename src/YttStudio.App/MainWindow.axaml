@@ -14,8 +14,8 @@
         MinHeight="700"
         Title="YttStudio"
         Icon="/Assets/app.ico">
-  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="0" RowSpacing="0">
-    <Menu Grid.Row="0" Background="#232323" Padding="4,2">
+  <Grid RowDefinitions="Auto,Auto,*,40" Margin="0" RowSpacing="0">
+    <Menu Grid.Row="0" Background="{DynamicResource AppMenuBackgroundBrush}" Padding="4,2">
       <MenuItem Header="{Binding Loc[MenuFile]}">
         <MenuItem Header="{Binding Loc[OpenProject]}" Command="{Binding OpenProjectCommand}" />
         <MenuItem Header="{Binding Loc[SaveProject]}" Command="{Binding SaveProjectCommand}" />
@@ -51,6 +51,8 @@
         <MenuItem Header="{Binding Loc[RunCheck]}" Command="{Binding ValidateCommand}" />
         <MenuItem Header="{Binding Loc[ShiftSelected]}" Command="{Binding ShiftSelectedCommand}" />
         <MenuItem Header="{Binding Loc[ShiftAll]}" Command="{Binding ShiftAllCommand}" />
+        <Separator />
+        <MenuItem Header="{Binding Loc[Settings]}" Command="{Binding OpenSettingsCommand}" />
       </MenuItem>
       <MenuItem Header="{Binding Loc[MenuHelp]}">
         <MenuItem Header="{Binding Loc[MenuAbout]}" Command="{Binding AboutCommand}" />
@@ -62,24 +64,25 @@
         <Button Content="{Binding Loc[OpenProject]}" Command="{Binding OpenProjectCommand}" MinWidth="96" />
         <Button Content="{Binding Loc[OpenVideo]}" Command="{Binding OpenVideoCommand}" MinWidth="88" />
         <Button Content="{Binding Loc[SaveYtt]}" Command="{Binding SaveCommand}" MinWidth="88" />
-        <Border Width="1" Background="#3C3C3C" Margin="6,3" />
+        <Border Width="1" Background="{DynamicResource AppDividerBrush}" Margin="6,3" />
         <Button Content="{Binding Loc[Undo]}" Command="{Binding UndoCommand}" MinWidth="64" />
         <Button Content="{Binding Loc[Redo]}" Command="{Binding RedoCommand}" MinWidth="64" />
       </StackPanel>
-      <Border Grid.Column="1" Background="#242424" CornerRadius="4" Margin="12,0" Padding="10,4">
+      <Border Grid.Column="1" Background="{DynamicResource AppStatusBackgroundBrush}" CornerRadius="4" Margin="12,0" Padding="10,4">
         <TextBlock Text="{Binding VideoStatus}" VerticalAlignment="Center"
-                   Foreground="#BBB" TextTrimming="CharacterEllipsis" />
+                   Foreground="{DynamicResource AppStrongForegroundBrush}" TextTrimming="CharacterEllipsis" />
       </Border>
       <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-        <TextBlock Text="{Binding Loc[LanguageLabel]}" VerticalAlignment="Center" />
-        <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" MinWidth="110" />
+        <Button Content="{Binding Loc[Settings]}" Command="{Binding OpenSettingsCommand}" MinWidth="90" />
       </StackPanel>
     </Grid>
 
-    <Grid Grid.Row="2" ColumnDefinitions="230,*,300" ColumnSpacing="10" Margin="10,0,10,0">
-      <Border Grid.Column="0" BorderBrush="#444" BorderThickness="1" Padding="8">
+    <Grid Grid.Row="2" ColumnDefinitions="230,6,*,6,300" Margin="10,0,10,0">
+      <Border Grid.Column="0" MinWidth="160"
+              BorderBrush="{DynamicResource AppPanelBorderBrush}" BorderThickness="1" Padding="8">
         <Grid RowDefinitions="Auto,*,Auto">
-          <TextBlock Grid.Row="0" Text="{Binding Loc[StylePresets]}" FontWeight="Bold" Margin="0,0,0,8" />
+          <TextBlock Grid.Row="0" Text="{Binding Loc[StylePresets]}" FontWeight="Bold"
+                     TextAlignment="Center" Margin="0,0,0,8" />
           <ListBox Grid.Row="1"
                    ItemsSource="{Binding Styles}"
                    SelectedItem="{Binding SelectedStyleOption}">
@@ -89,20 +92,25 @@
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
-          <StackPanel Grid.Row="2" Spacing="5" Margin="0,8,0,0">
+          <StackPanel Grid.Row="2" Spacing="6" Margin="0,8,0,0">
             <TextBox Text="{Binding SelectedStyleName, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{Binding Loc[StyleName]}" />
-            <StackPanel Orientation="Horizontal" Spacing="6">
+            <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
               <Button Content="{Binding Loc[Add]}" Command="{Binding AddStyleCommand}" />
               <Button Content="{Binding Loc[Rename]}" Command="{Binding RenameStyleCommand}" />
               <Button Content="{Binding Loc[Delete]}" Command="{Binding DeleteStyleCommand}" />
             </StackPanel>
-            <Button Content="{Binding Loc[SaveCueFormat]}" Command="{Binding SaveCueAsStyleCommand}" />
+            <Button Content="{Binding Loc[SaveCueFormat]}" Command="{Binding SaveCueAsStyleCommand}"
+                    HorizontalAlignment="Center" />
           </StackPanel>
         </Grid>
       </Border>
 
-      <Grid Grid.Column="1" RowDefinitions="Auto,3*,Auto,Auto,*,2*" RowSpacing="6">
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4">
+      <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                    ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Cursor="SizeWestEast"
+                    Background="{DynamicResource AppDividerBrush}" />
+
+      <Grid Grid.Column="2" MinWidth="500" RowDefinitions="Auto,3*,6,*,6,2*">
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
           <Button Content="{Binding Loc[ViewportVideo]}" IsEnabled="True" />
           <Button Content="{Binding Loc[ViewportYouTube]}" IsEnabled="False" ToolTip.Tip="{Binding Loc[ViewportPending]}" />
           <Button Content="{Binding Loc[ViewportTheater]}" IsEnabled="False" ToolTip.Tip="{Binding Loc[ViewportPending]}" />
@@ -111,7 +119,9 @@
           <TextBlock Text="{Binding Loc[ViewportModeNote]}" VerticalAlignment="Center" Margin="8,0" />
         </StackPanel>
 
-        <Border Grid.Row="1" Background="#111" BorderBrush="#555" BorderThickness="1" ClipToBounds="True">
+        <Grid Grid.Row="1" MinHeight="190" RowDefinitions="*,Auto,Auto" Margin="0,6,0,0">
+        <Border Grid.Row="0" MinHeight="140"
+                Background="{DynamicResource AppVideoSurfaceBrush}" BorderBrush="{DynamicResource AppVideoBorderBrush}" BorderThickness="1" ClipToBounds="True">
           <Grid>
             <Image Source="{Binding VideoFrameImage}" Stretch="Uniform" />
             <Image Source="{Binding SubtitleImage}" Stretch="Uniform" IsHitTestVisible="False" />
@@ -155,44 +165,81 @@
           </Grid>
         </Border>
 
-        <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="6">
-          <Button Grid.Column="0" Content="◀" Command="{Binding StepBackCommand}" />
-          <Button Grid.Column="1" Content="{Binding PlayPauseLabel}" Command="{Binding PlayPauseCommand}" />
-          <Button Grid.Column="2" Content="▶" Command="{Binding StepForwardCommand}" />
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,100" ColumnSpacing="6"
+              Margin="0,6,0,0" HorizontalAlignment="Stretch" IsEnabled="{Binding HasVideo}">
+          <Button Grid.Column="0" Content="◀" Command="{Binding StepBackCommand}"
+                  Width="36" MinHeight="32" VerticalAlignment="Center" />
+          <Button Grid.Column="1" Content="{Binding PlayPauseLabel}" Command="{Binding PlayPauseCommand}"
+                  ToolTip.Tip="{Binding PlayPauseActionText}"
+                  AutomationProperties.Name="{Binding PlayPauseActionText}"
+                  Width="36" MinHeight="32" VerticalAlignment="Center" />
+          <Button Grid.Column="2" Content="▶" Command="{Binding StepForwardCommand}"
+                  Width="36" MinHeight="32" VerticalAlignment="Center" />
           <Slider Grid.Column="3" Minimum="0" Maximum="{Binding MaximumMilliseconds}"
-                  Value="{Binding PositionMilliseconds}" />
+                  Value="{Binding PositionMilliseconds}" VerticalAlignment="Center" />
           <TextBlock Grid.Column="4" Text="{Binding PositionDisplay}" Width="92" TextAlignment="Right"
                      VerticalAlignment="Center" />
           <ComboBox Grid.Column="5" ItemsSource="{Binding SpeedOptions}" SelectedItem="{Binding PlaybackSpeed}"
-                    Width="72" />
+                    Width="72" MinHeight="32" VerticalAlignment="Center" />
+          <ToggleButton Grid.Column="6" Content="{Binding MuteLabel}" IsChecked="{Binding IsMuted}"
+                        ToolTip.Tip="{Binding Loc[Mute]}" MinHeight="32" VerticalAlignment="Center" />
+          <Slider Grid.Column="7" Minimum="0" Maximum="100" Value="{Binding Volume}" Width="100"
+                  ToolTip.Tip="{Binding Loc[Volume]}" VerticalAlignment="Center" />
         </Grid>
 
-        <TextBlock Grid.Row="3" Text="{Binding Loc[TimelineHint]}"
-                   Foreground="#AAA" />
-        <vm:TimelineControl Grid.Row="4" />
+        <TextBlock Grid.Row="2" Text="{Binding Loc[TimelineHint]}" TextAlignment="Center"
+                   Foreground="{DynamicResource AppSubtleForegroundBrush}" />
+        </Grid>
 
-        <Border Grid.Row="5" BorderBrush="#444" BorderThickness="1">
+        <GridSplitter Grid.Row="2" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                      ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" Cursor="SizeNorthSouth"
+                      Background="{DynamicResource AppDividerBrush}" />
+        <vm:TimelineControl Grid.Row="3" MinHeight="72" />
+
+        <GridSplitter Grid.Row="4" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                      ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" Cursor="SizeNorthSouth"
+                      Background="{DynamicResource AppDividerBrush}" />
+
+        <Border Grid.Row="5" MinHeight="100"
+                BorderBrush="{DynamicResource AppPanelBorderBrush}" BorderThickness="1">
           <Grid RowDefinitions="Auto,*">
-            <Grid Grid.Row="0" ColumnDefinitions="40,104,104,88,64,120,*" ColumnSpacing="8" Background="#2A2A2A" Margin="0" Height="30">
-              <TextBlock Grid.Column="0" Text="#" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#CCC" />
-              <TextBlock Grid.Column="1" Text="{Binding Loc[StartMs]}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#CCC" />
-              <TextBlock Grid.Column="2" Text="{Binding Loc[EndMs]}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#CCC" />
-              <TextBlock Grid.Column="3" Text="{Binding Loc[Duration]}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#CCC" />
-              <TextBlock Grid.Column="4" Text="{Binding Loc[Track]}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#CCC" />
-              <TextBlock Grid.Column="5" Text="{Binding Loc[Style]}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#CCC" />
-              <TextBlock Grid.Column="6" Text="{Binding Loc[TextSection]}" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#CCC" />
+            <Grid Grid.Row="0" ColumnDefinitions="40,104,104,88,64,120,*" ColumnSpacing="8"
+                  Background="{DynamicResource AppTableHeaderBrush}" Margin="0,0,14,0" Height="30">
+              <TextBlock Grid.Column="0" Text="#" VerticalAlignment="Center" TextAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
+              <TextBlock Grid.Column="1" Text="{Binding Loc[StartMs]}" VerticalAlignment="Center" TextAlignment="Right" Margin="0,0,4,0" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
+              <TextBlock Grid.Column="2" Text="{Binding Loc[EndMs]}" VerticalAlignment="Center" TextAlignment="Right" Margin="0,0,4,0" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
+              <TextBlock Grid.Column="3" Text="{Binding Loc[Duration]}" VerticalAlignment="Center" TextAlignment="Right" Margin="0,0,6,0" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
+              <TextBlock Grid.Column="4" Text="{Binding Loc[Track]}" VerticalAlignment="Center" TextAlignment="Right" Margin="0,0,4,0" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
+              <TextBlock Grid.Column="5" Text="{Binding Loc[Style]}" VerticalAlignment="Center" TextAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
+              <TextBlock Grid.Column="6" Text="{Binding Loc[TextSection]}" VerticalAlignment="Center" TextAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
             </Grid>
-            <ListBox Grid.Row="1" ItemsSource="{Binding CueRows}" SelectedItem="{Binding SelectedCueRow}">
+            <ListBox Grid.Row="1" Classes="cueTable" ItemsSource="{Binding CueRows}"
+                     SelectedItem="{Binding SelectedCueRow}">
+              <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                  <Setter Property="Padding" Value="0" />
+                  <Setter Property="Margin" Value="0" />
+                  <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                </Style>
+                <Style Selector="TextBox.cueTableEditor">
+                  <Setter Property="MinWidth" Value="0" />
+                  <Setter Property="MinHeight" Value="0" />
+                  <Setter Property="Height" Value="26" />
+                  <Setter Property="Padding" Value="4,2" />
+                  <Setter Property="VerticalAlignment" Value="Center" />
+                  <Setter Property="TextWrapping" Value="NoWrap" />
+                </Style>
+              </ListBox.Styles>
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:CueRowViewModel">
-                  <Grid ColumnDefinitions="40,104,104,88,64,120,*" ColumnSpacing="8" Margin="0,3">
-                    <TextBlock Grid.Column="0" Text="{Binding Number}" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="#999" />
-                    <TextBox Grid.Column="1" Text="{Binding StartMilliseconds}" HorizontalContentAlignment="Right" />
-                    <TextBox Grid.Column="2" Text="{Binding EndMilliseconds}" HorizontalContentAlignment="Right" />
-                    <TextBlock Grid.Column="3" Text="{Binding DurationMilliseconds}" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,6,0" Foreground="#BBB" />
-                    <TextBox Grid.Column="4" Text="{Binding Track}" HorizontalContentAlignment="Right" />
-                    <TextBlock Grid.Column="5" Text="{Binding Style}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Foreground="#BBB" />
-                    <TextBox Grid.Column="6" Text="{Binding Text}" />
+                  <Grid ColumnDefinitions="40,104,104,88,64,120,*" ColumnSpacing="8" Margin="0" Height="30">
+                    <TextBlock Grid.Column="0" Text="{Binding Number}" VerticalAlignment="Center" TextAlignment="Center" Foreground="{DynamicResource AppMutedForegroundBrush}" />
+                    <TextBox Grid.Column="1" Classes="cueTableEditor" Text="{Binding StartMilliseconds}" HorizontalContentAlignment="Right" />
+                    <TextBox Grid.Column="2" Classes="cueTableEditor" Text="{Binding EndMilliseconds}" HorizontalContentAlignment="Right" />
+                    <TextBlock Grid.Column="3" Text="{Binding DurationMilliseconds}" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,6,0" Foreground="{DynamicResource AppStrongForegroundBrush}" />
+                    <TextBox Grid.Column="4" Classes="cueTableEditor" Text="{Binding Track}" HorizontalContentAlignment="Right" />
+                    <TextBlock Grid.Column="5" Text="{Binding Style}" VerticalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource AppStrongForegroundBrush}" />
+                    <TextBox Grid.Column="6" Classes="cueTableEditor" Text="{Binding Text}" MinWidth="160" />
                   </Grid>
                 </DataTemplate>
               </ListBox.ItemTemplate>
@@ -201,11 +248,16 @@
         </Border>
       </Grid>
 
-      <Border Grid.Column="2" BorderBrush="#444" BorderThickness="1" Padding="8">
+      <GridSplitter Grid.Column="3" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                    ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Cursor="SizeWestEast"
+                    Background="{DynamicResource AppDividerBrush}" />
+
+      <Border Grid.Column="4" MinWidth="260"
+              BorderBrush="{DynamicResource AppPanelBorderBrush}" BorderThickness="1" Padding="8">
         <ScrollViewer>
-          <StackPanel Spacing="8">
-            <TextBlock Text="{Binding Loc[Properties]}" FontWeight="Bold" />
-            <TextBlock Text="{Binding SelectionSummary}" Foreground="#AAA" TextWrapping="Wrap" />
+          <StackPanel Spacing="8" Width="240" HorizontalAlignment="Center">
+            <TextBlock Text="{Binding Loc[Properties]}" FontWeight="Bold" TextAlignment="Center" />
+            <TextBlock Text="{Binding SelectionSummary}" Foreground="{DynamicResource AppSubtleForegroundBrush}" TextWrapping="Wrap" TextAlignment="Center" />
 
             <Expander Header="{Binding Loc[PositionAndAlign]}" IsExpanded="True">
               <StackPanel Spacing="6" Margin="0,6,0,0">
@@ -217,10 +269,10 @@
                   <TextBlock Grid.Column="2" Text="Y" VerticalAlignment="Center" />
                   <TextBox Grid.Column="3" Text="{Binding SelectedPositionYText}" />
                   </Grid>
-                <TextBlock Text="{Binding SelectedAnchorDisplay}" Foreground="#AAA" />
+                <TextBlock Text="{Binding SelectedAnchorDisplay}" Foreground="{DynamicResource AppSubtleForegroundBrush}" />
                 <TextBlock Text="{Binding Loc[BoxJustify]}" />
                 <vm:JustificationPicker />
-                <TextBlock Text="{Binding SelectedJustificationDisplay}" Foreground="#AAA" />
+                <TextBlock Text="{Binding SelectedJustificationDisplay}" Foreground="{DynamicResource AppSubtleForegroundBrush}" />
                 <StackPanel Orientation="Horizontal" Spacing="3">
                   <Button Content="{Binding Loc[Left]}" Command="{Binding AlignLeftCommand}" />
                   <Button Content="{Binding Loc[Center]}" Command="{Binding AlignCenterCommand}" />
@@ -233,7 +285,7 @@
                   <Button Content="{Binding Loc[DistributeH]}" Command="{Binding DistributeHorizontalCommand}" />
                   <Button Content="{Binding Loc[DistributeV]}" Command="{Binding DistributeVerticalCommand}" />
                 </StackPanel>
-                <TextBlock Text="{Binding Loc[MultilineOnly]}" FontSize="11" Foreground="#AAA" />
+                <TextBlock Text="{Binding Loc[MultilineOnly]}" FontSize="11" Foreground="{DynamicResource AppSubtleForegroundBrush}" />
               </StackPanel>
             </Expander>
 
@@ -243,7 +295,7 @@
                 <TextBox Text="{Binding SelectedText}" AcceptsReturn="True" MinHeight="54" />
                 <TextBlock Text="{Binding Loc[Style]}" />
                 <ComboBox ItemsSource="{Binding Styles}" SelectedItem="{Binding SelectedCueStyleOption}" />
-                <TextBlock Text="{Binding Loc[StyleListHint]}" FontSize="11" Foreground="#AAA" />
+                <TextBlock Text="{Binding Loc[StyleListHint]}" FontSize="11" Foreground="{DynamicResource AppSubtleForegroundBrush}" />
                 <TextBlock Text="{Binding Loc[TextDirection]}" />
                 <ComboBox ItemsSource="{Binding DirectionOptions}" SelectedItem="{Binding SelectedDirection}" />
                 <TextBlock Text="{Binding Loc[Font]}" />
@@ -279,7 +331,7 @@
                 <ComboBox ItemsSource="{Binding EdgeOptions}" SelectedItem="{Binding SelectedEdge}" />
                 <TextBox Text="{Binding EdgeColorHex}" PlaceholderText="#RRGGBBAA" />
                 <NumericUpDown Minimum="0" Maximum="255" Value="{Binding EdgeOpacity}" />
-                <TextBlock Text="{Binding Loc[CompatPcNote]}" FontSize="11" Foreground="#AAA"
+                <TextBlock Text="{Binding Loc[CompatPcNote]}" FontSize="11" Foreground="{DynamicResource AppSubtleForegroundBrush}"
                            ToolTip.Tip="{Binding Loc[CompatSpecNote]}" />
               </StackPanel>
             </Expander>
@@ -292,7 +344,7 @@
                 <CheckBox Content="{Binding Loc[EffectChroma]}" IsChecked="{Binding ChromaEffectEnabled}" />
                 <CheckBox Content="{Binding Loc[EffectAnimate]}" IsChecked="{Binding AnimateEffectEnabled}" />
                 <TextBlock Text="{Binding Loc[EffectDefaultNote]}"
-                           FontSize="11" Foreground="#AAA" TextWrapping="Wrap" />
+                           FontSize="11" Foreground="{DynamicResource AppSubtleForegroundBrush}" TextWrapping="Wrap" />
               </StackPanel>
             </Expander>
 
@@ -324,8 +376,8 @@
               <StackPanel Spacing="6" Margin="0,6,0,0">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <TextBlock Text="{Binding Loc[RubyRole]}" VerticalAlignment="Center" />
-                  <Border Background="#3A3A3A" CornerRadius="3" Padding="5,1">
-                    <TextBlock Text="{Binding Loc[PcOnlyBadge]}" FontSize="10" Foreground="#DDD"
+                  <Border Background="{DynamicResource AppBadgeBackgroundBrush}" CornerRadius="3" Padding="5,1">
+                    <TextBlock Text="{Binding Loc[PcOnlyBadge]}" FontSize="10" Foreground="{DynamicResource AppBadgeForegroundBrush}"
                                ToolTip.Tip="{Binding Loc[CompatSpecNote]}" />
                   </Border>
                 </StackPanel>
@@ -336,21 +388,11 @@
               </StackPanel>
             </Expander>
 
-            <Expander Header="{Binding Loc[Settings]}" IsExpanded="False">
-              <StackPanel Spacing="6" Margin="0,6,0,0">
-                <TextBlock Text="{Binding Loc[LanguageLabel]}" />
-                <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}"
-                          HorizontalAlignment="Stretch" />
-                <TextBlock Text="{Binding Loc[SnapThreshold]}" />
-                <TextBox Text="{Binding SnapThreshold}" HorizontalContentAlignment="Right" />
-              </StackPanel>
-            </Expander>
-
             <Expander Header="{Binding Loc[ValidationIssues]}" IsExpanded="True">
               <StackPanel Spacing="6" Margin="0,6,0,0">
                 <Button Content="{Binding Loc[RunCheck]}" Command="{Binding ValidateCommand}" />
                 <TextBlock Text="{Binding Loc[W101Note]}"
-                           FontSize="11" Foreground="#E5B567" TextWrapping="Wrap" />
+                           FontSize="11" Foreground="{DynamicResource AppWarningForegroundBrush}" TextWrapping="Wrap" />
                 <ListBox ItemsSource="{Binding ValidationIssues}" SelectedItem="{Binding SelectedValidationIssue}"
                          MaxHeight="220">
                   <ListBox.ItemTemplate>
@@ -372,7 +414,7 @@
             <Expander Header="{Binding Loc[Karaoke]}" IsExpanded="True">
               <StackPanel Spacing="7" Margin="0,6,0,0">
                 <TextBlock Text="{Binding Loc[KaraokeTapHint]}"
-                           FontSize="11" Foreground="#E5B567" TextWrapping="Wrap" />
+                           FontSize="11" Foreground="{DynamicResource AppWarningForegroundBrush}" TextWrapping="Wrap" />
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <Button Content="{Binding Loc[AutoSplit]}" Command="{Binding AutoSplitKaraokeCommand}" />
                   <ComboBox Width="105" ItemsSource="{Binding KaraokeTypeOptions}"
@@ -393,7 +435,7 @@
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <TextBlock Text="{Binding Loc[WaveformUnavailable]}"
-                           FontSize="11" Foreground="#AAA" TextWrapping="Wrap" />
+                           FontSize="11" Foreground="{DynamicResource AppSubtleForegroundBrush}" TextWrapping="Wrap" />
               </StackPanel>
             </Expander>
           </StackPanel>
@@ -401,7 +443,7 @@
       </Border>
     </Grid>
 
-    <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="10,4,10,8">
+    <Grid Grid.Row="3" MinHeight="40" ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="10,4,10,4">
       <TextBlock Grid.Column="0" Text="{Binding Status}" TextWrapping="Wrap" />
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
         <Button Content="{Binding Loc[AddCueAtTime]}" Command="{Binding AddCueCommand}" />

@@ -17,6 +17,8 @@ public sealed class KaraokeTimelineControl : Control
     private const double TimelineTop = 62;
     private const double TimelineHeight = 28;
     private const double HorizontalPadding = 8;
+    private const double MaxZoom = 16;
+    private const double WheelPanFraction = 0.1;
 
     private MainWindowViewModel? observedViewModel;
     private int? dragSectionIndex;
@@ -25,6 +27,12 @@ public sealed class KaraokeTimelineControl : Control
     private bool chipDragged;
     private int? timelineSectionIndex;
     private double? pendingTimelineOffset;
+    private double zoom = 1;
+    private double viewportStartMilliseconds;
+    private bool panning;
+    private bool spacePressed;
+    private Point panStart;
+    private double panViewportStart;
 
     public KaraokeTimelineControl()
     {
@@ -62,6 +70,7 @@ public sealed class KaraokeTimelineControl : Control
         }
 
         double duration = GetCueDuration(viewModel);
+        ClampViewport(duration);
         Rect timeline = new(
             HorizontalPadding,
             TimelineTop,
@@ -76,6 +85,11 @@ public sealed class KaraokeTimelineControl : Control
                 ? pendingTimelineOffset.Value
                 : GetSectionOffsetMilliseconds(sections, index, duration);
             double x = OffsetToX(offset, duration, timeline);
+            if (x < timeline.Left - 1 || x > timeline.Right + 1)
+            {
+                continue;
+            }
+
             context.DrawLine(new Pen(index == timelineSectionIndex
                     ? Brushes.Orange
                     : Brushes.LightSkyBlue, index == timelineSectionIndex ? 3 : 2),
@@ -102,6 +116,37 @@ public sealed class KaraokeTimelineControl : Control
 
         Focus();
         Point point = e.GetPosition(this);
+        if (TryBeginPan(e, point))
+        {
+            return;
+        }
+
+        if (TryBeginChipInteraction(viewModel, e, point))
+        {
+            return;
+        }
+
+        BeginTimelineAdjustment(viewModel, e, point);
+    }
+
+    private bool TryBeginPan(PointerPressedEventArgs e, Point point)
+    {
+        if (!spacePressed && !IsMiddleButtonPressed(e))
+        {
+            return false;
+        }
+
+        BeginPan(point);
+        e.Pointer.Capture(this);
+        e.Handled = true;
+        return true;
+    }
+
+    private bool TryBeginChipInteraction(
+        MainWindowViewModel viewModel,
+        PointerPressedEventArgs e,
+        Point point)
+    {
         if (point.Y >= ChipRowTop && point.Y <= ChipRowTop + ChipRowHeight)
         {
             int? boundary = HitChipBoundary(viewModel.KaraokeSections, point);
@@ -109,7 +154,7 @@ public sealed class KaraokeTimelineControl : Control
             {
                 viewModel.MergeKaraokeSections(viewModel.SelectedKaraokeCueId!.Value, leftIndex);
                 e.Handled = true;
-                return;
+                return true;
             }
 
             int? sectionIndex = HitChip(viewModel.KaraokeSections, point);
@@ -121,10 +166,18 @@ public sealed class KaraokeTimelineControl : Control
                 chipDragged = false;
                 e.Pointer.Capture(this);
                 e.Handled = true;
-                return;
+                return true;
             }
         }
 
+        return false;
+    }
+
+    private void BeginTimelineAdjustment(
+        MainWindowViewModel viewModel,
+        PointerPressedEventArgs e,
+        Point point)
+    {
         Rect timeline = GetTimelineRect();
         if (timeline.Contains(point))
         {
@@ -149,6 +202,13 @@ public sealed class KaraokeTimelineControl : Control
         }
 
         Point point = e.GetPosition(this);
+        if (panning)
+        {
+            UpdatePan(point, GetCueDuration(viewModel));
+            e.Handled = true;
+            return;
+        }
+
         if (dragSectionIndex is int)
         {
             if (chipPressPoint is Point pressed &&
@@ -178,6 +238,15 @@ public sealed class KaraokeTimelineControl : Control
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+        if (panning)
+        {
+            EndPan();
+            e.Pointer.Capture(null);
+            InvalidateVisual();
+            e.Handled = true;
+            return;
+        }
+
         if (DataContext is MainWindowViewModel viewModel && viewModel.HasKaraokeCue)
         {
             if (dragSectionIndex is int source && mergeTargetIndex is int target &&
@@ -211,9 +280,44 @@ public sealed class KaraokeTimelineControl : Control
         e.Handled = true;
     }
 
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        base.OnPointerWheelChanged(e);
+        if (DataContext is not MainWindowViewModel viewModel || !viewModel.HasKaraokeCue ||
+            viewModel.KaraokeSections.Count == 0)
+        {
+            return;
+        }
+
+        double duration = GetCueDuration(viewModel);
+        ClampViewport(duration);
+        double wheelDelta = GetWheelDelta(e);
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control) ||
+            e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+        {
+            ZoomAt(e.GetPosition(this), duration, wheelDelta);
+        }
+        else if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            PanHorizontally(wheelDelta, duration);
+        }
+        else
+        {
+            return;
+        }
+
+        InvalidateVisual();
+        e.Handled = true;
+    }
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        if (e.Key == Key.Space)
+        {
+            spacePressed = true;
+        }
+
         if (DataContext is not MainWindowViewModel viewModel || !viewModel.HasKaraokeCue ||
             e.KeyModifiers != KeyModifiers.None)
         {
@@ -232,6 +336,15 @@ public sealed class KaraokeTimelineControl : Control
         }
     }
 
+    protected override void OnKeyUp(KeyEventArgs e)
+    {
+        base.OnKeyUp(e);
+        if (e.Key == Key.Space)
+        {
+            spacePressed = false;
+        }
+    }
+
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
         base.OnPointerCaptureLost(e);
@@ -239,6 +352,12 @@ public sealed class KaraokeTimelineControl : Control
         {
             viewModel.EndKaraokeTimelineAdjustment();
         }
+
+        if (panning)
+        {
+            EndPan();
+        }
+
         dragSectionIndex = null;
         mergeTargetIndex = null;
         chipPressPoint = null;
@@ -348,6 +467,54 @@ public sealed class KaraokeTimelineControl : Control
         => new(HorizontalPadding, TimelineTop,
             Math.Max(1, Bounds.Width - (HorizontalPadding * 2)), TimelineHeight);
 
+    private void BeginPan(Point point)
+    {
+        panning = true;
+        panStart = point;
+        panViewportStart = viewportStartMilliseconds;
+        Cursor = new Cursor(StandardCursorType.Hand);
+    }
+
+    private void UpdatePan(Point point, double duration)
+    {
+        Rect timeline = GetTimelineRect();
+        viewportStartMilliseconds = panViewportStart -
+            ((point.X - panStart.X) / Math.Max(1, timeline.Width) * GetViewportDuration(duration));
+        ClampViewport(duration);
+        InvalidateVisual();
+    }
+
+    private void EndPan()
+    {
+        panning = false;
+        Cursor = null;
+    }
+
+    private void ZoomAt(Point point, double duration, double wheelDelta)
+    {
+        Rect timeline = GetTimelineRect();
+        double anchorX = Math.Clamp(point.X, timeline.Left, timeline.Right);
+        double anchorRatio = Math.Clamp((anchorX - timeline.Left) /
+            Math.Max(1, timeline.Width), 0, 1);
+        double anchorOffset = XToOffset(anchorX, duration, timeline);
+        zoom = Math.Clamp(zoom * (wheelDelta > 0 ? 1.2 : 1 / 1.2), 1, MaxZoom);
+        viewportStartMilliseconds = anchorOffset -
+            anchorRatio * GetViewportDuration(duration);
+        ClampViewport(duration);
+    }
+
+    private void PanHorizontally(double wheelDelta, double duration)
+    {
+        viewportStartMilliseconds -= GetViewportDuration(duration) * wheelDelta * WheelPanFraction;
+        ClampViewport(duration);
+    }
+
+    private bool IsMiddleButtonPressed(PointerPressedEventArgs e)
+        => e.GetCurrentPoint(this).Properties.PointerUpdateKind == PointerUpdateKind.MiddleButtonPressed;
+
+    private static double GetWheelDelta(PointerWheelEventArgs e)
+        => Math.Abs(e.Delta.Y) > double.Epsilon ? e.Delta.Y : e.Delta.X;
+
     private static double GetCueDuration(MainWindowViewModel viewModel)
         => Math.Max(1, viewModel.SelectedKaraokeCueDurationMilliseconds);
 
@@ -365,11 +532,25 @@ public sealed class KaraokeTimelineControl : Control
         return duration * index / Math.Max(1, sections.Count);
     }
 
-    private static double OffsetToX(double offset, double duration, Rect timeline)
-        => timeline.Left + Math.Clamp(offset / Math.Max(1, duration), 0, 1) * timeline.Width;
+    private double OffsetToX(double offset, double duration, Rect timeline)
+        => timeline.Left + ((offset - viewportStartMilliseconds) /
+            GetViewportDuration(duration) * timeline.Width);
 
-    private static double XToOffset(double x, double duration, Rect timeline)
-        => Math.Clamp((x - timeline.Left) / Math.Max(1, timeline.Width), 0, 1) * duration;
+    private double XToOffset(double x, double duration, Rect timeline)
+        => Math.Clamp(viewportStartMilliseconds +
+            (Math.Clamp((x - timeline.Left) / Math.Max(1, timeline.Width), 0, 1) *
+                GetViewportDuration(duration)),
+            0, duration);
+
+    private double GetViewportDuration(double duration)
+        => Math.Max(1, duration) / zoom;
+
+    private void ClampViewport(double duration)
+    {
+        double safeDuration = Math.Max(1, duration);
+        viewportStartMilliseconds = Math.Clamp(viewportStartMilliseconds, 0,
+            Math.Max(0, safeDuration - GetViewportDuration(safeDuration)));
+    }
 
     private static int? FindNearestSectionBoundary(
         IReadOnlyList<KaraokeSectionViewModel> sections,

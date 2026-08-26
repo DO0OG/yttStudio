@@ -1,12 +1,23 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Styling;
 
 namespace YttStudio.App;
 
 public partial class App : Application
 {
     private MainWindowViewModel? mainViewModel;
+
+    internal void ApplyTheme(AppThemeMode theme)
+    {
+        RequestedThemeVariant = theme switch
+        {
+            AppThemeMode.Light => ThemeVariant.Light,
+            AppThemeMode.Dark => ThemeVariant.Dark,
+            _ => ThemeVariant.Default,
+        };
+    }
 
     public override void Initialize()
     {
@@ -15,6 +26,7 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        ApplyTheme(new PreferencesStore().Load().Theme);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             MainWindow window = new();
