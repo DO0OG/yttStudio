@@ -99,6 +99,8 @@ public sealed class VideoSourceLifetimeTests
 
         public void StepFrame(int delta) { }
         public void SetSpeed(double speed) { }
+        public void SetVolume(double volume) { }
+        public void SetMuted(bool muted) { }
 
         public bool TryLockLatestFrame(out VideoFrameLock frame)
         {

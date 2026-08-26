@@ -5,7 +5,7 @@ using YttStudio.Core;
 namespace YttStudio.Render;
 
 /// <summary>재배포 가능한 폰트를 어셈블리 리소스에서 불러오고 대체 여부를 명시적으로 알린다.</summary>
-public sealed class BundledFontResolver : IFontResolver, IDisposable
+public sealed class BundledFontResolver : IFontResolver, IFontFallbackLogSink, IDisposable
 {
     private static readonly IReadOnlyDictionary<YtFont, BundledFont> BundledFonts =
         new Dictionary<YtFont, BundledFont>
@@ -65,6 +65,8 @@ public sealed class BundledFontResolver : IFontResolver, IDisposable
         cache.Clear();
         disposed = true;
     }
+
+    void IFontFallbackLogSink.Log(string message) => log?.Invoke(message);
 
     private static FontResolution LoadBundled(YtFont requested, BundledFont bundled)
     {

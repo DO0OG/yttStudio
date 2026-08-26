@@ -1,0 +1,132 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:YttStudio.App"
+        x:Class="YttStudio.App.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Width="680"
+        Height="520"
+        MinWidth="560"
+        MinHeight="420"
+        CanResize="True"
+        WindowStartupLocation="CenterOwner"
+        Title="{Binding Loc[Settings]}">
+  <Grid RowDefinitions="*,Auto" Margin="20" RowSpacing="16">
+    <TabControl Grid.Row="0">
+      <TabItem Header="{Binding Loc[SettingsGeneralTab]}">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="10" Margin="4">
+            <TextBlock Text="{Binding Loc[LanguageLabel]}" FontWeight="SemiBold" />
+            <ComboBox ItemsSource="{Binding LanguageOptions}"
+                      SelectedItem="{Binding SelectedLanguage}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock Text="{Binding Loc[SnapThreshold]}" FontWeight="SemiBold" />
+            <NumericUpDown Minimum="0" Maximum="64" Value="{Binding SnapThreshold}" />
+            <CheckBox Content="{Binding Loc[AutosaveEnabled]}"
+                      IsChecked="{Binding AutosaveEnabled}" />
+            <TextBlock Text="{Binding Loc[AutosaveInterval]}" FontWeight="SemiBold" />
+            <ComboBox ItemsSource="{Binding AutosaveIntervalOptions}"
+                      SelectedItem="{Binding SelectedAutosaveInterval}"
+                      IsEnabled="{Binding AutosaveEnabled}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock Text="{Binding Loc[SettingsRestartNote]}"
+                       Foreground="{DynamicResource AppSubtleForegroundBrush}"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="{Binding Loc[SettingsAppearanceTab]}">
+        <StackPanel Spacing="10" Margin="4">
+          <TextBlock Text="{Binding Loc[ThemeLabel]}" FontWeight="SemiBold" />
+          <ComboBox ItemsSource="{Binding ThemeOptions}"
+                    SelectedItem="{Binding SelectedTheme}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <TextBlock Text="{Binding Loc[SettingsRestartNote]}"
+                     Foreground="{DynamicResource AppSubtleForegroundBrush}"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+      </TabItem>
+
+      <TabItem Header="{Binding Loc[SettingsVideoTab]}">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="10" Margin="4">
+            <TextBlock Text="{Binding Loc[MpvPathLabel]}" FontWeight="SemiBold" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <TextBox Grid.Column="0"
+                       Text="{Binding MpvPath, UpdateSourceTrigger=LostFocus}"
+                       PlaceholderText="{Binding Loc[MpvPathPlaceholder]}" />
+              <Button Grid.Column="1"
+                      Content="{Binding Loc[MpvBrowse]}"
+                      Command="{Binding BrowseMpvCommand}" />
+            </Grid>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="{Binding Loc[MpvApply]}"
+                      Command="{Binding ApplyMpvCommand}" />
+              <Button Content="{Binding Loc[MpvAutoInstall]}"
+                      Command="{Binding InstallMpvCommand}"
+                      IsEnabled="{Binding CanInstallMpv}" />
+            </StackPanel>
+            <StackPanel IsVisible="{Binding HasPackageManagerCommands}" Spacing="4">
+              <TextBlock Text="{Binding Loc[MpvPackageManagerLabel]}" FontWeight="SemiBold" />
+              <ItemsControl ItemsSource="{Binding PackageManagerCommands}" />
+            </StackPanel>
+            <StackPanel IsVisible="{Binding IsInstalling}" Spacing="4">
+              <TextBlock Text="{Binding InstallStatus}"
+                         Foreground="{DynamicResource AppSubtleForegroundBrush}"
+                         TextWrapping="Wrap" />
+              <ProgressBar Minimum="0"
+                           Maximum="1"
+                           Value="{Binding InstallProgress}"
+                           IsIndeterminate="{Binding IsInstallProgressIndeterminate}" />
+            </StackPanel>
+            <TextBlock Text="{Binding Loc[MpvInstallNote]}"
+                       Foreground="{DynamicResource AppSubtleForegroundBrush}"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{Binding Loc[MpvStatusLabel]}" FontWeight="SemiBold" />
+            <Border Background="{DynamicResource AppStatusBackgroundBrush}"
+                    BorderBrush="{DynamicResource AppPanelBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="8">
+              <TextBlock Text="{Binding VideoStatus}" TextWrapping="Wrap" />
+            </Border>
+            <TextBlock Text="{Binding Status}"
+                       Foreground="{DynamicResource AppWarningForegroundBrush}"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{Binding Loc[MpvLicenseLabel]}" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding Loc[MpvLicenseNote]}"
+                       Foreground="{DynamicResource AppSubtleForegroundBrush}"
+                       TextWrapping="Wrap" />
+            <Button Content="{Binding Loc[MpvGuide]}"
+                    Command="{Binding OpenMpvGuideCommand}"
+                    HorizontalAlignment="Left" />
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+
+    <StackPanel Grid.Row="1"
+                Orientation="Horizontal"
+                HorizontalAlignment="Right"
+                Spacing="8">
+      <Button Content="{Binding Loc[Close]}"
+              Command="{Binding CloseCommand}"
+              MinWidth="90" />
+    </StackPanel>
+  </Grid>
+</Window>

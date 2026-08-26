@@ -1,3 +1,4 @@
+using System.Text;
 using SkiaSharp;
 using YttStudio.Core;
 
@@ -7,16 +8,18 @@ namespace YttStudio.Render;
 public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
 {
     private readonly IFontResolver fontResolver;
+    private readonly FontFallbackHelper fontFallback;
     private readonly SubtitleLayoutEngine layoutEngine;
     private readonly Dictionary<PaintKey, FormatResources> formatCache = [];
     private readonly Dictionary<BlobKey, SKTextBlob> blobCache = [];
     private readonly Dictionary<YtFont, FontResolution> fontResolutions = [];
     private bool disposed;
 
-    public SkiaSubtitleRenderer(IFontResolver fontResolver)
+    public SkiaSubtitleRenderer(IFontResolver fontResolver, Action<string>? log = null)
     {
         this.fontResolver = fontResolver ?? throw new ArgumentNullException(nameof(fontResolver));
-        layoutEngine = new SubtitleLayoutEngine(fontResolver);
+        fontFallback = new FontFallbackHelper(fontResolver, log);
+        layoutEngine = new SubtitleLayoutEngine(fontResolver, fontFallback);
     }
 
     public IReadOnlyList<FontResolution> FontResolutions => fontResolutions.Values.OrderBy(item => item.Requested).ToArray();
@@ -110,6 +113,10 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
             blob.Dispose();
         }
 
+        formatCache.Clear();
+        blobCache.Clear();
+        fontFallback.Dispose();
+
         if (fontResolver is IDisposable disposableResolver)
         {
             disposableResolver.Dispose();
@@ -149,22 +156,22 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
             FormatResources resources = GetResources(run.Format, run.FontSize);
             string text = GetPreviewText(layout.Cue, run, time, options.FrameIndex);
             float offset = run.FontSize * (float)YttConstants.HardShadowOffsetFactor;
-            DrawWithBlob(run, text, resources.Font, blob =>
+            DrawWithTextRuns(run.Format, run.FontSize, text, run.Origin, (blob, x) =>
             {
                 switch (run.Format.Edge)
                 {
                     case EdgeType.HardShadow:
-                        canvas.DrawText(blob, run.Origin.X + offset, run.Origin.Y + offset, resources.Edge);
+                        canvas.DrawText(blob, x + offset, run.Origin.Y + offset, resources.Edge);
                         break;
                     case EdgeType.Bevel:
-                        canvas.DrawText(blob, run.Origin.X - 1, run.Origin.Y - 1, resources.BevelLight);
-                        canvas.DrawText(blob, run.Origin.X + 1, run.Origin.Y + 1, resources.BevelDark);
+                        canvas.DrawText(blob, x - 1, run.Origin.Y - 1, resources.BevelLight);
+                        canvas.DrawText(blob, x + 1, run.Origin.Y + 1, resources.BevelDark);
                         break;
                     case EdgeType.Glow:
-                        canvas.DrawText(blob, run.Origin.X, run.Origin.Y, resources.Edge);
+                        canvas.DrawText(blob, x, run.Origin.Y, resources.Edge);
                         break;
                     case EdgeType.SoftShadow:
-                        canvas.DrawText(blob, run.Origin.X + offset, run.Origin.Y + offset, resources.Edge);
+                        canvas.DrawText(blob, x + offset, run.Origin.Y + offset, resources.Edge);
                         break;
                     default:
                         // EdgeType.None 은 엣지를 그리지 않는다. 하나의 pen 은 하나의 et 만 가진다.
@@ -196,20 +203,20 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
                 color = animated;
             }
 
-            DrawWithBlob(run, text, resources.Font, blob =>
+            DrawWithTextRuns(run.Format, run.FontSize, text, run.Origin, (blob, x) =>
             {
                 if (color == run.Format.Foreground)
                 {
-                    canvas.DrawText(blob, run.Origin.X, run.Origin.Y, resources.Foreground);
+                    canvas.DrawText(blob, x, run.Origin.Y, resources.Foreground);
                 }
                 else if (color == run.Format.SecondaryColor)
                 {
-                    canvas.DrawText(blob, run.Origin.X, run.Origin.Y, resources.Secondary);
+                    canvas.DrawText(blob, x, run.Origin.Y, resources.Secondary);
                 }
                 else
                 {
                     using SKPaint paint = new() { Color = ToSkColor(color), IsAntialias = true };
-                    canvas.DrawText(blob, run.Origin.X, run.Origin.Y, paint);
+                    canvas.DrawText(blob, x, run.Origin.Y, paint);
                 }
             });
         }
@@ -255,13 +262,13 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
                 : activeCount;
             RunLayout styleRun = insertion > 0 ? runs[insertion - 1] : runs[0];
             FormatResources resources = GetResources(styleRun.Format, styleRun.FontSize);
-            SKTextBlob blob = GetBlob(styleRun.Format, styleRun.FontSize, cursorText, resources.Font);
-            using SKPaint measurePaint = new() { IsAntialias = true };
-            float cursorWidth = resources.Font.MeasureText(cursorText, measurePaint);
+            FontTextLayout cursorLayout = fontFallback.Layout(styleRun.Format, styleRun.FontSize, cursorText);
+            float cursorWidth = cursorLayout.Width;
             float boundary = insertion < runs.Count ? runs[insertion].Bounds.Left : runs[^1].Bounds.Right;
             float x = boundary - (insertion == 0 || karaokeType == KaraokeType.LeftCursor ? cursorWidth : 0);
             float baseline = insertion < runs.Count ? runs[insertion].Baseline : runs[^1].Baseline;
-            canvas.DrawText(blob, x, baseline, resources.Foreground);
+            DrawWithTextRuns(styleRun.Format, styleRun.FontSize, cursorText, new SKPoint(x, baseline),
+                (blob, drawX) => canvas.DrawText(blob, drawX, baseline, resources.Foreground));
         }
     }
 
@@ -284,14 +291,14 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         {
             FormatResources resources = GetResources(run.Format, run.FontSize);
             string text = GetPreviewText(layout.Cue, run, time, options.FrameIndex);
-            DrawWithBlob(run, text, resources.Font, blob =>
+            DrawWithTextRuns(run.Format, run.FontSize, text, run.Origin, (blob, x) =>
             {
                 for (int index = 0; index < colors.Count; index++)
                 {
                     float direction = colors.Count == 1 ? 1 : (index - center) / Math.Max(center, 1);
                     using SKPaint paint = new() { Color = ToSkColor(colors[index]), IsAntialias = true };
                     canvas.DrawText(blob,
-                        run.Origin.X + ((float)chroma.OffsetX * effect.ChromaAmount * direction),
+                        x + ((float)chroma.OffsetX * effect.ChromaAmount * direction),
                         run.Origin.Y + ((float)chroma.OffsetY * effect.ChromaAmount * direction), paint);
                 }
             });
@@ -304,7 +311,8 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         foreach (RunLayout run in layout.Lines.SelectMany(line => line.Runs).Where(run => run.Format.Underline))
         {
             FormatResources resources = GetResources(run.Format, run.FontSize);
-            float y = run.Baseline + (resources.Font.Metrics.Descent / 2);
+            float descent = fontFallback.Layout(run.Format, run.FontSize, run.Text).Descent;
+            float y = run.Baseline + (descent / 2);
             canvas.DrawLine(run.Bounds.Left, y, run.Bounds.Right, y, resources.Underline);
         }
 
@@ -318,15 +326,14 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         {
             float rubySize = run.FontSize * 0.5f;
             FormatResources rubyResources = GetResources(run.Format, rubySize);
-            using SKTextBlob ruby = SKTextBlob.Create(run.Section.RubyText!, rubyResources.Font, SKPoint.Empty)
-                ?? throw new InvalidOperationException("Skia could not shape ruby text.");
-            using SKPaint measurePaint = new();
-            float width = rubyResources.Font.MeasureText(run.Section.RubyText!, measurePaint);
+            FontTextLayout rubyLayout = fontFallback.Layout(run.Format, rubySize, run.Section.RubyText!);
+            float width = rubyLayout.Width;
             float x = run.Bounds.MidX - (width / 2);
             float y = run.Section.Ruby == RubyRole.Below
                 ? run.Bounds.Bottom + rubySize
-                : run.Bounds.Top - (rubyResources.Font.Metrics.Descent);
-            canvas.DrawText(ruby, x, y, rubyResources.Foreground);
+                : run.Bounds.Top - rubyLayout.Descent;
+            DrawWithTextRuns(run.Format, rubySize, run.Section.RubyText!, new SKPoint(x, y),
+                (blob, drawX) => canvas.DrawText(blob, drawX, y, rubyResources.Foreground));
         }
 
         canvas.RestoreToCount(saveCount);
@@ -351,32 +358,37 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
             return resources;
         }
 
-        FontResolution resolution = fontResolver.Resolve(format.Font);
+        FontResolution resolution = fontFallback.Resolve(format.Font);
         fontResolutions[format.Font] = resolution;
-        resources = new FormatResources(format, fontSize, resolution.Typeface);
+        resources = new FormatResources(format, fontSize);
         formatCache.Add(key, resources);
         return resources;
     }
 
-    private SKTextBlob GetBlob(ResolvedFormat format, float fontSize, string text, SKFont font)
+    private SKTextBlob GetBlob(
+        ResolvedFormat format,
+        float fontSize,
+        string text,
+        SKTypeface typeface,
+        SKFont font)
     {
-        BlobKey key = new(format, fontSize, text);
+        BlobKey key = new(format, fontSize, text, typeface.FamilyName);
         if (blobCache.TryGetValue(key, out SKTextBlob? blob))
         {
             return blob;
         }
 
-        blob = CreateBlob(format, fontSize, text, font);
+        blob = CreateBlob(format, text, font);
         blobCache.Add(key, blob);
         return blob;
     }
 
-    private static SKTextBlob CreateBlob(ResolvedFormat format, float fontSize, string text, SKFont font)
+    private static SKTextBlob CreateBlob(ResolvedFormat format, string text, SKFont font)
     {
         if (format.Pack && text.Length > 0)
         {
-            SKPoint[] positions = Enumerable.Range(0, text.Length)
-                .Select(index => new SKPoint(index * fontSize, 0))
+            SKPoint[] positions = Enumerable.Range(0, text.EnumerateRunes().Count())
+                .Select(index => new SKPoint(index * font.Size, 0))
                 .ToArray();
             return SKTextBlob.CreatePositioned(text, font, positions)
                 ?? throw new InvalidOperationException("Skia could not shape packed text.");
@@ -386,16 +398,21 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
             ?? throw new InvalidOperationException("Skia could not shape subtitle text.");
     }
 
-    private void DrawWithBlob(RunLayout run, string text, SKFont font, Action<SKTextBlob> draw)
+    private void DrawWithTextRuns(
+        ResolvedFormat format,
+        float fontSize,
+        string text,
+        SKPoint origin,
+        Action<SKTextBlob, float> draw)
     {
-        if (text == run.Text)
+        FontTextLayout textLayout = fontFallback.Layout(format, fontSize, text);
+        float x = origin.X;
+        foreach (FontTextRun textRun in textLayout.Runs)
         {
-            draw(GetBlob(run.Format, run.FontSize, text, font));
-            return;
+            using SKFont font = FontFallbackHelper.CreateFont(textRun.Typeface, format, fontSize);
+            draw(GetBlob(format, fontSize, textRun.Text, textRun.Typeface, font), x);
+            x += textRun.Width;
         }
-
-        using SKTextBlob transient = CreateBlob(run.Format, run.FontSize, text, font);
-        draw(transient);
     }
 
     private static string GetPreviewText(Cue cue, RunLayout run, TimeSpan time, long frameIndex)
@@ -419,18 +436,16 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
             color.Alpha);
 
     private readonly record struct PaintKey(ResolvedFormat Format, float FontSize);
-    private readonly record struct BlobKey(ResolvedFormat Format, float FontSize, string Text);
+    private readonly record struct BlobKey(
+        ResolvedFormat Format,
+        float FontSize,
+        string Text,
+        string TypefaceFamilyName);
 
     private sealed class FormatResources : IDisposable
     {
-        public FormatResources(ResolvedFormat format, float fontSize, SKTypeface typeface)
+        public FormatResources(ResolvedFormat format, float fontSize)
         {
-            Font = new SKFont(typeface, fontSize)
-            {
-                Embolden = format.Bold,
-                SkewX = format.Italic ? -0.25f : 0,
-                Subpixel = true,
-            };
             Foreground = CreateFill(ToSkColor(format.Foreground));
             Secondary = CreateFill(ToSkColor(format.SecondaryColor));
             Background = CreateFill(ToSkColor(format.Background));
@@ -456,7 +471,6 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
             Underline.StrokeWidth = Math.Max(1, fontSize * (float)YttConstants.UnderlineThicknessFactor);
         }
 
-        public SKFont Font { get; }
         public SKPaint Foreground { get; }
         public SKPaint Secondary { get; }
         public SKPaint Background { get; }
@@ -467,7 +481,6 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
 
         public void Dispose()
         {
-            Font.Dispose();
             Foreground.Dispose();
             Secondary.Dispose();
             Background.Dispose();

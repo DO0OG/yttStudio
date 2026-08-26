@@ -5,30 +5,34 @@ namespace YttStudio.App;
 
 /// <summary>
 /// 열려 있는 프로젝트의 복구본을 주기적으로 기록한다.
-/// 자동 저장은 60초마다 <c>%TEMP%/YttStudio/autosave/</c> 에 기록하며
+/// 자동 저장은 지정한 간격마다 <c>%TEMP%/YttStudio/autosave/</c> 에 기록하며
 /// 실행 취소 기록을 건드리지 않는다. 모델을 읽어 직렬화만 한다.
 /// </summary>
 public sealed class AutosaveService : IAsyncDisposable
 {
-    // [PRODUCT] 자동 저장 주기는 60초로 고정한다.
-    private static readonly TimeSpan Interval = TimeSpan.FromSeconds(60);
-
     private const int MaxRetainedSnapshots = 5;
+    private static readonly TimeSpan DefaultInterval = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan MaximumInterval = TimeSpan.FromDays(1);
 
     private readonly Func<SubtitleProject?> projectAccessor;
     private readonly Func<bool> hasUnsavedChanges;
     private readonly Action<string> onError;
+    private readonly TimeSpan interval;
     private readonly CancellationTokenSource cancellation = new();
     private Task? loop;
 
     public AutosaveService(
         Func<SubtitleProject?> projectAccessor,
         Func<bool> hasUnsavedChanges,
-        Action<string> onError)
+        Action<string> onError,
+        TimeSpan interval)
     {
         this.projectAccessor = projectAccessor;
         this.hasUnsavedChanges = hasUnsavedChanges;
         this.onError = onError;
+        this.interval = interval > TimeSpan.Zero && interval <= MaximumInterval
+            ? interval
+            : DefaultInterval;
     }
 
     /// <summary>복구 스냅샷을 보관하는 디렉터리를 가져온다.</summary>
@@ -119,7 +123,7 @@ public sealed class AutosaveService : IAsyncDisposable
 
     private async Task RunAsync(CancellationToken token)
     {
-        using PeriodicTimer timer = new(Interval);
+        using PeriodicTimer timer = new(interval);
         try
         {
             while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))

@@ -1,3 +1,4 @@
+using System.Text;
 using SkiaSharp;
 using YttStudio.Core;
 
@@ -6,11 +7,18 @@ namespace YttStudio.Render;
 /// <summary>픽셀을 그리지 않고 결정적인 자막 기하를 계산한다.</summary>
 public sealed class SubtitleLayoutEngine
 {
-    private readonly IFontResolver fontResolver;
+    private readonly FontFallbackHelper fontFallback;
 
     public SubtitleLayoutEngine(IFontResolver fontResolver)
     {
-        this.fontResolver = fontResolver ?? throw new ArgumentNullException(nameof(fontResolver));
+        ArgumentNullException.ThrowIfNull(fontResolver);
+        fontFallback = new FontFallbackHelper(fontResolver);
+    }
+
+    internal SubtitleLayoutEngine(IFontResolver fontResolver, FontFallbackHelper fontFallback)
+    {
+        ArgumentNullException.ThrowIfNull(fontResolver);
+        this.fontFallback = fontFallback ?? throw new ArgumentNullException(nameof(fontFallback));
     }
 
     /// <summary>일곱 단계 레이아웃 알고리즘으로 큐 하나를 측정하고 배치한다.</summary>
@@ -133,17 +141,9 @@ public sealed class SubtitleLayoutEngine
             fontSize *= (float)YttConstants.ScriptFontScale;
         }
 
-        FontResolution resolution = fontResolver.Resolve(format.Font);
-        using SKFont font = new(resolution.Typeface, fontSize)
-        {
-            Embolden = format.Bold,
-            SkewX = format.Italic ? -0.25f : 0,
-            Subpixel = true,
-        };
-        using SKPaint paint = new() { IsAntialias = true };
-        float width = format.Pack ? text.Length * fontSize : font.MeasureText(text, paint);
-        SKFontMetrics metrics = font.Metrics;
-        return new MeasuredRun(section, format, text, width, metrics.Descent - metrics.Ascent, metrics.Ascent, metrics.Descent, fontSize);
+        FontTextLayout textLayout = fontFallback.Layout(format, fontSize, text);
+        return new MeasuredRun(section, format, text, textLayout.Width, textLayout.Height,
+            textLayout.Ascent, textLayout.Descent, fontSize);
     }
 
     private static IReadOnlyList<LineLayout> PlaceHorizontalLines(
@@ -208,9 +208,9 @@ public sealed class SubtitleLayoutEngine
             List<RunLayout> runs = [];
             foreach (MeasuredRun run in line.Runs)
             {
-                foreach (char character in run.Text)
+                foreach (Rune rune in run.Text.EnumerateRunes())
                 {
-                    string text = character.ToString();
+                    string text = rune.ToString();
                     float baseline = y + run.FontSize;
                     SKRect bounds = SKRect.Create(columnLeft, y, columnWidth, run.FontSize);
                     runs.Add(new RunLayout(run.Section, run.Format, text,
@@ -241,7 +241,7 @@ public sealed class SubtitleLayoutEngine
     }
 
     private static float MeasureVerticalHeight(MeasuredLine line)
-        => line.Runs.Sum(run => run.Text.Length * run.FontSize);
+        => line.Runs.Sum(run => run.Text.EnumerateRunes().Count() * run.FontSize);
 
     private sealed record MeasuredLine(
         IReadOnlyList<MeasuredRun> Runs,

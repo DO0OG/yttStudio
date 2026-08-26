@@ -11,7 +11,7 @@ Position and style captions directly on the video, then export `.ytt` — on the
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![Avalonia](https://img.shields.io/badge/Avalonia-12-8B44AC)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
-![Tests](https://img.shields.io/badge/tests-149%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-150%20passing-brightgreen)
 
 [한국어](README.md) · **English** · [日本語](README.ja.md)
 
@@ -58,12 +58,15 @@ left, property panel on the right, track timeline and cue list below.
 | | |
 |---|---|
 | **Edit on the video** | Play through libmpv while dragging, multi-selecting and snap-aligning captions |
+| **Timeline** | Zoom, pan sideways, drag the scrollbar, move blocks and trim their edges. Panels resize by dragging their borders |
 | **Format rules enforced** | Coordinate mapping, font-scale clamping and opacity ceilings are checked in code |
 | **Karaoke** | Automatic syllable splitting (Hangul, kana, Latin, Han), tap-along timing, five progression modes |
 | **Effects** | Move · fade · shake · chromatic aberration · animation. Shake is deterministic, so scrubbing back reproduces it exactly |
 | **Validator** | 17 rules covering YouTube's constraints, with undoable auto-fixes |
 | **Round trip** | Import and export `.ytt` / `.srv3` / `.ass`, with lossy conversions reported as warnings |
-| **Projects** | `.yttproj` package, 60-second autosave, crash recovery |
+| **Projects** | `.yttproj` package, autosave with a configurable interval, crash recovery |
+| **Preferences** | Language, theme, libmpv path and autosave are set in a window and persist across runs |
+| **Themes** | System default · light · dark, switched without restarting |
 | **Three languages** | Korean · English · Japanese, switchable at runtime |
 
 ## Getting started
@@ -92,7 +95,11 @@ dotnet run --project src/YttStudio.App -- samples/showcase.ass
 
 ### Pointing at libmpv
 
-The lookup order is `YTTSTUDIO_MPV_PATH` → the application directory → standard OS paths.
+The easiest route is **Tools → Settings → Video**. Pick the library yourself, or let the app
+download it on Windows. The chosen path persists across runs.
+
+An environment variable works too. The lookup order is the stored preference →
+`YTTSTUDIO_MPV_PATH` → the application directory → standard OS paths.
 
 ```bash
 # Windows
@@ -104,6 +111,11 @@ export YTTSTUDIO_MPV_PATH=/usr/lib/libmpv.so.2
 
 Versions below 2.0 are rejected. If no library is found, only the video features are disabled
 and the canvas falls back to a solid or checkerboard background.
+
+> **Licensing note.** Official Windows mpv builds are GPLv2+, so YttStudio never ships a libmpv
+> binary. The optional download in the settings window runs only after you have seen the source
+> and licence and pressed the button yourself, and it installs into your own machine.
+> On macOS and Linux the app points you at your package manager instead.
 
 ## Things worth knowing
 
