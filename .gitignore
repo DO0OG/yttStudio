@@ -4,6 +4,8 @@ obj/
 [Dd]ebug/
 [Rr]elease/
 artifacts/
+publish/
+bundle/
 *.user
 *.suo
 .vs/

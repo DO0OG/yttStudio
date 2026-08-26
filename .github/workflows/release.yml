@@ -25,7 +25,7 @@ jobs:
             archive: zip
           - os: macos-latest
             rid: osx-arm64
-            archive: tar
+            archive: mac
           - os: ubuntu-latest
             rid: linux-x64
             archive: tar
@@ -60,12 +60,49 @@ jobs:
           New-Item -ItemType Directory -Force artifacts | Out-Null
           Compress-Archive -Path "publish/${{ matrix.rid }}/*" -DestinationPath "artifacts/yttStudio-${{ steps.version.outputs.tag }}-${{ matrix.rid }}.zip"
 
+      - name: 설치 프로그램 (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $inno = "${env:ProgramFiles(x86)}\Inno Setup 6"
+          if (-not (Test-Path "$inno\ISCC.exe")) {
+            choco install innosetup --no-progress --yes
+          }
+          if (-not (Test-Path "$inno\ISCC.exe")) {
+            throw "ISCC.exe 를 찾지 못했다: $inno"
+          }
+          $defines = @(
+            "/DAppVersion=${{ steps.version.outputs.number }}",
+            "/DSourceDir=$PWD\publish\${{ matrix.rid }}",
+            "/DOutputDir=$PWD\artifacts"
+          )
+          # 한국어 메시지 파일은 Inno Setup 기본 배포에 없을 수 있다. 있을 때만 켠다.
+          if (Test-Path "$inno\Languages\Korean.isl") { $defines += "/DHaveKorean" }
+          & "$inno\ISCC.exe" $defines "packaging\windows\yttStudio.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup 컴파일 실패 ($LASTEXITCODE)" }
+
+      - name: 앱 번들과 디스크 이미지 (macOS)
+        if: matrix.archive == 'mac'
+        shell: bash
+        env:
+          # macOS tar 가 확장 속성을 ._ 파일로 흘리지 않게 한다.
+          COPYFILE_DISABLE: "1"
+        run: |
+          bash packaging/macos/build-macos.sh "publish/${{ matrix.rid }}" "${{ steps.version.outputs.number }}" bundle artifacts
+          tar -czf "artifacts/yttStudio-${{ steps.version.outputs.tag }}-${{ matrix.rid }}.tar.gz" -C bundle .
+
       - name: 압축 (tar.gz)
         if: matrix.archive == 'tar'
         shell: bash
         run: |
           mkdir -p artifacts
           tar -czf "artifacts/yttStudio-${{ steps.version.outputs.tag }}-${{ matrix.rid }}.tar.gz" -C "publish/${{ matrix.rid }}" .
+
+      - name: AppImage (Linux)
+        if: matrix.archive == 'tar'
+        shell: bash
+        run: |
+          bash packaging/linux/build-appimage.sh "publish/${{ matrix.rid }}" "${{ steps.version.outputs.number }}" artifacts
 
       - uses: actions/upload-artifact@v4
         with:
@@ -91,4 +128,12 @@ jobs:
         shell: bash
         run: |
           tag="${{ github.event.inputs.tag || github.ref_name }}"
-          gh release create "$tag" --repo "${{ github.repository }}" --title "yttStudio $tag" --notes-file .github/RELEASE_NOTES.md artifacts/*
+          repo="${{ github.repository }}"
+          # 이미 있는 릴리즈에 다시 올릴 수 있어야 한다. 패키징을 고친 뒤 같은 태그로
+          # 자산만 교체하는 경우가 있기 때문이다.
+          if gh release view "$tag" --repo "$repo" > /dev/null 2>&1; then
+            gh release upload "$tag" --repo "$repo" --clobber artifacts/*
+            gh release edit "$tag" --repo "$repo" --notes-file .github/RELEASE_NOTES.md
+          else
+            gh release create "$tag" --repo "$repo" --title "yttStudio $tag" --notes-file .github/RELEASE_NOTES.md artifacts/*
+          fi

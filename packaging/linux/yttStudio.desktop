@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=yttStudio
+GenericName=Subtitle Editor
+Comment=WYSIWYG editor for YouTube YTT (SRV3) subtitles
+Exec=YttStudio.App %f
+Icon=yttstudio
+Terminal=false
+Categories=AudioVideo;Video;AudioVideoEditing;
+StartupWMClass=YttStudio.App

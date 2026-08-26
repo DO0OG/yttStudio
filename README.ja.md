@@ -96,11 +96,28 @@ YouTube 標準の字幕エディタには装飾機能がありません。しか
 
 ## はじめかた
 
+### インストール
+
+[最新リリース](https://github.com/DO0OG/yttStudio/releases/latest) から入手してください。
+.NET ランタイムを同梱しているので、別途インストールする必要はありません。
+
+| プラットフォーム | ファイル | インストール方法 |
+|---|---|---|
+| Windows | `yttStudio-v*-win-x64-setup.exe` | 実行するとスタートメニュー登録・アンインストーラー・`.ytt` / `.srv3` / `.yttproj` の関連付けまで設定します |
+| Windows (インストール不要) | `yttStudio-v*-win-x64.zip` | 展開して `YttStudio.App.exe` を実行 |
+| macOS (Apple Silicon) | `yttStudio-v*-osx-arm64.dmg` | 開いて `yttStudio.app` を `Applications` にドラッグ |
+| Linux | `yttStudio-v*-linux-x86_64.AppImage` | `chmod +x` して実行 |
+
+> **コード署名がありません。** 証明書がないため初回起動時に警告が出ます。
+> Windows は SmartScreen の警告で **詳細情報 → 実行**、macOS は `yttStudio.app` を
+> 右クリックして **開く** を選び、ダイアログで再度 **開く** を押してください。それでも
+> ブロックされる場合は `xattr -dr com.apple.quarantine /Applications/yttStudio.app` を実行します。
+
 ### 必要環境
 
 | 項目 | 備考 |
 |---|---|
-| .NET 10 SDK | ビルドに必要 |
+| .NET 10 SDK | **ソースからビルドする場合のみ必要。** リリース版はランタイムを同梱しています |
 | libmpv 2.0 以上 | **映像再生のみに必要。** なくても字幕の編集・検証・保存は動作します |
 
 ### ビルドと実行

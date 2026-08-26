@@ -60,7 +60,9 @@ libmpv의 “LGPL” 표기만으로 실제 배포물의 의무를 단정하지 
 - 저장소에 libmpv binary가 없어 정확한 버전, commit, configure 옵션, license
   payload를 확정할 수 없다.
 - `licenses/libmpv/`와 자동 notice 생성 단계는 아직 없다.
-- 정식 패키징, macOS 서명/notarization, Linux AppImage 생성은 아직 없다.
+- 정식 패키징은 갖췄다. Windows 설치 프로그램, macOS `.app` + `.dmg`, Linux AppImage 를
+  릴리즈 워크플로가 만든다. 다만 인증서가 없어 Windows 코드 서명과 macOS notarization 은
+  아직 없고, macOS 는 ad-hoc 서명만 한다.
 
 이 미결정 상태를 해결하기 전에는 개발 환경에서 `YTTSTUDIO_MPV_PATH`로 찾은
 libmpv를 정식 배포물과 동일한 것으로 안내하지 않는다.
