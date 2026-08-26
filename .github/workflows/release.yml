@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "릴리즈로 만들 태그 (예: v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.rid }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            archive: zip
+          - os: macos-latest
+            rid: osx-arm64
+            archive: tar
+          - os: ubuntu-latest
+            rid: linux-x64
+            archive: tar
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: 태그에서 버전 추출
+        id: version
+        shell: bash
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "number=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: 게시
+        shell: bash
+        run: |
+          dotnet publish src/YttStudio.App/YttStudio.App.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained true -p:Version=${{ steps.version.outputs.number }} -p:DebugType=none --output "publish/${{ matrix.rid }}"
+
+      - name: 압축 (zip)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          Compress-Archive -Path "publish/${{ matrix.rid }}/*" -DestinationPath "artifacts/YttStudio-${{ steps.version.outputs.tag }}-${{ matrix.rid }}.zip"
+
+      - name: 압축 (tar.gz)
+        if: matrix.archive == 'tar'
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          tar -czf "artifacts/YttStudio-${{ steps.version.outputs.tag }}-${{ matrix.rid }}.tar.gz" -C "publish/${{ matrix.rid }}" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YttStudio-${{ matrix.rid }}
+          path: artifacts/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 릴리즈 생성
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          gh release create "$tag" --repo "${{ github.repository }}" --title "YttStudio $tag" --notes-file .github/RELEASE_NOTES.md artifacts/*

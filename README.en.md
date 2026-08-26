@@ -11,7 +11,7 @@ Position and style captions directly on the video, then export `.ytt` — on the
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![Avalonia](https://img.shields.io/badge/Avalonia-12-8B44AC)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
-![Tests](https://img.shields.io/badge/tests-150%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-236%20passing-brightgreen)
 
 [한국어](README.md) · **English** · [日本語](README.ja.md)
 
@@ -36,8 +36,9 @@ the video itself**. YttStudio fills that gap.
 </div>
 
 <div align="center"><sub>
-Captions are composited over the video and positioned with the mouse. Style presets on the
-left, property panel on the right, track timeline and cue list below.
+Captions are edited in place on the preview. The eight outer handles resize the cue and the
+centre dot picks its anchor. Style presets on the left, property panel on the right, track
+timeline and cue list below.
 </sub></div>
 
 <br />
@@ -128,9 +129,12 @@ radius and line-break points differ slightly. Confirm the final result with a re
 **Save your work as `.yttproj`.** A `.ytt` file is the baked output — effects are flattened
 into keyframes and do not survive a round trip, and track and draw order are not preserved.
 
-**The absence of rotation and resize handles is deliberate.** The YTT format has neither
-rotation nor free scaling. Offering them would transform the on-screen preview while the
-exported file ignored the change, which is worse than not having them.
+**There are no rotation or free-scale handles by design.** YTT has no rotation or arbitrary
+box scaling. The preview resize handle maps a drag to YTT's `SizePercent` font scale instead
+of freely stretching the box. A multi-selection receives the same scale, and the position
+relative to each cue's anchor stays fixed. Hold `Shift` for precision adjustment. The
+context-menu `NoFreeScale` message means that arbitrary box scaling is unsupported; it does
+not prohibit font-scale adjustment.
 
 **Viewport modes (normal, theatre, fullscreen, mobile) are disabled.** They will not be
 implemented on guesswork before each mode's actual coordinate behaviour has been measured.
@@ -169,4 +173,11 @@ See [LICENSE](LICENSE). Notices for bundled fonts and external libraries are in
 
 - Double-click an empty area of the preview to create a two-second cue at the current playback time and clicked position, then start typing immediately.
 - Single-click a cue to select it and drag it to reposition it. Double-click an existing cue to edit its text inline.
+- With the preview canvas focused and exactly one cue selected, press `F2` or `Enter` to start inline editing for that cue. The editor is positioned from the cue's screen box and clamped inside the preview area.
+- While editing, `Enter` commits and `Shift+Enter` inserts a newline without committing. `Esc` cancels: an existing cue returns to its original text, while a newly added cue is rolled back entirely. Losing focus from the editor commits the edit.
+- Text changes are reflected in the preview live as you type. A committed editing session is one undo entry, so one `Ctrl+Z` returns the cue to its pre-edit state.
 - Use `Ctrl+Z` to undo and `Ctrl+Y` or `Ctrl+Shift+Z` to redo. When a text box has focus, its native text history remains in control.
+- Inline editing uses a real Avalonia `TextBox` over the cue itself. The resolved font family, size, foreground colour/opacity, alignment and line wrapping follow the preview scale, and Korean/Japanese IME composition remains native to the control. The cue being edited is excluded from the `SubtitleImage` raster so it is not drawn twice.
+- The inline `Apply` button is intentionally absent. Press `Enter` or click outside to commit, and press `Esc` to cancel.
+- A TextBox cannot exactly reproduce YTT edge, shadow or outline rendering. Mixed section styles and karaoke syllable-level styling are likewise not reproduced exactly during inline editing; these are documented limitations.
+- With focus on the cue list, `Delete` removes the selected cues unless focus is inside a row TextBox. In the start/end/Track/text fields and in the inline editor, `Delete` remains character deletion and never deletes the cue.

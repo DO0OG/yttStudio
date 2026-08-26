@@ -95,6 +95,8 @@ M0 compatibility spike와 실제 NuGet restore로 다음 버전을 **확정**했
 | SkiaSharp.NativeAssets.macOS | **3.119.4** | macOS Render 테스트용 네이티브 자산, 관리형 SkiaSharp와 버전 일치 |
 | CommunityToolkit.Mvvm | **8.4.2** | 실제 restore 통과 |
 | xUnit | **xunit.v3 4.0.0** | .NET 10 Microsoft.Testing.Platform runner로 테스트 3건 통과 |
+| xUnit (App.Tests만) | **xunit.v3 3.2.2** | `Avalonia.Headless.XUnit 12.1.1`이 `xunit.v3.extensibility.core 3.2.2`에 의존해 `VersionOverride`로 맞춤. 나머지 테스트 프로젝트는 4.0.0 유지 |
+| Avalonia.Headless.XUnit | **12.1.1** | 헤드리스 UI 테스트용. `PreviewCanvas` 히트 테스트 회귀 검증에 사용 |
 | Microsoft.NET.Test.Sdk | **17.14.1** | 실제 restore 통과 |
 | Serilog | **4.4.0** | 실제 restore 통과 |
 | Serilog.Sinks.File | **7.0.0** | 실제 restore 통과 |

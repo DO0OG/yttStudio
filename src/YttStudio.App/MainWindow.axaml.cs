@@ -56,6 +56,35 @@ public partial class MainWindow : Window
         }, DispatcherPriority.Input);
     }
 
+    private void OnInlineEditorKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel viewModel || !viewModel.IsInlineEditing)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            viewModel.CancelInlineEdit();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            viewModel.CommitInlineEdit();
+            e.Handled = true;
+        }
+        // Shift+Enter is intentionally left to the TextBox so it inserts a
+        // line break.
+    }
+
+    private void OnInlineEditorLostFocus(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel && viewModel.IsInlineEditing)
+        {
+            viewModel.CommitInlineEdit();
+        }
+    }
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
@@ -66,6 +95,43 @@ public partial class MainWindow : Window
 
         IInputElement? focused = TopLevel.GetTopLevel(this)?.FocusManager.GetFocusedElement();
         Visual? source = e.Source as Visual ?? focused as Visual;
+        if (DataContext is MainWindowViewModel viewModel && viewModel.IsInlineEditing &&
+            IsTextBoxFocused(source))
+        {
+            if (e.Key == Key.Escape)
+            {
+                viewModel.CancelInlineEdit();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Enter && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+            {
+                viewModel.CommitInlineEdit();
+                e.Handled = true;
+            }
+
+            if (e.Handled || e.Key == Key.Enter)
+            {
+                return;
+            }
+        }
+
+        if (DataContext is MainWindowViewModel deleteViewModel &&
+            ShouldDeleteCueFromList(
+                e.Key,
+                e.KeyModifiers,
+                IsCueListFocused(source),
+                IsTextBoxFocused(source),
+                deleteViewModel.IsInlineEditing))
+        {
+            if (deleteViewModel.DeleteCueCommand.CanExecute(null))
+            {
+                deleteViewModel.DeleteCueCommand.Execute(null);
+            }
+
+            e.Handled = true;
+            return;
+        }
+
         if (TryHandleHistoryShortcut(e, source))
         {
             return;
@@ -81,10 +147,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (DataContext is MainWindowViewModel viewModel &&
-            viewModel.PlayPauseCommand.CanExecute(null))
+        if (DataContext is MainWindowViewModel playbackViewModel &&
+            playbackViewModel.PlayPauseCommand.CanExecute(null))
         {
-            viewModel.PlayPauseCommand.Execute(null);
+            playbackViewModel.PlayPauseCommand.Execute(null);
             e.Handled = true;
         }
     }
@@ -125,6 +191,33 @@ public partial class MainWindow : Window
         command.Execute(null);
         e.Handled = true;
         return true;
+    }
+
+    internal static bool ShouldDeleteCueFromList(
+        Key key,
+        KeyModifiers modifiers,
+        bool cueListFocused,
+        bool textBoxFocused,
+        bool inlineEditing)
+        => key == Key.Delete && modifiers == KeyModifiers.None && cueListFocused &&
+            !textBoxFocused && !inlineEditing;
+
+    private bool IsCueListFocused(Visual? element)
+    {
+        if (CueList is null)
+        {
+            return false;
+        }
+
+        for (Visual? current = element; current is not null; current = current.GetVisualParent())
+        {
+            if (ReferenceEquals(current, CueList))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsTextBoxFocused(Visual? element)

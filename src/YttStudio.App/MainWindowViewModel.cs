@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -14,6 +15,7 @@ using YttStudio.Core.Project;
 using YttStudio.Core.Validation;
 using YttStudio.Render;
 using YttStudio.Video;
+using SubtitleRenderOptions = YttStudio.Render.RenderOptions;
 
 namespace YttStudio.App;
 
@@ -66,6 +68,28 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private double inlineEditorLeft;
     private double inlineEditorTop;
     private double inlineEditorWidth = 180;
+    private double inlineEditorHeight = InlineEditorPlacement.DefaultHeight;
+    private FontFamily inlineEditorFontFamily = new("Roboto");
+    private double inlineEditorFontSize = YttConstants.DefaultFontSizePixels;
+    private IBrush inlineEditorForeground = Brushes.White;
+    private TextAlignment inlineEditorTextAlignment = TextAlignment.Center;
+    private Thickness inlineEditorPadding;
+    private Guid? inlineEditCueId;
+    private int inlineEditSectionIndex;
+    private string inlineEditOriginalText = string.Empty;
+    private Guid? pendingInlineEditCueId;
+    private bool inlineEditOriginalUnsavedChanges;
+    private bool inlineEditIncludesNewCue;
+    private InlineEditorStyle? inlineEditorStyle;
+    private CanvasRect? inlineEditReferenceBounds;
+    private Rect inlineEditorContentBounds;
+    private Rect inlineEditorViewport;
+    private bool inlineEditorUsesReferencePlacement;
+    private readonly Dictionary<(Guid CueId, int SectionIndex), int> canvasResizeBaselines = [];
+    private readonly Dictionary<Guid, CanvasResizeGeometry> canvasResizeGeometry = [];
+    private bool canvasResizeActive;
+    private bool canvasResizeChanged;
+    private bool canvasResizeOriginalUnsavedChanges;
     private bool disposed;
     private bool karaokeTimelineTransaction;
     private AppThemeMode themeMode;
@@ -117,10 +141,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         PlayPauseCommand = new DelegateCommand(TogglePlayback, () => videoLoaded);
         StepBackCommand = new DelegateCommand(() => StepFrame(-1), () => videoLoaded);
         StepForwardCommand = new DelegateCommand(() => StepFrame(1), () => videoLoaded);
-        UndoCommand = new DelegateCommand(Undo, () => editor?.CanUndo == true);
-        RedoCommand = new DelegateCommand(Redo, () => editor?.CanRedo == true);
-        AddCueCommand = new DelegateCommand(AddCue, () => project is not null);
-        DeleteCueCommand = new DelegateCommand(DeleteSelectedCues, () => selectedCueIds.Count > 0);
+        UndoCommand = new DelegateCommand(Undo, () => !isInlineEditing && editor?.CanUndo == true);
+        RedoCommand = new DelegateCommand(Redo, () => !isInlineEditing && editor?.CanRedo == true);
+        AddCueCommand = new DelegateCommand(AddCue, () => !isInlineEditing && project is not null);
+        DeleteCueCommand = new DelegateCommand(DeleteSelectedCues,
+            () => !isInlineEditing && selectedCueIds.Count > 0);
         DuplicateCueCommand = new DelegateCommand(DuplicateSelectedCues, () => selectedCueIds.Count > 0);
         AddStyleCommand = new DelegateCommand(AddStyle, () => editor is not null);
         DeleteStyleCommand = new AsyncCommand(DeleteSelectedStyleAsync,
@@ -805,7 +830,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
         set
         {
-            if (editor is null || selectedCueIds.Count == 0 || value == "—")
+            if (isInlineEditing || editor is null || selectedCueIds.Count == 0 || value == "—")
             {
                 return;
             }
@@ -1086,13 +1111,53 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool IsInlineEditing
     {
         get => isInlineEditing;
-        private set => SetField(ref isInlineEditing, value);
+        private set
+        {
+            if (!SetField(ref isInlineEditing, value))
+            {
+                return;
+            }
+
+            CommitInlineEditCommand.NotifyCanExecuteChanged();
+            UndoCommand.NotifyCanExecuteChanged();
+            RedoCommand.NotifyCanExecuteChanged();
+            DeleteCueCommand.NotifyCanExecuteChanged();
+        }
     }
 
     public string InlineText
     {
         get => inlineText;
-        set => SetField(ref inlineText, value);
+        set
+        {
+            string next = value ?? string.Empty;
+            if (inlineText == next)
+            {
+                return;
+            }
+
+            bool appliedToModel = false;
+            if (isInlineEditing && editor is not null && inlineEditCueId is Guid cueId &&
+                project?.Cues[cueId] is Cue cue &&
+                (uint)inlineEditSectionIndex < (uint)cue.Sections.Count)
+            {
+                Section section = cue.Sections[inlineEditSectionIndex];
+                if (section.Text != next)
+                {
+                    editor.SetText(cueId, inlineEditSectionIndex, next);
+                    appliedToModel = true;
+                }
+            }
+
+            if (SetField(ref inlineText, next) && appliedToModel)
+            {
+                // SetText is part of the active transaction, while rendering is
+                // intentionally immediate so typing is visible in the preview.
+                // This path must not mark the document dirty: canceling the
+                // session must preserve its pre-session autosave state.
+                RefreshInlinePreview();
+            }
+        }
     }
 
     public double InlineEditorLeft
@@ -1111,6 +1176,42 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         get => inlineEditorWidth;
         private set => SetField(ref inlineEditorWidth, value);
+    }
+
+    public double InlineEditorHeight
+    {
+        get => inlineEditorHeight;
+        private set => SetField(ref inlineEditorHeight, value);
+    }
+
+    public FontFamily InlineEditorFontFamily
+    {
+        get => inlineEditorFontFamily;
+        private set => SetField(ref inlineEditorFontFamily, value);
+    }
+
+    public double InlineEditorFontSize
+    {
+        get => inlineEditorFontSize;
+        private set => SetField(ref inlineEditorFontSize, value);
+    }
+
+    public IBrush InlineEditorForeground
+    {
+        get => inlineEditorForeground;
+        private set => SetField(ref inlineEditorForeground, value);
+    }
+
+    public TextAlignment InlineEditorTextAlignment
+    {
+        get => inlineEditorTextAlignment;
+        private set => SetField(ref inlineEditorTextAlignment, value);
+    }
+
+    public Thickness InlineEditorPadding
+    {
+        get => inlineEditorPadding;
+        private set => SetField(ref inlineEditorPadding, value);
     }
 
     private Cue? SelectedCue
@@ -1538,6 +1639,242 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    public bool BeginCanvasResize(Guid primaryCueId, int grabbedRow, int grabbedColumn)
+    {
+        if (canvasResizeActive || isInlineEditing || editor is null || editor.IsTransactionActive || project is null ||
+            selectedCueIds.Count == 0 || !selectedCueIds.Contains(primaryCueId) ||
+            CanvasItems.FirstOrDefault(item => item.Id == primaryCueId) is not CanvasCueItem primary)
+        {
+            return false;
+        }
+
+        canvasResizeBaselines.Clear();
+        canvasResizeGeometry.Clear();
+        (int pivotRow, int pivotColumn) = PreviewResizeGeometry.GetPivotCell(grabbedRow, grabbedColumn);
+        foreach (Guid cueId in selectedCueIds)
+        {
+            if (project.Cues[cueId] is not Cue cue)
+            {
+                continue;
+            }
+
+            if (CanvasItems.FirstOrDefault(item => item.Id == cueId) is CanvasCueItem canvasItem &&
+                double.IsFinite(canvasItem.Bounds.Width) && double.IsFinite(canvasItem.Bounds.Height))
+            {
+                canvasResizeGeometry[cueId] = new CanvasResizeGeometry(
+                    CanvasGeometry.ToCanvasPoint(cue.PositionX, cue.PositionY,
+                        YttConstants.ReferenceWidth, YttConstants.ReferenceHeight),
+                    canvasItem.Bounds.Width,
+                    canvasItem.Bounds.Height,
+                    CanvasResizeGeometry.CellFraction((int)canvasItem.AnchorKind % 3),
+                    CanvasResizeGeometry.CellFraction((int)canvasItem.AnchorKind / 3),
+                    CanvasResizeGeometry.CellFraction(pivotColumn),
+                    CanvasResizeGeometry.CellFraction(pivotRow));
+            }
+
+            for (int sectionIndex = 0; sectionIndex < cue.Sections.Count; sectionIndex++)
+            {
+                Section section = cue.Sections[sectionIndex];
+                canvasResizeBaselines[(cue.Id, sectionIndex)] =
+                    ResolveSectionFormat(cue, section).SizePercent;
+            }
+        }
+
+        if (canvasResizeBaselines.Count == 0 ||
+            !double.IsFinite(primary.Bounds.X) || !double.IsFinite(primary.Bounds.Y) ||
+            !double.IsFinite(primary.Bounds.Width) || !double.IsFinite(primary.Bounds.Height) ||
+            primary.Bounds.Width <= 0 || primary.Bounds.Height <= 0)
+        {
+            canvasResizeBaselines.Clear();
+            canvasResizeGeometry.Clear();
+            return false;
+        }
+
+        try
+        {
+            canvasResizeOriginalUnsavedChanges = unsavedChanges;
+            editor.BeginTransaction("자막 크기 변경");
+        }
+        catch
+        {
+            canvasResizeBaselines.Clear();
+            canvasResizeGeometry.Clear();
+            throw;
+        }
+
+        canvasResizeActive = true;
+        canvasResizeChanged = false;
+        return true;
+    }
+
+    public void PreviewCanvasResize(double multiplier)
+    {
+        if (!canvasResizeActive || editor is null || project is null)
+        {
+            return;
+        }
+
+        double normalizedMultiplier = double.IsFinite(multiplier) ? Math.Max(0, multiplier) : 1.0;
+        bool applied = false;
+        foreach (KeyValuePair<(Guid CueId, int SectionIndex), int> baseline in canvasResizeBaselines)
+        {
+            Guid cueId = baseline.Key.CueId;
+            int sectionIndex = baseline.Key.SectionIndex;
+            int baselineSizePercent = baseline.Value;
+            if (project.Cues[cueId] is not Cue cue ||
+                (uint)sectionIndex >= (uint)cue.Sections.Count)
+            {
+                continue;
+            }
+
+            Section section = cue.Sections[sectionIndex];
+            int targetSizePercent = PreviewResizeGeometry.ComputeSizePercent(
+                baselineSizePercent, normalizedMultiplier);
+            if (ResolveSectionFormat(cue, section).SizePercent == targetSizePercent)
+            {
+                continue;
+            }
+
+            // The copy keeps every existing override (including style, color,
+            // edge, and pack values) and changes only the explicit size.
+            editor.SetFormatOverrides(
+                cueId,
+                sectionIndex,
+                section.Overrides.WithSizePercent(targetSizePercent));
+            applied = true;
+        }
+
+        canvasResizeChanged = canvasResizeBaselines.Any(item =>
+            PreviewResizeGeometry.ComputeSizePercent(item.Value, normalizedMultiplier) != item.Value);
+        applied |= ApplyCanvasResizeCompensation(normalizedMultiplier);
+        if (applied)
+        {
+            AfterMutation();
+        }
+    }
+
+    /// <summary>
+    /// 글자만 키우면 박스가 앵커를 중심으로 양쪽으로 자란다. 맞은편 고정점이 제자리에
+    /// 머무르도록 앵커 좌표를 되밀어, 잡은 조절점 방향으로만 자라는 것처럼 보이게 한다.
+    /// </summary>
+    private bool ApplyCanvasResizeCompensation(double multiplier)
+    {
+        if (editor is null || project is null || canvasResizeGeometry.Count == 0)
+        {
+            return false;
+        }
+
+        Dictionary<Guid, CanvasPoint> positions = [];
+        foreach (KeyValuePair<Guid, CanvasResizeGeometry> entry in canvasResizeGeometry)
+        {
+            if (project.Cues[entry.Key] is not Cue cue ||
+                !canvasResizeBaselines.TryGetValue((entry.Key, 0), out int baselineSizePercent) ||
+                baselineSizePercent <= 0)
+            {
+                continue;
+            }
+
+            // The clamp can refuse part of the requested multiplier, so pin the
+            // box against the size that was actually applied, not the request.
+            double achievedScale =
+                (double)PreviewResizeGeometry.ComputeSizePercent(baselineSizePercent, multiplier) /
+                baselineSizePercent;
+            CanvasPoint compensated = entry.Value.GetCompensatedAnchor(achievedScale);
+            CanvasPoint target = CanvasGeometry.ToYttPoint(compensated.X, compensated.Y,
+                YttConstants.ReferenceWidth, YttConstants.ReferenceHeight);
+            if (Math.Abs(cue.PositionX - target.X) > double.Epsilon ||
+                Math.Abs(cue.PositionY - target.Y) > double.Epsilon)
+            {
+                positions[entry.Key] = target;
+            }
+        }
+
+        if (positions.Count == 0)
+        {
+            return false;
+        }
+
+        editor.MoveCues(positions);
+        return true;
+    }
+
+    public void EndCanvasResize(double multiplier)
+    {
+        if (!canvasResizeActive || editor is null)
+        {
+            return;
+        }
+
+        PreviewCanvasResize(multiplier);
+        bool changed = canvasResizeChanged;
+        bool originalUnsavedChanges = canvasResizeOriginalUnsavedChanges;
+        if (editor.IsTransactionActive)
+        {
+            if (changed)
+            {
+                editor.EndTransaction();
+            }
+            else
+            {
+                editor.CancelTransaction();
+            }
+        }
+
+        ClearCanvasResizeState();
+        if (!changed)
+        {
+            RefreshAfterCanvasResizeCancel(originalUnsavedChanges);
+        }
+        else
+        {
+            NotifyCommandStates();
+        }
+    }
+
+    public void CancelCanvasResize()
+    {
+        if (!canvasResizeActive || editor is null)
+        {
+            return;
+        }
+
+        bool originalUnsavedChanges = canvasResizeOriginalUnsavedChanges;
+        if (editor.IsTransactionActive)
+        {
+            editor.CancelTransaction();
+        }
+
+        ClearCanvasResizeState();
+        RefreshAfterCanvasResizeCancel(originalUnsavedChanges);
+    }
+
+    private void RefreshAfterCanvasResizeCancel(bool originalUnsavedChanges)
+    {
+        RefreshRowsAndStyles();
+        ReconcileSelection();
+        UpdateMaximum();
+        RenderSubtitlePreview();
+        NotifySelectionProperties();
+        unsavedChanges = originalUnsavedChanges;
+        NotifyCommandStates();
+    }
+
+    private void ClearCanvasResizeState()
+    {
+        canvasResizeBaselines.Clear();
+        canvasResizeGeometry.Clear();
+        canvasResizeActive = false;
+        canvasResizeChanged = false;
+        canvasResizeOriginalUnsavedChanges = false;
+    }
+
+    private ResolvedFormat ResolveSectionFormat(Cue cue, Section section)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        StylePreset style = project.GetStyle(section.StyleIdOverride ?? cue.StyleId);
+        return FormatResolver.Resolve(style.BaseFormat, section.Overrides);
+    }
+
     public CanvasMovePreview PreviewCanvasMove(double deltaX, double deltaY, bool altPressed)
     {
         CanvasCueItem? primary = CanvasItems.FirstOrDefault(item => item.Id == lastSelectedCueId);
@@ -1614,12 +1951,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public Guid? AddCueAtCanvasPoint(double canvasX, double canvasY)
     {
+        if (isInlineEditing || editor?.IsTransactionActive == true)
+        {
+            return null;
+        }
+
         if (editor is null)
         {
             project ??= new SubtitleProject();
             editor = new DocumentEditor(project);
         }
 
+        bool wasUnsaved = unsavedChanges;
         CanvasPoint position = CanvasGeometry.ToYttPoint(
             canvasX,
             canvasY,
@@ -1628,25 +1971,144 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         TimeSpan start = TimeSpan.FromMilliseconds(PositionMilliseconds);
         Cue cue;
         editor.BeginTransaction("자막 추가 및 위치 지정");
-        cue = editor.AddCue(start, start + TimeSpan.FromSeconds(2), "새 자막");
-        editor.MoveCue(cue.Id, position.X, position.Y);
-        editor.EndTransaction();
+        try
+        {
+            cue = editor.AddCue(start, start + TimeSpan.FromSeconds(2), "새 자막");
+            editor.MoveCue(cue.Id, position.X, position.Y);
+        }
+        catch
+        {
+            editor.CancelTransaction();
+            throw;
+        }
 
+        // The transaction remains open until BeginInlineEdit commits or
+        // cancels it, so a new cue and its initial typing are one session.
+        pendingInlineEditCueId = cue.Id;
+        inlineEditOriginalUnsavedChanges = wasUnsaved;
         RefreshRowsAndStyles();
         SelectCue(cue.Id, toggle: false);
-        AfterMutation(refreshRows: false);
+        RefreshInlinePreview();
         return cue.Id;
     }
 
     public void BeginInlineEdit(Guid cueId, double left, double top, double width)
     {
+        if (isInlineEditing || project?.Cues[cueId] is not Cue cue || cue.Sections.Count == 0)
+        {
+            return;
+        }
+
+        if (editor is null)
+        {
+            editor = new DocumentEditor(project);
+        }
+
+        bool pendingNewCue = pendingInlineEditCueId == cueId && editor.IsTransactionActive;
+        if (editor.IsTransactionActive && !pendingNewCue)
+        {
+            // Do not absorb an unrelated transaction into this edit session.
+            return;
+        }
+
+        if (!pendingNewCue)
+        {
+            editor.BeginTransaction("인라인 텍스트 편집");
+        }
+
+        pendingInlineEditCueId = null;
         SelectCue(cueId, toggle: false);
-        InlineText = SelectedText;
-        InlineEditorLeft = left;
-        InlineEditorTop = top;
-        InlineEditorWidth = Math.Max(140, width);
+        inlineEditCueId = cueId;
+        inlineEditSectionIndex = 0;
+        inlineEditOriginalText = cue.Sections[inlineEditSectionIndex].Text;
+        inlineEditOriginalUnsavedChanges = pendingNewCue
+            ? inlineEditOriginalUnsavedChanges
+            : unsavedChanges;
+        inlineEditIncludesNewCue = pendingNewCue;
+        ApplyInlineEditorStyle(ResolveInlineEditorStyle(cue));
+        inlineEditorUsesReferencePlacement = false;
+        inlineEditReferenceBounds = null;
+        SetField(ref inlineText, inlineEditOriginalText, nameof(InlineText));
+        InlineEditorLeft = double.IsFinite(left) ? left : 0;
+        InlineEditorTop = double.IsFinite(top) ? top : 0;
+        InlineEditorWidth = Math.Max(0, double.IsFinite(width) ? width : 180);
+        InlineEditorHeight = InlineEditorPlacement.DefaultHeight;
         IsInlineEditing = true;
-        CommitInlineEditCommand.NotifyCanExecuteChanged();
+        RefreshInlinePreview();
+    }
+
+    public void BeginInlineEdit(Guid cueId, Rect placement, Rect viewport)
+    {
+        Rect clamped = InlineEditorPlacement.Clamp(placement, viewport);
+        BeginInlineEdit(cueId, clamped.Left, clamped.Top, clamped.Width);
+    }
+
+    public void BeginInlineEdit(
+        Guid cueId,
+        CanvasRect referenceBounds,
+        Rect contentRect,
+        Rect viewport)
+    {
+        if (project?.Cues[cueId] is not Cue)
+        {
+            return;
+        }
+
+        InlineEditorStyle style = ResolveInlineEditorStyle(project.Cues[cueId]!);
+        InlineEditorPresentation presentation = InlineEditorPresentationMapper.Scale(
+            style, referenceBounds, contentRect);
+        Rect requested = presentation.Bounds;
+        Rect clamped = InlineEditorPlacement.Clamp(
+            new Rect(requested.X, requested.Y,
+                Math.Max(140, requested.Width),
+                Math.Max(InlineEditorPlacement.DefaultHeight, requested.Height)),
+            viewport);
+        BeginInlineEdit(cueId, clamped.Left, clamped.Top, clamped.Width);
+        if (!isInlineEditing || inlineEditCueId != cueId)
+        {
+            return;
+        }
+
+        inlineEditorStyle = style;
+        inlineEditorUsesReferencePlacement = true;
+        inlineEditReferenceBounds = referenceBounds;
+        RefreshInlineEditorLayout(contentRect, viewport);
+    }
+
+    public void RefreshInlineEditorLayout(Rect contentRect, Rect viewport)
+    {
+        if (!isInlineEditing || !inlineEditorUsesReferencePlacement ||
+            inlineEditorStyle is not InlineEditorStyle style || inlineEditCueId is not Guid cueId)
+        {
+            return;
+        }
+
+        inlineEditorContentBounds = contentRect;
+        inlineEditorViewport = viewport;
+        if (CanvasItems.FirstOrDefault(item => item.Id == cueId) is CanvasCueItem item)
+        {
+            inlineEditReferenceBounds = item.Bounds;
+        }
+
+        if (inlineEditReferenceBounds is not CanvasRect referenceBounds)
+        {
+            return;
+        }
+
+        InlineEditorPresentation presentation = InlineEditorPresentationMapper.Scale(
+            style, referenceBounds, contentRect);
+        Rect requested = new(
+            presentation.Bounds.X,
+            presentation.Bounds.Y,
+            Math.Max(140, presentation.Bounds.Width),
+            Math.Max(InlineEditorPlacement.DefaultHeight, presentation.Bounds.Height));
+        Rect clamped = InlineEditorPlacement.Clamp(requested, viewport);
+        InlineEditorLeft = clamped.Left;
+        InlineEditorTop = clamped.Top;
+        InlineEditorWidth = clamped.Width;
+        InlineEditorHeight = clamped.Height;
+        InlineEditorFontSize = presentation.FontSize;
+        InlineEditorPadding = presentation.Padding;
     }
 
     public void AlignSelected(char command)
@@ -2403,7 +2865,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                     PreviewViewportMode.VideoFrame),
                 project,
                 TimeSpan.FromMilliseconds(PositionMilliseconds),
-                new RenderOptions());
+                new SubtitleRenderOptions());
             using SKImage image = surface.Snapshot();
             using SKData data = image.Encode(SKEncodedImageFormat.Png, 90);
             return data.ToArray();
@@ -2495,9 +2957,32 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void DeleteSelectedCues()
     {
-        editor?.RemoveCues(selectedCueIds.ToArray());
+        if (isInlineEditing || editor is null || project is null || selectedCueIds.Count == 0)
+        {
+            return;
+        }
+
+        Guid[] deletedIds = selectedCueIds.ToArray();
+        Cue[] orderedCues = project.Cues
+            .OrderBy(cue => cue.Start)
+            .ToArray();
+        int firstSelected = Array.FindIndex(orderedCues, cue => selectedCueIds.Contains(cue.Id));
+        int lastSelected = Array.FindLastIndex(orderedCues, cue => selectedCueIds.Contains(cue.Id));
+        Cue? neighbor = lastSelected >= 0
+            ? orderedCues.Skip(lastSelected + 1).FirstOrDefault(cue => !selectedCueIds.Contains(cue.Id))
+            : null;
+        neighbor ??= firstSelected > 0
+            ? orderedCues.Take(firstSelected).LastOrDefault(cue => !selectedCueIds.Contains(cue.Id))
+            : null;
+
+        editor.RemoveCues(deletedIds);
         selectedCueIds.Clear();
-        lastSelectedCueId = null;
+        lastSelectedCueId = neighbor?.Id;
+        if (neighbor is not null)
+        {
+            selectedCueIds.Add(neighbor.Id);
+        }
+
         AfterMutation(refreshRows: true);
     }
 
@@ -2579,14 +3064,93 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         AfterMutation(refreshRows: true);
     }
 
-    private void CommitInlineEdit()
+    private InlineEditorStyle ResolveInlineEditorStyle(Cue cue)
     {
-        if (IsInlineEditing)
+        ArgumentNullException.ThrowIfNull(project);
+        Section section = cue.Sections[0];
+        StylePreset style = project.GetStyle(section.StyleIdOverride ?? cue.StyleId);
+        ResolvedFormat format = FormatResolver.Resolve(style.BaseFormat, section.Overrides);
+        FontResolution resolution = renderer.ResolveFont(format.Font);
+        return InlineEditorPresentationMapper.Map(format, resolution, cue.Justify);
+    }
+
+    private void ApplyInlineEditorStyle(InlineEditorStyle style)
+    {
+        inlineEditorStyle = style;
+        InlineEditorFontFamily = style.FontFamily;
+        InlineEditorFontSize = style.ReferenceFontSize;
+        InlineEditorForeground = style.ForegroundBrush;
+        InlineEditorTextAlignment = style.TextAlignment;
+        InlineEditorPadding = style.ReferencePadding;
+    }
+
+    public void CommitInlineEdit()
+    {
+        if (!isInlineEditing)
         {
-            SelectedText = InlineText;
-            IsInlineEditing = false;
-            CommitInlineEditCommand.NotifyCanExecuteChanged();
+            return;
         }
+
+        bool hasChanges = inlineEditIncludesNewCue ||
+            (inlineEditCueId is Guid cueId &&
+             project?.Cues[cueId] is Cue cue &&
+             (uint)inlineEditSectionIndex < (uint)cue.Sections.Count &&
+             cue.Sections[inlineEditSectionIndex].Text != inlineEditOriginalText);
+        if (editor?.IsTransactionActive == true)
+        {
+            if (hasChanges)
+            {
+                editor.EndTransaction();
+            }
+            else
+            {
+                editor.CancelTransaction();
+            }
+        }
+
+        inlineEditCueId = null;
+        pendingInlineEditCueId = null;
+        inlineEditIncludesNewCue = false;
+        inlineEditOriginalText = string.Empty;
+        inlineEditOriginalUnsavedChanges = false;
+        inlineEditorUsesReferencePlacement = false;
+        inlineEditReferenceBounds = null;
+        IsInlineEditing = false;
+        RefreshRowsAndStyles();
+        if (hasChanges)
+        {
+            AfterMutation(refreshRows: false);
+        }
+        else
+        {
+            RefreshInlinePreview();
+        }
+    }
+
+    public void CancelInlineEdit()
+    {
+        if (!isInlineEditing)
+        {
+            return;
+        }
+
+        if (editor?.IsTransactionActive == true)
+        {
+            editor.CancelTransaction();
+        }
+
+        inlineEditCueId = null;
+        pendingInlineEditCueId = null;
+        inlineEditIncludesNewCue = false;
+        inlineEditorUsesReferencePlacement = false;
+        inlineEditReferenceBounds = null;
+        IsInlineEditing = false;
+        SetField(ref inlineText, inlineEditOriginalText, nameof(InlineText));
+        inlineEditOriginalText = string.Empty;
+        RefreshRowsAndStyles();
+        RefreshInlinePreview();
+        unsavedChanges = inlineEditOriginalUnsavedChanges;
+        inlineEditOriginalUnsavedChanges = false;
     }
 
     private async Task DeleteSelectedStyleAsync()
@@ -2772,7 +3336,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         double framesPerSecond = project.Video?.NominalFps is > 0 ? project.Video.NominalFps : 30;
         long frameIndex = checked((long)Math.Floor(time.TotalSeconds * framesPerSecond));
         PlayerViewport viewport = PlayerViewport.VideoFrame(bitmap.Width, bitmap.Height);
-        renderer.Render(canvas, viewport, project, time, new RenderOptions { FrameIndex = frameIndex, ShowSafeArea = showSafeArea, ShowAnchorPoints = showAnchors });
+        renderer.Render(canvas, viewport, project, time, new SubtitleRenderOptions
+        {
+            FrameIndex = frameIndex,
+            ShowSafeArea = showSafeArea,
+            ShowAnchorPoints = showAnchors,
+            EditingCueId = isInlineEditing ? inlineEditCueId : null,
+        });
         SubtitleImage = EncodeBitmap(bitmap);
         CanvasItems = renderer.Measure(viewport, project, time)
             .Select(hit => new CanvasCueItem(
@@ -2808,6 +3378,20 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         RenderSubtitlePreview();
         NotifySelectionProperties();
         NotifyCommandStates();
+    }
+
+    private void RefreshInlinePreview()
+    {
+        // Live typing is a visual/model notification only. The open editor
+        // transaction owns the eventual dirty/history transition at commit.
+        RefreshRowsAndStyles();
+        ReconcileSelection();
+        RenderSubtitlePreview();
+        if (inlineEditorUsesReferencePlacement && inlineEditCueId is not null)
+        {
+            RefreshInlineEditorLayout(inlineEditorContentBounds, inlineEditorViewport);
+        }
+        NotifySelectionProperties();
     }
 
     private void RefreshRowsAndStyles()

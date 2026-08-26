@@ -47,12 +47,15 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
                 using SKPaint alphaPaint = new() { Color = SKColors.White.WithAlpha((byte)Math.Round(effect.Alpha * 255)) };
                 canvas.SaveLayer(alphaPaint);
             }
-            DrawChroma(canvas, layout, time, options, effect);
-            DrawBackground(canvas, layout);
-            DrawEdges(canvas, layout, time, options);
-            DrawBody(canvas, layout, time, options, effect);
-            DrawUnderlines(canvas, layout);
-            DrawRuby(canvas, layout);
+            if (options.EditingCueId != layout.Cue.Id)
+            {
+                DrawChroma(canvas, layout, time, options, effect);
+                DrawBackground(canvas, layout);
+                DrawEdges(canvas, layout, time, options);
+                DrawBody(canvas, layout, time, options, effect);
+                DrawUnderlines(canvas, layout);
+                DrawRuby(canvas, layout);
+            }
             canvas.RestoreToCount(saveCount);
         }
 
@@ -95,6 +98,15 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         TimeSpan time,
         RenderOptions? options = null)
         => GetLayouts(viewport, project, time, options ?? new RenderOptions());
+
+    /// <summary>Returns the same resolved family used by Skia text layout.</summary>
+    public FontResolution ResolveFont(YtFont requested)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        FontResolution resolution = fontFallback.Resolve(requested);
+        fontResolutions[requested] = resolution;
+        return resolution;
+    }
 
     public void Dispose()
     {
@@ -358,8 +370,7 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
             return resources;
         }
 
-        FontResolution resolution = fontFallback.Resolve(format.Font);
-        fontResolutions[format.Font] = resolution;
+        FontResolution resolution = ResolveFont(format.Font);
         resources = new FormatResources(format, fontSize);
         formatCache.Add(key, resources);
         return resources;

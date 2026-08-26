@@ -140,4 +140,10 @@ public sealed record RenderOptions
     /// </summary>
     /// <remarks>스크럽하는 호출자는 같은 프레임에 같은 인덱스를 주어야 한다.</remarks>
     public long FrameIndex { get; init; }
+
+    /// <summary>
+    /// During inline editing, keep this cue in measurement and hit testing
+    /// while omitting only its raster draw calls.
+    /// </summary>
+    public Guid? EditingCueId { get; init; }
 }

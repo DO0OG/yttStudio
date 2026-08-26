@@ -81,4 +81,56 @@ public sealed class DocumentTransactionTests
         Assert.Equal(0, cue.PositionX);
         Assert.Equal(100, cue.PositionY);
     }
+
+    [Fact]
+    public void CancelTransactionRestoresCommandsWithoutChangingHistory()
+    {
+        SubtitleProject project = new();
+        DocumentEditor editor = new(project);
+        Cue cue = editor.AddCue(TimeSpan.Zero, TimeSpan.FromSeconds(1), "before");
+        editor.SetText(cue.Id, 0, "after");
+        editor.Undo();
+
+        Assert.True(editor.CanUndo);
+        Assert.True(editor.CanRedo);
+        string? undoLabel = editor.UndoLabel;
+        string? redoLabel = editor.RedoLabel;
+
+        editor.BeginTransaction("inline");
+        editor.SetText(cue.Id, 0, "typing");
+        editor.SetText(cue.Id, 0, "typing more");
+        editor.CancelTransaction();
+
+        Assert.Equal("before", cue.Sections[0].Text);
+        Assert.Equal(undoLabel, editor.UndoLabel);
+        Assert.Equal(redoLabel, editor.RedoLabel);
+        Assert.True(editor.CanUndo);
+        Assert.True(editor.CanRedo);
+
+        editor.Redo();
+        Assert.Equal("after", cue.Sections[0].Text);
+    }
+
+    [Fact]
+    public void CancelAddAndPositionTransactionRemovesCueWithoutHistoryEntry()
+    {
+        SubtitleProject project = new();
+        DocumentEditor editor = new(project);
+        Cue existing = editor.AddCue(TimeSpan.Zero, TimeSpan.FromSeconds(1), "existing");
+        editor.Undo();
+        Assert.True(editor.CanRedo);
+
+        editor.BeginTransaction("new inline cue");
+        Cue added = editor.AddCue(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3), "new");
+        editor.MoveCue(added.Id, 15, 25);
+        editor.SetText(added.Id, 0, "typed");
+        editor.CancelTransaction();
+
+        Assert.Empty(project.Cues);
+        Assert.False(editor.CanUndo);
+        Assert.True(editor.CanRedo);
+        editor.Redo();
+        Assert.Single(project.Cues);
+        Assert.Equal("existing", project.Cues[existing.Id]!.Sections[0].Text);
+    }
 }

@@ -156,6 +156,17 @@ public sealed class SectionOverrides
         Pack = Pack,
     };
 
+    /// <summary>
+    /// Creates a copy that changes only the explicit size override. All other
+    /// inherited or explicitly overridden format values are preserved.
+    /// </summary>
+    public SectionOverrides WithSizePercent(int sizePercent)
+    {
+        SectionOverrides copy = Clone();
+        copy.SizePercent = sizePercent;
+        return copy;
+    }
+
     internal static SectionOverrides FromResolved(ResolvedFormat format) => new()
     {
         Font = format.Font,

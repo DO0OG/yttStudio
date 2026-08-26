@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Rendering;
 using System.ComponentModel;
 using YttStudio.Core;
 using YttStudio.Core.Editing;
@@ -9,15 +10,29 @@ using YttStudio.Core.Editing;
 namespace YttStudio.App;
 
 /// <summary>합성된 영상 위에 선택과 앵커와 세이프 에어리어와 스냅 오버레이를 그린다.</summary>
-public sealed class PreviewCanvas : Control
+public sealed class PreviewCanvas : Control, ICustomHitTest
 {
+    private const double AnchorHitRadius = 8.0;
+
+    /// <summary>이 거리를 넘게 끌어야 조절점 누름이 크기 조절로 바뀐다.</summary>
+    private const double DragThresholdPixels = 4.0;
     private static readonly Pen SelectionPen = new(Brushes.DeepSkyBlue, 2,
         new DashStyle([5, 3], 0));
     private static readonly Pen SafeAreaPen = new(new SolidColorBrush(Color.FromArgb(150, 255, 255, 255)), 1,
         new DashStyle([4, 4], 0));
     private static readonly Pen SnapPen = new(Brushes.Magenta, 1.5);
+    private static readonly Pen ResizeHandlePen = new(Brushes.White, 1);
+    private static readonly IBrush ResizeHandleBrush =
+        new SolidColorBrush(Color.FromArgb(230, 20, 120, 220));
     private Point pointerStart;
     private bool draggingCue;
+    private bool resizingCue;
+    private Rect resizePrimaryBounds;
+    private double resizeMultiplier = 1.0;
+    private bool pendingHandlePress;
+    private Guid pendingHandleCueId;
+    private int pendingHandleRow;
+    private int pendingHandleColumn;
     private bool selectingRange;
     private Rect selectionRectangle;
     private CanvasMovePreview? movePreview;
@@ -58,6 +73,13 @@ public sealed class PreviewCanvas : Control
     public override void Render(DrawingContext context)
     {
         base.Render(context);
+
+        // Avalonia hit-tests against drawn geometry, so a control that only
+        // strokes outlines receives no pointer events over its empty areas.
+        // This transparent fill makes the whole canvas hit-testable, which
+        // double-click-to-add and click-to-select both depend on.
+        context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size));
+
         if (DataContext is not MainWindowViewModel viewModel)
         {
             return;
@@ -80,7 +102,7 @@ public sealed class PreviewCanvas : Control
             }
 
             context.DrawRectangle(null, SelectionPen, bounds);
-            DrawAnchorMarkers(context, bounds, item.AnchorKind);
+            DrawHandles(context, bounds, item.AnchorKind);
         }
 
         if (movePreview is not null)
@@ -118,18 +140,38 @@ public sealed class PreviewCanvas : Control
         Focus();
         Point screen = e.GetPosition(this);
         Rect content = GetContentRect();
+
+        if (TryHitHandle(viewModel, screen, content, out Guid handleCueId, out int row, out int column))
+        {
+            if (PreviewResizeGeometry.IsResizeHandle(row, column))
+            {
+                // A press on an outer handle is still ambiguous: a drag resizes
+                // the cue, while a click without movement picks that anchor.
+                pendingHandlePress = true;
+                pendingHandleCueId = handleCueId;
+                pendingHandleRow = row;
+                pendingHandleColumn = column;
+                resizePrimaryBounds = ToScreen(
+                    viewModel.CanvasItems.First(item => item.Id == handleCueId).Bounds, content);
+                resizeMultiplier = 1.0;
+                pointerStart = screen;
+                e.Pointer.Capture(this);
+            }
+            else
+            {
+                viewModel.ChangeAnchor(handleCueId, ToAnchor(row, column));
+            }
+
+            e.Handled = true;
+            return;
+        }
+
         if (!content.Contains(screen))
         {
             return;
         }
 
         Point reference = ToReference(screen, content);
-        if (TryHitAnchor(viewModel, reference, content, out Guid cueId, out AnchorPoint anchor))
-        {
-            viewModel.ChangeAnchor(cueId, anchor);
-            e.Handled = true;
-            return;
-        }
 
         CanvasCueItem? hit = viewModel.CanvasItems.Reverse()
             .FirstOrDefault(item => Contains(item.Bounds, reference));
@@ -143,9 +185,11 @@ public sealed class PreviewCanvas : Control
 
             if (e.ClickCount == 2)
             {
-                Rect inlineBounds = ToScreen(hit.Bounds, content);
-                viewModel.BeginInlineEdit(hit.Id, inlineBounds.Left, inlineBounds.Top,
-                    inlineBounds.Width);
+                viewModel.BeginInlineEdit(
+                    hit.Id,
+                    hit.Bounds,
+                    content,
+                    GetViewport());
                 e.Handled = true;
                 return;
             }
@@ -161,7 +205,17 @@ public sealed class PreviewCanvas : Control
                 Guid? addedCueId = viewModel.AddCueAtCanvasPoint(reference.X, reference.Y);
                 if (addedCueId is Guid id)
                 {
-                    viewModel.BeginInlineEdit(id, screen.X, screen.Y, 180);
+                    if (viewModel.CanvasItems.FirstOrDefault(item => item.Id == id) is CanvasCueItem added)
+                    {
+                        viewModel.BeginInlineEdit(id, added.Bounds, content, GetViewport());
+                    }
+                    else
+                    {
+                        Rect inlineBounds = ClampInlinePlacement(new Rect(screen.X, screen.Y, 180,
+                            InlineEditorPlacement.DefaultHeight));
+                        viewModel.BeginInlineEdit(id, inlineBounds.Left, inlineBounds.Top,
+                            inlineBounds.Width);
+                    }
                 }
 
                 e.Handled = true;
@@ -181,7 +235,32 @@ public sealed class PreviewCanvas : Control
     {
         base.OnPointerMoved(e);
         Point current = e.GetPosition(this);
-        if (draggingCue && DataContext is MainWindowViewModel viewModel)
+        if (pendingHandlePress && DataContext is MainWindowViewModel pendingViewModel)
+        {
+            Vector moved = current - pointerStart;
+            if (Math.Sqrt((moved.X * moved.X) + (moved.Y * moved.Y)) > DragThresholdPixels)
+            {
+                pendingHandlePress = false;
+                if (pendingViewModel.BeginCanvasResize(
+                        pendingHandleCueId, pendingHandleRow, pendingHandleColumn))
+                {
+                    resizingCue = true;
+                }
+            }
+        }
+
+        if (resizingCue && DataContext is MainWindowViewModel resizeViewModel)
+        {
+            bool shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+            resizeMultiplier = PreviewResizeGeometry.ComputeMultiplier(
+                resizePrimaryBounds, pendingHandleRow, pendingHandleColumn,
+                current - pointerStart, shift);
+            // Alt is intentionally ignored for size changes; it belongs to
+            // the move-snap gesture and must not affect this path.
+            resizeViewModel.PreviewCanvasResize(resizeMultiplier);
+            InvalidateVisual();
+        }
+        else if (draggingCue && DataContext is MainWindowViewModel viewModel)
         {
             Rect content = GetContentRect();
             Vector delta = current - pointerStart;
@@ -224,7 +303,17 @@ public sealed class PreviewCanvas : Control
         base.OnPointerReleased(e);
         if (DataContext is MainWindowViewModel viewModel)
         {
-            if (draggingCue && movePreview is not null)
+            if (pendingHandlePress)
+            {
+                // Never crossed the drag threshold, so treat it as an anchor pick.
+                viewModel.ChangeAnchor(pendingHandleCueId,
+                    ToAnchor(pendingHandleRow, pendingHandleColumn));
+            }
+            else if (resizingCue)
+            {
+                viewModel.EndCanvasResize(resizeMultiplier);
+            }
+            else if (draggingCue && movePreview is not null)
             {
                 viewModel.CommitCanvasMove(movePreview.DeltaX, movePreview.DeltaY, altPressed);
             }
@@ -238,6 +327,10 @@ public sealed class PreviewCanvas : Control
             }
         }
 
+        pendingHandlePress = false;
+        resizingCue = false;
+        resizePrimaryBounds = default;
+        resizeMultiplier = 1.0;
         draggingCue = false;
         selectingRange = false;
         movePreview = null;
@@ -246,12 +339,51 @@ public sealed class PreviewCanvas : Control
         InvalidateVisual();
     }
 
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        if (resizingCue && DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.CancelCanvasResize();
+        }
+
+        pendingHandlePress = false;
+        resizingCue = false;
+        resizePrimaryBounds = default;
+        resizeMultiplier = 1.0;
+    }
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
         if (DataContext is not MainWindowViewModel viewModel)
         {
             return;
+        }
+
+        if (ShouldDeleteSelectedCues(e.Key, e.KeyModifiers, viewModel.IsInlineEditing,
+                viewModel.SelectedCueIds.Count) &&
+            viewModel.DeleteCueCommand.CanExecute(null))
+        {
+            viewModel.DeleteCueCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
+        if ((e.Key is Key.F2 or Key.Enter) && e.KeyModifiers == KeyModifiers.None &&
+            viewModel.SelectedCueIds.Count == 1)
+        {
+            CanvasCueItem? selected = viewModel.CanvasItems.FirstOrDefault(item => item.Selected);
+            if (selected is not null)
+            {
+                viewModel.BeginInlineEdit(
+                    selected.Id,
+                    selected.Bounds,
+                    GetContentRect(),
+                    GetViewport());
+                e.Handled = true;
+                return;
+            }
         }
 
         double amount = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 0.1 : 1.0;
@@ -295,14 +427,33 @@ public sealed class PreviewCanvas : Control
         e.Handled = true;
     }
 
-    private Rect GetContentRect()
+    protected override Size ArrangeOverride(Size finalSize)
     {
-        double scale = Math.Min(Bounds.Width / YttConstants.ReferenceWidth,
-            Bounds.Height / YttConstants.ReferenceHeight);
+        Size arranged = base.ArrangeOverride(finalSize);
+        if (DataContext is MainWindowViewModel viewModel && viewModel.IsInlineEditing)
+        {
+            viewModel.RefreshInlineEditorLayout(
+                GetContentRect(arranged),
+                new Rect(0, 0, Math.Max(0, arranged.Width), Math.Max(0, arranged.Height)));
+        }
+
+        return arranged;
+    }
+
+    private Rect GetContentRect()
+        => GetContentRect(Bounds.Size);
+
+    private static Rect GetContentRect(Size size)
+    {
+        double scale = Math.Min(size.Width / YttConstants.ReferenceWidth,
+            size.Height / YttConstants.ReferenceHeight);
         double width = YttConstants.ReferenceWidth * scale;
         double height = YttConstants.ReferenceHeight * scale;
-        return new Rect((Bounds.Width - width) / 2, (Bounds.Height - height) / 2, width, height);
+        return new Rect((size.Width - width) / 2, (size.Height - height) / 2, width, height);
     }
+
+    private Rect GetViewport()
+        => new(0, 0, Math.Max(0, Bounds.Width), Math.Max(0, Bounds.Height));
 
     private static Point ToReference(Point point, Rect content)
         => new(
@@ -320,6 +471,12 @@ public sealed class PreviewCanvas : Control
         => new(x / YttConstants.ReferenceWidth * content.Width,
             y / YttConstants.ReferenceHeight * content.Height);
 
+    private Rect ClampInlinePlacement(Rect requested)
+        => InlineEditorPlacement.Clamp(
+            new Rect(requested.X, requested.Y, Math.Max(140, requested.Width),
+                Math.Max(InlineEditorPlacement.DefaultHeight, requested.Height)),
+            new Rect(0, 0, Math.Max(0, Bounds.Width), Math.Max(0, Bounds.Height)));
+
     private static bool Contains(CanvasRect rectangle, Point point)
         => point.X >= rectangle.Left && point.X <= rectangle.Right &&
             point.Y >= rectangle.Top && point.Y <= rectangle.Bottom;
@@ -328,49 +485,74 @@ public sealed class PreviewCanvas : Control
         => new(Math.Min(first.X, second.X), Math.Min(first.Y, second.Y),
             Math.Abs(second.X - first.X), Math.Abs(second.Y - first.Y));
 
-    private static void DrawAnchorMarkers(DrawingContext context, Rect bounds, AnchorPoint selected)
+    /// <summary>프리뷰에 포커스가 있을 때 Delete가 선택 큐 삭제여야 하는지 판정한다.</summary>
+    internal static bool ShouldDeleteSelectedCues(
+        Key key,
+        KeyModifiers modifiers,
+        bool inlineEditing,
+        int selectedCueCount)
+        => key == Key.Delete && modifiers == KeyModifiers.None && !inlineEditing &&
+            selectedCueCount > 0;
+
+    /// <summary>3x3 격자 칸을 앵커 값으로 바꾼다.</summary>
+    private static AnchorPoint ToAnchor(int row, int column)
+        => (AnchorPoint)((row * 3) + column);
+
+    /// <summary>
+    /// 바깥 여덟 칸은 크기 조절점이라 사각형으로, 가운데 앵커 전용 칸은 원으로 그려
+    /// 잡았을 때 무슨 일이 일어나는지 구분되게 한다.
+    /// </summary>
+    private static void DrawHandles(DrawingContext context, Rect bounds, AnchorPoint selected)
     {
         for (int row = 0; row < 3; row++)
         {
             for (int column = 0; column < 3; column++)
             {
-                AnchorPoint anchor = (AnchorPoint)((row * 3) + column);
-                Point point = new(bounds.Left + (bounds.Width * column / 2),
-                    bounds.Top + (bounds.Height * row / 2));
-                IBrush fill = anchor == selected ? Brushes.Magenta : Brushes.White;
-                context.DrawEllipse(fill, new Pen(Brushes.Magenta, 1), point, 4, 4);
+                Point point = PreviewResizeGeometry.GetHandleCenter(bounds, row, column);
+                bool isAnchor = ToAnchor(row, column) == selected;
+                IBrush fill = isAnchor ? Brushes.Magenta : ResizeHandleBrush;
+                if (PreviewResizeGeometry.IsResizeHandle(row, column))
+                {
+                    context.DrawRectangle(fill, ResizeHandlePen, new Rect(
+                        point.X - PreviewResizeGeometry.HandleRadius,
+                        point.Y - PreviewResizeGeometry.HandleRadius,
+                        PreviewResizeGeometry.HandleRadius * 2,
+                        PreviewResizeGeometry.HandleRadius * 2));
+                }
+                else
+                {
+                    context.DrawEllipse(isAnchor ? Brushes.Magenta : Brushes.White,
+                        new Pen(Brushes.Magenta, 1), point,
+                        PreviewResizeGeometry.HandleRadius, PreviewResizeGeometry.HandleRadius);
+                }
             }
         }
     }
 
-    private static bool TryHitAnchor(
+    private static bool TryHitHandle(
         MainWindowViewModel viewModel,
-        Point reference,
+        Point screen,
         Rect content,
         out Guid cueId,
-        out AnchorPoint anchor)
+        out int row,
+        out int column)
     {
-        double radius = 8 / Math.Max(0.001, content.Width / YttConstants.ReferenceWidth);
         foreach (CanvasCueItem item in viewModel.CanvasItems.Where(item => item.Selected).Reverse())
         {
-            for (int row = 0; row < 3; row++)
+            Rect bounds = ToScreen(item.Bounds, content);
+            if (PreviewResizeGeometry.TryHitHandle(bounds, screen, AnchorHitRadius, out row, out column))
             {
-                for (int column = 0; column < 3; column++)
-                {
-                    double x = item.Bounds.Left + (item.Bounds.Width * column / 2);
-                    double y = item.Bounds.Top + (item.Bounds.Height * row / 2);
-                    if (Math.Abs(reference.X - x) <= radius && Math.Abs(reference.Y - y) <= radius)
-                    {
-                        cueId = item.Id;
-                        anchor = (AnchorPoint)((row * 3) + column);
-                        return true;
-                    }
-                }
+                cueId = item.Id;
+                return true;
             }
         }
 
         cueId = default;
-        anchor = default;
+        row = -1;
+        column = -1;
         return false;
     }
+
+    bool ICustomHitTest.HitTest(Point point)
+        => new Rect(Bounds.Size).Contains(point);
 }

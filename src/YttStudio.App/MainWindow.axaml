@@ -153,14 +153,37 @@
               </vm:PreviewCanvas.ContextMenu>
             </vm:PreviewCanvas>
             <Canvas IsVisible="{Binding IsInlineEditing}" IsHitTestVisible="{Binding IsInlineEditing}">
-              <StackPanel Canvas.Left="{Binding InlineEditorLeft}"
-                          Canvas.Top="{Binding InlineEditorTop}"
-                          Width="{Binding InlineEditorWidth}"
-                          Orientation="Horizontal"
-                          Spacing="4">
-                <TextBox x:Name="InlineEditorTextBox" Text="{Binding InlineText}" AcceptsReturn="True" MinWidth="120" />
-                <Button Content="{Binding Loc[Apply]}" Command="{Binding CommitInlineEditCommand}" />
-              </StackPanel>
+              <TextBox x:Name="InlineEditorTextBox"
+                       Canvas.Left="{Binding InlineEditorLeft}"
+                       Canvas.Top="{Binding InlineEditorTop}"
+                       Width="{Binding InlineEditorWidth}"
+                       Height="{Binding InlineEditorHeight}"
+                       Text="{Binding InlineText, UpdateSourceTrigger=PropertyChanged}"
+                       FontFamily="{Binding InlineEditorFontFamily}"
+                       FontSize="{Binding InlineEditorFontSize}"
+                       Foreground="{Binding InlineEditorForeground}"
+                       TextAlignment="{Binding InlineEditorTextAlignment}"
+                       Padding="{Binding InlineEditorPadding}"
+                       Background="Transparent" BorderBrush="Transparent" BorderThickness="0"
+                       CaretBrush="{Binding InlineEditorForeground}"
+                       AcceptsReturn="True" TextWrapping="Wrap" MinWidth="0" MinHeight="0"
+                       KeyDown="OnInlineEditorKeyDown" LostFocus="OnInlineEditorLostFocus">
+                <TextBox.Styles>
+                  <!-- Fluent 의 TextBox 템플릿은 포커스·마우스오버 상태에서 내부
+                       PART_BorderElement 의 배경을 테마 리소스로 덮어쓴다. 그대로 두면
+                       자막 위에 흰 상자가 얹혀 제자리 편집이 되지 않는다. -->
+                  <Style Selector="TextBox#InlineEditorTextBox /template/ Border#PART_BorderElement">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderThickness" Value="0" />
+                  </Style>
+                  <Style Selector="TextBox#InlineEditorTextBox:pointerover /template/ Border#PART_BorderElement">
+                    <Setter Property="Background" Value="Transparent" />
+                  </Style>
+                  <Style Selector="TextBox#InlineEditorTextBox:focus /template/ Border#PART_BorderElement">
+                    <Setter Property="Background" Value="Transparent" />
+                  </Style>
+                </TextBox.Styles>
+              </TextBox>
             </Canvas>
           </Grid>
         </Border>
@@ -213,7 +236,7 @@
               <TextBlock Grid.Column="5" Text="{Binding Loc[Style]}" VerticalAlignment="Center" TextAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
               <TextBlock Grid.Column="6" Text="{Binding Loc[TextSection]}" VerticalAlignment="Center" TextAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
             </Grid>
-            <ListBox Grid.Row="1" Classes="cueTable" ItemsSource="{Binding CueRows}"
+            <ListBox x:Name="CueList" Grid.Row="1" Classes="cueTable" ItemsSource="{Binding CueRows}"
                      SelectedItem="{Binding SelectedCueRow}">
               <ListBox.Styles>
                 <Style Selector="ListBoxItem">

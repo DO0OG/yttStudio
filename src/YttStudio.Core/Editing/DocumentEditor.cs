@@ -21,6 +21,9 @@ public sealed class DocumentEditor
     public string? UndoLabel => CanUndo ? undoStack[^1].Label : null;
     public string? RedoLabel => CanRedo ? redoStack[^1].Label : null;
 
+    /// <summary>실행 중인 변경 그룹이 있는지 가져온다.</summary>
+    public bool IsTransactionActive => transactionCommands is not null;
+
     /// <summary>큐를 만들어 추가하는 것을 하나의 되돌릴 수 있는 작업으로 처리한다.</summary>
     public Cue AddCue(TimeSpan start, TimeSpan end, string text)
     {
@@ -530,6 +533,27 @@ public sealed class DocumentEditor
         }
     }
 
+    /// <summary>
+    /// 현재 그룹의 실행을 역순으로 되돌리고 그룹을 폐기한다.
+    /// 취소는 undo/redo 스택에 기록을 만들거나 기존 기록을 변경하지 않는다.
+    /// </summary>
+    public void CancelTransaction()
+    {
+        if (transactionCommands is null)
+        {
+            throw new InvalidOperationException("No transaction is active.");
+        }
+
+        List<IUndoableCommand> commands = transactionCommands;
+        transactionCommands = null;
+        transactionLabel = null;
+
+        for (int index = commands.Count - 1; index >= 0; index--)
+        {
+            commands[index].Undo();
+        }
+    }
+
     /// <summary>변경이 실행 취소 기록을 만들지 않는 범위를 연다.</summary>
     public IDisposable BeginUndoFreeMutation()
     {
@@ -573,7 +597,6 @@ public sealed class DocumentEditor
             return;
         }
 
-        redoStack.Clear();
         if (transactionCommands is not null)
         {
             if (transactionCommands.Count == 0 || !command.TryMergeWith(transactionCommands[^1]))
@@ -584,6 +607,7 @@ public sealed class DocumentEditor
             return;
         }
 
+        redoStack.Clear();
         if (undoStack.Count == 0 || !command.TryMergeWith(undoStack[^1]))
         {
             PushUndo(command, clearRedo: false);
