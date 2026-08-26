@@ -58,6 +58,7 @@ left, property panel on the right, track timeline and cue list below.
 | | |
 |---|---|
 | **Edit on the video** | Play through libmpv while dragging, multi-selecting and snap-aligning captions |
+| **Playback and file drop** | Press `Space` to toggle play/pause after opening a video, or drop supported subtitle/video files onto the window to open them |
 | **Timeline** | Zoom, pan sideways, drag the scrollbar, move blocks and trim their edges. Panels resize by dragging their borders |
 | **Format rules enforced** | Coordinate mapping, font-scale clamping and opacity ceilings are checked in code |
 | **Karaoke** | Automatic syllable splitting (Hangul, kana, Latin, Han), tap-along timing, five progression modes |
@@ -68,6 +69,8 @@ left, property panel on the right, track timeline and cue list below.
 | **Preferences** | Language, theme, libmpv path and autosave are set in a window and persist across runs |
 | **Themes** | System default · light · dark, switched without restarting |
 | **Three languages** | Korean · English · Japanese, switchable at runtime |
+
+File drop supports subtitle files `.ytt` / `.srv3` / `.ass` and video files `.mp4` / `.mkv` / `.webm` / `.mov` / `.avi` / `.m4v`. Open `.yttproj` files through the project command.
 
 ## Getting started
 
@@ -155,3 +158,7 @@ One local patch is applied so that `ap` and `ju` can be set independently; see t
 
 See [LICENSE](LICENSE). Notices for bundled fonts and external libraries are in
 [third-party notices](docs/THIRD-PARTY-NOTICES.md).
+
+## Contributors
+
+- [DO0OG](https://github.com/DO0OG)

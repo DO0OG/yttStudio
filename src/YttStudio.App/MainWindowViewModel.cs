@@ -2069,13 +2069,39 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        if (string.Equals(Path.GetExtension(path), ".yttproj", StringComparison.OrdinalIgnoreCase))
+        OpenPathKind kind = OpenPathClassifier.Classify(path);
+        if (kind == OpenPathKind.Project)
         {
             await LoadProjectPackageAsync(path, clearSnapshots: true);
             return;
         }
 
-        ImportSubtitle(path);
+        if (kind == OpenPathKind.Video)
+        {
+            await LoadVideoAsync(path);
+            return;
+        }
+
+        if (kind == OpenPathKind.Subtitle)
+        {
+            ImportSubtitle(path);
+        }
+    }
+
+    /// <summary>드롭된 자막·영상 파일을 전달된 순서대로 기존 열기 경로로 처리한다.</summary>
+    public async Task OpenDroppedPathsAsync(IEnumerable<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+
+        foreach (string path in paths)
+        {
+            if (!OpenPathClassifier.IsDropSupported(path))
+            {
+                continue;
+            }
+
+            await OpenPathAsync(path);
+        }
     }
 
     private void ImportSubtitle(string path)

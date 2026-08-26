@@ -18,6 +18,7 @@ BenchmarkDotNet.Artifacts/
 # OMC / agent operational state
 .omc/
 !.omc/skills/
+.omx/
 
 # OS
 Thumbs.db
