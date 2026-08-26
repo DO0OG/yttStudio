@@ -96,11 +96,28 @@ yttStudio 는 그 자리를 채웁니다.
 
 ## 시작하기
 
+### 설치
+
+[최신 릴리즈](https://github.com/DO0OG/yttStudio/releases/latest)에서 내려받으세요.
+.NET 런타임이 함께 들어 있어 따로 설치할 필요가 없습니다.
+
+| 플랫폼 | 파일 | 설치 방법 |
+|---|---|---|
+| Windows | `yttStudio-v*-win-x64-setup.exe` | 실행하면 시작 메뉴 등록, 제거 프로그램, `.ytt` · `.srv3` · `.yttproj` 파일 연결까지 처리합니다 |
+| Windows (설치 없이) | `yttStudio-v*-win-x64.zip` | 압축을 풀고 `YttStudio.App.exe` 실행 |
+| macOS (Apple Silicon) | `yttStudio-v*-osx-arm64.dmg` | 열어서 `yttStudio.app` 을 `Applications` 로 끌어 놓기 |
+| Linux | `yttStudio-v*-linux-x86_64.AppImage` | `chmod +x` 후 실행 |
+
+> **코드 서명이 없는 배포물입니다.** 인증서가 없어 첫 실행에 경고가 뜹니다.
+> Windows 는 SmartScreen 경고에서 **추가 정보 → 실행**, macOS 는 `yttStudio.app` 을
+> 우클릭해 **열기** 를 고른 뒤 대화상자에서 다시 **열기** 를 누르세요. 그래도 막히면
+> `xattr -dr com.apple.quarantine /Applications/yttStudio.app` 을 실행합니다.
+
 ### 요구 사항
 
 | 항목 | 비고 |
 |---|---|
-| .NET 10 SDK | 빌드에 필요 |
+| .NET 10 SDK | **소스에서 빌드할 때만 필요.** 릴리즈 배포물에는 런타임이 포함됩니다 |
 | libmpv 2.0 이상 | **영상 재생에만 필요.** 없어도 자막 편집·검증·저장은 정상 동작 |
 
 ### 빌드와 실행

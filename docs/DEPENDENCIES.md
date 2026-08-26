@@ -127,9 +127,9 @@ libmpv는 .NET self-contained 런타임에 자동으로 들어가는 관리 코�
 
 | OS / RID | M5 우선순위 | 결정 | 현재 상태 |
 |---|---:|---|---|
-| Windows x64 (`win-x64`) | 1 | 첫 정식 배포 대상 | 관리 코드 CI만 확인, libmpv 패키징 미구현 |
-| macOS arm64 (`osx-arm64`) | 2 | 두 번째 정식 배포 대상 | 관리 코드 CI만 확인, codesign/notarization 미구현 |
-| Linux x64 (`linux-x64`) | 3 | AppImage 정식 배포 대상 | 관리 코드 CI만 확인, AppImage 미구현 |
+| Windows x64 (`win-x64`) | 1 | 첫 정식 배포 대상 | Inno Setup 설치 프로그램 + zip 배포. libmpv 패키징 미구현, 코드 서명 없음 |
+| macOS arm64 (`osx-arm64`) | 2 | 두 번째 정식 배포 대상 | `.app` 번들 + `.dmg` 배포. ad-hoc 서명만이며 codesign/notarization 미구현 |
+| Linux x64 (`linux-x64`) | 3 | AppImage 정식 배포 대상 | AppImage 빌드는 구현. 실제 데스크톱에서 GPU/OpenGL 실행 검증은 미완 |
 | Windows arm64 | — | M5에서 지원하지 않음 | 별도 native fixture/CI 전까지 미지원 |
 | macOS x64 / universal | — | M5에서 지원하지 않음 | universal 빌드 결정 및 검증 전까지 미지원 |
 | Linux arm64 | — | M5에서 지원하지 않음 | 별도 native fixture/CI 전까지 미지원 |

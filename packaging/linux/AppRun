@@ -1,0 +1,5 @@
+#!/bin/sh
+# AppImage 진입점. 번들 안의 자체 포함 런타임을 그대로 실행한다.
+HERE="$(dirname "$(readlink -f "$0")")"
+export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
+exec "${HERE}/usr/bin/YttStudio.App" "$@"

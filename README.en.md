@@ -96,11 +96,28 @@ File drop supports subtitle files `.ytt` / `.srv3` / `.ass` and video files `.mp
 
 ## Getting started
 
+### Install
+
+Grab a build from the [latest release](https://github.com/DO0OG/yttStudio/releases/latest).
+The .NET runtime is bundled, so nothing else has to be installed.
+
+| Platform | File | How to install |
+|---|---|---|
+| Windows | `yttStudio-v*-win-x64-setup.exe` | An installer that adds a Start menu entry, an uninstaller and `.ytt` / `.srv3` / `.yttproj` file associations |
+| Windows (portable) | `yttStudio-v*-win-x64.zip` | Unpack and run `YttStudio.App.exe` |
+| macOS (Apple Silicon) | `yttStudio-v*-osx-arm64.dmg` | Open it and drag `yttStudio.app` into `Applications` |
+| Linux | `yttStudio-v*-linux-x86_64.AppImage` | `chmod +x` and run |
+
+> **The builds are not code signed.** Without a certificate the first launch shows a warning.
+> On Windows choose **More info → Run anyway** in the SmartScreen dialog. On macOS right-click
+> `yttStudio.app`, pick **Open**, then **Open** again in the dialog. If it is still blocked,
+> run `xattr -dr com.apple.quarantine /Applications/yttStudio.app`.
+
 ### Requirements
 
 | Item | Notes |
 |---|---|
-| .NET 10 SDK | Required to build |
+| .NET 10 SDK | **Only needed to build from source.** Release builds bundle the runtime |
 | libmpv 2.0+ | **Only needed for video playback.** Editing, validation and saving work without it |
 
 ### Build and run

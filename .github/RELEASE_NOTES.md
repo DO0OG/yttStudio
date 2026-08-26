@@ -1,13 +1,15 @@
 ## 설치
 
-해당 OS의 압축 파일을 받아 풀고 `YttStudio.App` 을 실행하세요.
-.NET 런타임을 따로 설치할 필요는 없습니다 (self-contained).
+.NET 런타임이 함께 들어 있어 따로 설치할 필요는 없습니다 (self-contained).
 
-| 파일 | 대상 |
-|---|---|
-| `*-win-x64.zip` | Windows x64 |
-| `*-osx-arm64.tar.gz` | macOS Apple Silicon |
-| `*-linux-x64.tar.gz` | Linux x64 |
+| 파일 | 대상 | 설치 방법 |
+|---|---|---|
+| `*-win-x64-setup.exe` | Windows x64 | 실행하면 시작 메뉴 등록, 제거 프로그램, `.ytt` · `.srv3` · `.yttproj` 파일 연결까지 처리합니다 |
+| `*-win-x64.zip` | Windows x64 (설치 없이) | 압축을 풀고 `YttStudio.App.exe` 실행 |
+| `*-osx-arm64.dmg` | macOS Apple Silicon | 열어서 `yttStudio.app` 을 `Applications` 로 끌어 놓기 |
+| `*-osx-arm64.tar.gz` | macOS Apple Silicon (압축) | 풀면 나오는 `yttStudio.app` 을 `Applications` 로 옮기기 |
+| `*-linux-x86_64.AppImage` | Linux x64 | `chmod +x` 후 실행 |
+| `*-linux-x64.tar.gz` | Linux x64 (압축) | 풀고 `YttStudio.App` 실행 |
 
 ## libmpv 는 포함되어 있지 않습니다
 
@@ -19,4 +21,8 @@
 ## 서명
 
 Windows 코드 서명과 macOS notarization 은 아직 적용되지 않았습니다. 첫 실행 시 OS
-경고가 나타날 수 있습니다.
+경고가 나타납니다.
+
+- Windows: SmartScreen 경고에서 **추가 정보 → 실행**
+- macOS: `yttStudio.app` 우클릭 → **열기** → 대화상자에서 다시 **열기**.
+  그래도 막히면 `xattr -dr com.apple.quarantine /Applications/yttStudio.app`

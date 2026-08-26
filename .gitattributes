@@ -1,0 +1,5 @@
+# 패키징 스크립트는 Linux / macOS 러너에서 실행된다. CRLF 로 체크아웃되면
+# 셔뱅이 깨져 "bad interpreter" 로 죽으므로 줄바꿈을 LF 로 고정한다.
+*.sh text eol=lf
+packaging/linux/AppRun text eol=lf
+packaging/linux/*.desktop text eol=lf

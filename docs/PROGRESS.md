@@ -206,7 +206,9 @@ UI 연결까지 완료했다. 남은 것은 실제 배포 패키징과 실측이
 - [x] 상단 메뉴 막대 3개 언어, 자막 목록 열 간격 정리, 안전 영역·앵커 토글
 - [ ] 단축키 편집 UI — 미구현
 - [ ] 기본 스타일 설정 항목 — 미구현
-- [ ] 실제 배포 패키지 생성과 플랫폼 검증 (codesign / notarization / AppImage) — **환경상 불가**
+- [x] 배포 패키지 생성 — Windows 설치 프로그램(Inno Setup), macOS `.app` + `.dmg`, Linux AppImage
+- [ ] 코드 서명과 공증 (Windows codesign / macOS notarization) — **인증서 없음**
+- [ ] 각 플랫폼 실기 설치·실행 검증 — **환경상 불가**
 - [ ] M5 독립 리뷰 — 미실행
 
 **완료 조건 대비:**
