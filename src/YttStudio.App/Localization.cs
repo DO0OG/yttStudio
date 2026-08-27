@@ -41,7 +41,7 @@ public sealed class Localizer : System.ComponentModel.INotifyPropertyChanged
         ["ViewportFullscreen"] = new("전체화면", "Fullscreen", "全画面"),
         ["ViewportMobile"] = new("모바일", "Mobile", "モバイル"),
         ["ViewportPending"] = new("측정 대기 중", "Awaiting measurement", "計測待ち"),
-        ["ViewportModeNote"] = new("VideoFrame 모드 · 나머지 측정 대기 중", "VideoFrame mode - other modes await measurement", "VideoFrame モード・他は計測待ち"),
+        ["ViewportModeNote"] = new("자막 공간은 플레이어 전체 · 하단 인셋 2%", "Subtitle space is the full player · 2% bottom inset", "字幕空間はプレーヤー全体・下端インセット 2%"),
         ["StylePresets"] = new("스타일 프리셋", "Style Presets", "スタイルプリセット"),
         ["StyleName"] = new("스타일 이름", "Style name", "スタイル名"),
         ["Add"] = new("+ 추가", "+ Add", "+ 追加"),

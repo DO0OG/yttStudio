@@ -23,6 +23,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
     private const string PlayIcon = "▶";
     private const string PauseIcon = "⏸";
+    // 편집 가이드용 여백이다. 유튜브를 측정해 얻은 값이 아니다. 실측에서 확인된 것은
+    // 자막 컨테이너가 플레이어 영역과 같다는 사실뿐이고 안전 여백 자체는 재본 적이 없다.
+    // 측정한 자막 창의 하단 2% 를 안전선으로 쓰면 최대 위치의 큐 바닥이 그 선에 정확히
+    // 걸려 W103 의 세로 판정이 영영 발동하지 않는다. 경고로 쓸 수 있는 여백을 남긴다.
+    private const double EditorSafeAreaInsetPercent = 5.0;
+    private static readonly SKSize ReferencePlayerSize = new(
+        YttConstants.ReferenceWidth, YttConstants.ReferenceHeight);
 
     private readonly IFileDialogService dialogs;
     private readonly PreferencesStore preferencesStore;
@@ -91,8 +98,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private bool canvasResizeChanged;
     private bool canvasResizeOriginalUnsavedChanges;
     private bool disposed;
+    private bool validationHasRun;
     private bool karaokeTimelineTransaction;
     private AppThemeMode themeMode;
+    private PreviewViewportMode previewViewportMode = PreviewViewportMode.VideoFrame;
+    private PlayerViewport previewViewport = PlayerViewport.VideoFrame(ReferencePlayerSize);
+    private SKSize fullscreenPlayerSize = ReferencePlayerSize;
     private string mpvPath = string.Empty;
     private string? loadedVideoPath;
     private SettingsWindow? settingsWindow;
@@ -100,13 +111,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         MpvAutoInstaller.IsWindowsInstallationSupported ? new MpvAutoInstaller() : null;
 
     public MainWindowViewModel(IFileDialogService dialogs)
+        : this(dialogs, null)
+    {
+    }
+
+    public MainWindowViewModel(IFileDialogService dialogs, PreferencesStore? preferencesStore)
     {
         this.dialogs = dialogs;
-        preferencesStore = new PreferencesStore();
-        preferences = preferencesStore.Load();
+        this.preferencesStore = preferencesStore ?? new PreferencesStore();
+        preferences = this.preferencesStore.Load();
         preferences.AutosaveIntervalSeconds = NormalizeAutosaveIntervalSeconds(
             preferences.AutosaveIntervalSeconds);
         themeMode = preferences.Theme;
+        previewViewportMode = AppPreferences.NormalizePreviewViewportMode(
+            preferences.PreviewViewportMode);
+        preferences.PreviewViewportMode = previewViewportMode;
         snapThreshold = Math.Clamp(preferences.SnapThreshold, 0, 64);
         volume = double.IsFinite(preferences.Volume) ? Math.Clamp(preferences.Volume, 0, 100) : 100;
         isMuted = preferences.IsMuted;
@@ -121,6 +140,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         Loc.LanguageChanged += OnLanguageChanged;
         renderer = new SkiaSubtitleRenderer(new BundledFontResolver(
             message => Serilog.Log.Information("{FontResolution}", message)));
+        previewViewport = CreatePlayerViewport(ReferencePlayerSize);
         RestartAutosave(preferences.AutosaveEnabled, preferences.AutosaveIntervalSeconds);
         ExitCommand = new DelegateCommand(RequestShutdown);
         AboutCommand = new AsyncCommand(ShowAboutAsync);
@@ -141,6 +161,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         PlayPauseCommand = new DelegateCommand(TogglePlayback, () => videoLoaded);
         StepBackCommand = new DelegateCommand(() => StepFrame(-1), () => videoLoaded);
         StepForwardCommand = new DelegateCommand(() => StepFrame(1), () => videoLoaded);
+        SelectVideoFrameViewportCommand = new DelegateCommand(
+            () => SelectedViewportMode = PreviewViewportMode.VideoFrame);
+        SelectYouTubeDefaultViewportCommand = new DelegateCommand(
+            () => SelectedViewportMode = PreviewViewportMode.YouTubeDefault);
+        SelectYouTubeTheaterViewportCommand = new DelegateCommand(
+            () => SelectedViewportMode = PreviewViewportMode.YouTubeTheater);
+        SelectYouTubeFullscreenViewportCommand = new DelegateCommand(
+            () => SelectedViewportMode = PreviewViewportMode.YouTubeFullscreen);
         UndoCommand = new DelegateCommand(Undo, () => !isInlineEditing && editor?.CanUndo == true);
         RedoCommand = new DelegateCommand(Redo, () => !isInlineEditing && editor?.CanRedo == true);
         AddCueCommand = new DelegateCommand(AddCue, () => !isInlineEditing && project is not null);
@@ -392,6 +420,88 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    /// <summary>프리뷰에서 선택할 수 있는 데스크톱 뷰포트 모드다.</summary>
+    public IReadOnlyList<PreviewViewportMode> ViewportModes { get; } =
+    [
+        PreviewViewportMode.VideoFrame,
+        PreviewViewportMode.YouTubeDefault,
+        PreviewViewportMode.YouTubeTheater,
+        PreviewViewportMode.YouTubeFullscreen,
+    ];
+
+    /// <summary>현재 선택한 프리뷰 뷰포트 모드를 가져오거나 설정한다.</summary>
+    public PreviewViewportMode SelectedViewportMode
+    {
+        get => previewViewportMode;
+        set
+        {
+            PreviewViewportMode normalized = AppPreferences.NormalizePreviewViewportMode(value);
+            if (previewViewportMode == normalized)
+            {
+                return;
+            }
+
+            previewViewportMode = normalized;
+            preferences.PreviewViewportMode = normalized;
+            SavePreferences();
+            SetPreviewViewport(CreatePlayerViewport(GetPreviewPlayerSize()));
+            OnPropertyChanged(nameof(SelectedViewportMode));
+            OnPropertyChanged(nameof(ViewportMode));
+            OnPropertyChanged(nameof(SelectedViewportModeDisplayName));
+            OnPropertyChanged(nameof(IsVideoFrameViewport));
+            OnPropertyChanged(nameof(IsYouTubeDefaultViewport));
+            OnPropertyChanged(nameof(IsYouTubeTheaterViewport));
+            OnPropertyChanged(nameof(IsYouTubeFullscreenViewport));
+            if (!videoLoaded)
+            {
+                RenderFallbackFrame();
+            }
+
+            RenderSubtitlePreview();
+            if (validationHasRun)
+            {
+                RunValidation();
+            }
+        }
+    }
+
+    /// <summary>기존 호출자가 사용할 수 있는 현재 모드 별칭이다.</summary>
+    public PreviewViewportMode ViewportMode
+    {
+        get => SelectedViewportMode;
+        set => SelectedViewportMode = value;
+    }
+
+    /// <summary>현재 렌더러와 편집 캔버스가 공유하는 플레이어 뷰포트다.</summary>
+    public PlayerViewport PreviewViewport => previewViewport;
+
+    /// <summary>프리뷰 오버레이가 사용하는 자막 공간을 Avalonia 좌표로 가져온다.</summary>
+    public Rect PreviewSubtitleSpace => ToAvaloniaRect(previewViewport.SubtitleSpace);
+
+    public double PreviewPlayerWidth => previewViewport.PlayerSize.Width;
+    public double PreviewPlayerHeight => previewViewport.PlayerSize.Height;
+    public double PreviewVideoContentLeft => previewViewport.VideoContentRect.Left;
+    public double PreviewVideoContentTop => previewViewport.VideoContentRect.Top;
+    public double PreviewVideoContentWidth => previewViewport.VideoContentRect.Width;
+    public double PreviewVideoContentHeight => previewViewport.VideoContentRect.Height;
+
+    /// <summary>현재 선택 모드의 표시 이름을 가져온다.</summary>
+    public string SelectedViewportModeDisplayName => previewViewportMode switch
+    {
+        PreviewViewportMode.YouTubeDefault => Loc["ViewportYouTube"],
+        PreviewViewportMode.YouTubeTheater => Loc["ViewportTheater"],
+        PreviewViewportMode.YouTubeFullscreen => Loc["ViewportFullscreen"],
+        _ => Loc["ViewportVideo"],
+    };
+
+    /// <summary>검증 메시지에 사용할 현재 모드 표시 이름이다.</summary>
+    public string ViewportModeDisplayName => SelectedViewportModeDisplayName;
+
+    public bool IsVideoFrameViewport => previewViewportMode == PreviewViewportMode.VideoFrame;
+    public bool IsYouTubeDefaultViewport => previewViewportMode == PreviewViewportMode.YouTubeDefault;
+    public bool IsYouTubeTheaterViewport => previewViewportMode == PreviewViewportMode.YouTubeTheater;
+    public bool IsYouTubeFullscreenViewport => previewViewportMode == PreviewViewportMode.YouTubeFullscreen;
+
     private static void RequestShutdown()
     {
         if (Avalonia.Application.Current?.ApplicationLifetime
@@ -545,6 +655,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(Loc));
         OnPropertyChanged(nameof(Language));
         OnPropertyChanged(nameof(PlayPauseActionText));
+        OnPropertyChanged(nameof(SelectedViewportModeDisplayName));
+        OnPropertyChanged(nameof(ViewportModeDisplayName));
         OnPropertyChanged(string.Empty);
     }
 
@@ -561,6 +673,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public DelegateCommand PlayPauseCommand { get; }
     public DelegateCommand StepBackCommand { get; }
     public DelegateCommand StepForwardCommand { get; }
+    public DelegateCommand SelectVideoFrameViewportCommand { get; }
+    public DelegateCommand SelectYouTubeDefaultViewportCommand { get; }
+    public DelegateCommand SelectYouTubeTheaterViewportCommand { get; }
+    public DelegateCommand SelectYouTubeFullscreenViewportCommand { get; }
     public DelegateCommand UndoCommand { get; }
     public DelegateCommand RedoCommand { get; }
     public DelegateCommand AddCueCommand { get; }
@@ -1268,20 +1384,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        validationHasRun = true;
+        SKRect subtitleSpace = previewViewport.SubtitleSpace;
+        double horizontalInset = subtitleSpace.Width * EditorSafeAreaInsetPercent / 100.0;
+        double verticalInset = subtitleSpace.Height * EditorSafeAreaInsetPercent / 100.0;
         Dictionary<Guid, ValidationMetrics> metrics = [];
         foreach (Cue cue in project.Cues)
         {
             CanvasCueItem? item = CanvasItems.FirstOrDefault(candidate => candidate.Id == cue.Id);
-            bool outside = item is not null && (item.Bounds.Left < YttConstants.ReferenceWidth * 0.05 ||
-                item.Bounds.Top < YttConstants.ReferenceHeight * 0.05 ||
-                item.Bounds.Right > YttConstants.ReferenceWidth * 0.95 ||
-                item.Bounds.Bottom > YttConstants.ReferenceHeight * 0.95);
+            bool outside = item is not null && (
+                item.Bounds.Left < subtitleSpace.Left + horizontalInset ||
+                item.Bounds.Top < subtitleSpace.Top + verticalInset ||
+                item.Bounds.Right > subtitleSpace.Right - horizontalInset ||
+                item.Bounds.Bottom > subtitleSpace.Bottom - verticalInset);
             metrics[cue.Id] = new ValidationMetrics
             {
                 MobileEffectRisk = cue.Effects.Count >= 3,
                 IsOutsideSafeArea = outside,
+                ViewportModeDisplayName = SelectedViewportModeDisplayName,
                 BoxWidth = item?.Bounds.Width,
-                SubtitleSpaceWidth = YttConstants.ReferenceWidth,
+                SubtitleSpaceWidth = subtitleSpace.Width,
             };
         }
 
@@ -1666,8 +1788,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 double.IsFinite(canvasItem.Bounds.Width) && double.IsFinite(canvasItem.Bounds.Height))
             {
                 canvasResizeGeometry[cueId] = new CanvasResizeGeometry(
-                    CanvasGeometry.ToCanvasPoint(cue.PositionX, cue.PositionY,
-                        YttConstants.ReferenceWidth, YttConstants.ReferenceHeight),
+                    ToCanvasPoint(cue.PositionX, cue.PositionY),
                     canvasItem.Bounds.Width,
                     canvasItem.Bounds.Height,
                     CanvasResizeGeometry.CellFraction((int)canvasItem.AnchorKind % 3),
@@ -1784,8 +1905,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 (double)PreviewResizeGeometry.ComputeSizePercent(baselineSizePercent, multiplier) /
                 baselineSizePercent;
             CanvasPoint compensated = entry.Value.GetCompensatedAnchor(achievedScale);
-            CanvasPoint target = CanvasGeometry.ToYttPoint(compensated.X, compensated.Y,
-                YttConstants.ReferenceWidth, YttConstants.ReferenceHeight);
+            CanvasPoint target = ToYttPoint(compensated.X, compensated.Y);
             if (Math.Abs(cue.PositionX - target.X) > double.Epsilon ||
                 Math.Abs(cue.PositionY - target.Y) > double.Epsilon)
             {
@@ -1879,6 +1999,35 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         return FormatResolver.Resolve(style.BaseFormat, section.Overrides);
     }
 
+    private SKRect CurrentSubtitleSpace => previewViewport.SubtitleSpace;
+
+    private CanvasPoint ToCanvasPoint(double positionX, double positionY)
+    {
+        SKRect space = CurrentSubtitleSpace;
+        CanvasPoint point = CanvasGeometry.ToCanvasPoint(
+            positionX, positionY, space.Width, space.Height);
+        return new CanvasPoint(point.X + space.Left, point.Y + space.Top);
+    }
+
+    private CanvasPoint ToYttPoint(double pixelX, double pixelY)
+    {
+        SKRect space = CurrentSubtitleSpace;
+        return CanvasGeometry.ToYttPoint(
+            pixelX - space.Left, pixelY - space.Top, space.Width, space.Height);
+    }
+
+    private CanvasPoint PreserveBoxForAnchor(CanvasRect box, AnchorPoint anchor)
+    {
+        SKRect space = CurrentSubtitleSpace;
+        CanvasRect relative = new(
+            box.X - space.Left,
+            box.Y - space.Top,
+            box.Width,
+            box.Height);
+        return CanvasGeometry.PreserveBoxForAnchor(
+            relative, anchor, space.Width, space.Height);
+    }
+
     public CanvasMovePreview PreviewCanvasMove(double deltaX, double deltaY, bool altPressed)
     {
         CanvasCueItem? primary = CanvasItems.FirstOrDefault(item => item.Id == lastSelectedCueId);
@@ -1899,12 +2048,28 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         CanvasPoint requested = new(primary.Anchor.X + deltaX, primary.Anchor.Y + deltaY);
-        SnapResult snapped = CanvasGeometry.Snap(requested, YttConstants.ReferenceWidth,
-            YttConstants.ReferenceHeight, altPressed, guides);
+        SKRect subtitleSpace = CurrentSubtitleSpace;
+        List<SnapGuide> relativeGuides = guides
+            .Select(guide => guide with
+            {
+                Position = guide.Position - (guide.Vertical ? subtitleSpace.Left : subtitleSpace.Top),
+            })
+            .ToList();
+        CanvasPoint relativeRequested = new(
+            requested.X - subtitleSpace.Left,
+            requested.Y - subtitleSpace.Top);
+        SnapResult snapped = CanvasGeometry.Snap(relativeRequested, subtitleSpace.Width,
+            subtitleSpace.Height, altPressed, relativeGuides);
+        SnapGuide[] absoluteGuides = snapped.Guides
+            .Select(guide => guide with
+            {
+                Position = guide.Position + (guide.Vertical ? subtitleSpace.Left : subtitleSpace.Top),
+            })
+            .ToArray();
         return new CanvasMovePreview(
-            snapped.Point.X - primary.Anchor.X,
-            snapped.Point.Y - primary.Anchor.Y,
-            snapped.Guides);
+            snapped.Point.X + subtitleSpace.Left - primary.Anchor.X,
+            snapped.Point.Y + subtitleSpace.Top - primary.Anchor.Y,
+            absoluteGuides);
     }
 
     public void CommitCanvasMove(double deltaX, double deltaY, bool altPressed)
@@ -1919,10 +2084,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         foreach (Guid id in selectedCueIds)
         {
             Cue cue = project.Cues[id]!;
-            CanvasPoint current = CanvasGeometry.ToCanvasPoint(cue.PositionX, cue.PositionY,
-                YttConstants.ReferenceWidth, YttConstants.ReferenceHeight);
-            positions[id] = CanvasGeometry.ToYttPoint(current.X + preview.DeltaX, current.Y + preview.DeltaY,
-                YttConstants.ReferenceWidth, YttConstants.ReferenceHeight);
+            CanvasPoint current = ToCanvasPoint(cue.PositionX, cue.PositionY);
+            positions[id] = ToYttPoint(current.X + preview.DeltaX, current.Y + preview.DeltaY);
         }
 
         editor.MoveCues(positions);
@@ -1942,8 +2105,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        CanvasPoint ytt = CanvasGeometry.PreserveBoxForAnchor(item.Bounds, anchor,
-            YttConstants.ReferenceWidth, YttConstants.ReferenceHeight);
+        CanvasPoint ytt = PreserveBoxForAnchor(item.Bounds, anchor);
         editor.SetAnchor(cueId, anchor, ytt.X, ytt.Y);
         AfterMutation();
     }
@@ -1967,11 +2129,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         bool wasUnsaved = unsavedChanges;
-        CanvasPoint position = CanvasGeometry.ToYttPoint(
-            canvasX,
-            canvasY,
-            YttConstants.ReferenceWidth,
-            YttConstants.ReferenceHeight);
+        CanvasPoint position = ToYttPoint(canvasX, canvasY);
         TimeSpan start = TimeSpan.FromMilliseconds(PositionMilliseconds);
         Cue cue;
         editor.BeginTransaction("자막 추가 및 위치 지정");
@@ -2060,7 +2218,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         InlineEditorStyle style = ResolveInlineEditorStyle(project.Cues[cueId]!);
         InlineEditorPresentation presentation = InlineEditorPresentationMapper.Scale(
-            style, referenceBounds, contentRect);
+            style, referenceBounds, contentRect, PreviewSubtitleSpace);
         Rect requested = presentation.Bounds;
         Rect clamped = InlineEditorPlacement.Clamp(
             new Rect(requested.X, requested.Y,
@@ -2100,7 +2258,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         InlineEditorPresentation presentation = InlineEditorPresentationMapper.Scale(
-            style, referenceBounds, contentRect);
+            style, referenceBounds, contentRect, PreviewSubtitleSpace);
         Rect requested = new(
             presentation.Bounds.X,
             presentation.Bounds.Y,
@@ -2247,8 +2405,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         foreach (CanvasCueItem item in items)
         {
             CanvasPoint delta = deltaFactory(item);
-            positions[item.Id] = CanvasGeometry.ToYttPoint(item.Anchor.X + delta.X, item.Anchor.Y + delta.Y,
-                YttConstants.ReferenceWidth, YttConstants.ReferenceHeight);
+            positions[item.Id] = ToYttPoint(item.Anchor.X + delta.X, item.Anchor.Y + delta.Y);
         }
 
         if (positions.Count > 0)
@@ -2857,16 +3014,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             const int width = 320;
             const int height = 180;
-            using SKSurface surface = SKSurface.Create(new SKImageInfo(width, height));
+            PlayerViewport viewport = CreatePlayerViewport(new SKSize(width, height));
+            using SKSurface surface = SKSurface.Create(new SKImageInfo(
+                ToBitmapDimension(viewport.PlayerSize.Width),
+                ToBitmapDimension(viewport.PlayerSize.Height)));
             SKCanvas canvas = surface.Canvas;
             canvas.Clear(new SKColor(24, 24, 24));
             renderer.Render(
                 canvas,
-                new PlayerViewport(
-                    new SKSize(width, height),
-                    SKRect.Create(width, height),
-                    SKRect.Create(width, height),
-                    PreviewViewportMode.VideoFrame),
+                viewport,
                 project,
                 TimeSpan.FromMilliseconds(PositionMilliseconds),
                 new SubtitleRenderOptions());
@@ -3207,8 +3363,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 continue;
             }
 
-            CanvasPoint ytt = CanvasGeometry.PreserveBoxForAnchor(item.Bounds, anchor,
-                YttConstants.ReferenceWidth, YttConstants.ReferenceHeight);
+            CanvasPoint ytt = PreserveBoxForAnchor(item.Bounds, anchor);
             editor.SetAnchor(id, anchor, ytt.X, ytt.Y);
         }
 
@@ -3300,6 +3455,118 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         NotifyVideoState();
     }
 
+    /// <summary>화면에 실제 표시되는 전체화면 플레이어 크기를 갱신한다.</summary>
+    public void UpdatePreviewPlayerSize(double width, double height)
+    {
+        if (previewViewportMode != PreviewViewportMode.YouTubeFullscreen ||
+            !double.IsFinite(width) || !double.IsFinite(height) || width <= 0 || height <= 0 ||
+            width > float.MaxValue || height > float.MaxValue)
+        {
+            return;
+        }
+
+        SKSize value = new((float)width, (float)height);
+        if (Math.Abs(fullscreenPlayerSize.Width - value.Width) < 0.5f &&
+            Math.Abs(fullscreenPlayerSize.Height - value.Height) < 0.5f)
+        {
+            return;
+        }
+
+        fullscreenPlayerSize = value;
+        SetPreviewViewport(CreatePlayerViewport(value));
+        if (!videoLoaded)
+        {
+            RenderFallbackFrame();
+        }
+
+        RenderSubtitlePreview();
+        if (validationHasRun)
+        {
+            RunValidation();
+        }
+    }
+
+    private SKSize GetPreviewPlayerSize()
+        => previewViewportMode == PreviewViewportMode.YouTubeFullscreen
+            ? fullscreenPlayerSize
+            : ReferencePlayerSize;
+
+    private PlayerViewport CreatePlayerViewport(SKSize playerSize)
+    {
+        SKSize? videoSize = GetVideoSize();
+        PlayerViewport viewport = previewViewportMode switch
+        {
+            PreviewViewportMode.YouTubeDefault => videoSize is SKSize defaultVideoSize
+                ? PlayerViewport.YouTubeDefault(defaultVideoSize)
+                : PlayerViewport.YouTubeDefault(),
+            PreviewViewportMode.YouTubeTheater => videoSize is SKSize theaterVideoSize
+                ? PlayerViewport.YouTubeTheater(theaterVideoSize)
+                : PlayerViewport.YouTubeTheater(),
+            PreviewViewportMode.YouTubeFullscreen => videoSize is SKSize fullscreenVideoSize
+                ? PlayerViewport.YouTubeFullscreen(playerSize, fullscreenVideoSize)
+                : PlayerViewport.YouTubeFullscreen(playerSize),
+            _ => PlayerViewport.VideoFrame(playerSize),
+        };
+
+        // 일반과 극장 팩터리가 주는 크기는 측정 당시의 창 크기라 기준 너비보다 작다.
+        // 그대로 그리면 프리뷰 비트맵 해상도가 모드에 따라 낮아져 흐릿해진다. 두 모드는
+        // 서로 닮음이라 배치가 달라지지 않으므로 기준 너비로 맞춰 선명도를 일정하게 둔다.
+        // 전체화면과 VideoFrame 은 호출자가 실제 크기를 정하므로 건드리지 않는다.
+        return viewport.Mode is PreviewViewportMode.YouTubeDefault or PreviewViewportMode.YouTubeTheater
+            ? viewport.ScaleToWidth(ReferencePlayerSize.Width)
+            : viewport;
+    }
+
+    private SKSize? GetVideoSize()
+    {
+        if (videoLoaded && videoSource is not null)
+        {
+            var info = videoSource.Info;
+            if (info.Width > 0 && info.Height > 0)
+            {
+                return new SKSize(info.Width, info.Height);
+            }
+        }
+
+        if (project?.Video is { Width: > 0, Height: > 0 } video)
+        {
+            return new SKSize(video.Width, video.Height);
+        }
+
+        return null;
+    }
+
+    private void SetPreviewViewport(PlayerViewport value)
+    {
+        if (previewViewport == value)
+        {
+            return;
+        }
+
+        previewViewport = value;
+        OnPropertyChanged(nameof(PreviewViewport));
+        OnPropertyChanged(nameof(PreviewSubtitleSpace));
+        OnPropertyChanged(nameof(PreviewPlayerWidth));
+        OnPropertyChanged(nameof(PreviewPlayerHeight));
+        OnPropertyChanged(nameof(PreviewVideoContentLeft));
+        OnPropertyChanged(nameof(PreviewVideoContentTop));
+        OnPropertyChanged(nameof(PreviewVideoContentWidth));
+        OnPropertyChanged(nameof(PreviewVideoContentHeight));
+    }
+
+    private static int ToBitmapDimension(float value)
+    {
+        if (!float.IsFinite(value) || value <= 0)
+        {
+            return 1;
+        }
+
+        return Math.Max(1, (int)Math.Round(value, MidpointRounding.AwayFromZero));
+    }
+
+    private static Rect ToAvaloniaRect(SKRect value)
+        => new(value.Left, value.Top, value.Width, value.Height);
+
     private void RenderFallbackFrame()
     {
         if (videoLoaded || disposed)
@@ -3307,8 +3574,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        using SKBitmap bitmap = new(new SKImageInfo(YttConstants.ReferenceWidth, YttConstants.ReferenceHeight,
-            SKColorType.Bgra8888, SKAlphaType.Premul));
+        SKSize playerSize = previewViewport.PlayerSize;
+        using SKBitmap bitmap = new(new SKImageInfo(
+            ToBitmapDimension(playerSize.Width),
+            ToBitmapDimension(playerSize.Height),
+            SKColorType.Bgra8888,
+            SKAlphaType.Premul));
         using SKCanvas canvas = new(bitmap);
         if (UseCheckerboard)
         {
@@ -3332,14 +3603,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        using SKBitmap bitmap = new(new SKImageInfo(YttConstants.ReferenceWidth, YttConstants.ReferenceHeight,
-            SKColorType.Bgra8888, SKAlphaType.Premul));
+        PlayerViewport viewport = CreatePlayerViewport(GetPreviewPlayerSize());
+        SetPreviewViewport(viewport);
+        using SKBitmap bitmap = new(new SKImageInfo(
+            ToBitmapDimension(viewport.PlayerSize.Width),
+            ToBitmapDimension(viewport.PlayerSize.Height),
+            SKColorType.Bgra8888,
+            SKAlphaType.Premul));
         using SKCanvas canvas = new(bitmap);
         canvas.Clear(SKColors.Transparent);
         TimeSpan time = TimeSpan.FromMilliseconds(PositionMilliseconds);
         double framesPerSecond = project.Video?.NominalFps is > 0 ? project.Video.NominalFps : 30;
         long frameIndex = checked((long)Math.Floor(time.TotalSeconds * framesPerSecond));
-        PlayerViewport viewport = PlayerViewport.VideoFrame(bitmap.Width, bitmap.Height);
         renderer.Render(canvas, viewport, project, time, new SubtitleRenderOptions
         {
             FrameIndex = frameIndex,

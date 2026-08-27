@@ -53,6 +53,49 @@ public sealed class ValidationTests
         }
     }
 
+    [Theory]
+    [InlineData("일반 플레이어")]
+    [InlineData("극장 모드")]
+    [InlineData("전체화면")]
+    public void W103UsesViewportModeDisplayName(string viewportModeDisplayName)
+    {
+        (SubtitleProject project, Cue cue) = CreateProject();
+        ValidationContext context = new(project)
+        {
+            Metrics = new ValidationMetrics
+            {
+                IsOutsideSafeArea = true,
+                ViewportModeDisplayName = viewportModeDisplayName,
+            },
+        };
+
+        ValidationIssue issue = Assert.Single(new DocumentValidator().Validate(project, context), item => item.Code == ValidationCodes.W103);
+
+        Assert.Equal($"세이프 에어리어 밖에 있어 {viewportModeDisplayName}에서 화면 밖으로 밀릴 수 있습니다.", issue.Message);
+        Assert.Equal(cue.Id, issue.CueId);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void W103FallsBackToTheaterModeWhenViewportModeDisplayNameIsMissing(string? viewportModeDisplayName)
+    {
+        (SubtitleProject project, _) = CreateProject();
+        ValidationContext context = new(project)
+        {
+            Metrics = new ValidationMetrics
+            {
+                IsOutsideSafeArea = true,
+                ViewportModeDisplayName = viewportModeDisplayName,
+            },
+        };
+
+        ValidationIssue issue = Assert.Single(new DocumentValidator().Validate(project, context), item => item.Code == ValidationCodes.W103);
+
+        Assert.Equal("세이프 에어리어 밖에 있어 극장 모드에서 화면 밖으로 밀릴 수 있습니다.", issue.Message);
+    }
+
     public static IEnumerable<object[]> RuleCases()
     {
         yield return Case("E001", (_, cue, _) => cue.Start = TimeSpan.Zero);

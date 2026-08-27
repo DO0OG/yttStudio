@@ -2,6 +2,8 @@ using Avalonia.Headless.XUnit;
 using YttStudio.App;
 using YttStudio.Core;
 using YttStudio.Core.Editing;
+using YttStudio.Core.Validation;
+using YttStudio.Render;
 
 namespace YttStudio.App.Tests;
 
@@ -218,9 +220,92 @@ public sealed class MainWindowViewModelTests
         Assert.Contains(firstCueId, viewModel.SelectedCueIds);
     }
 
-    private static MainWindowViewModel CreateViewModel()
+    [AvaloniaFact]
+    public void ViewportModeSelectionPersistsAndExcludesMobilePortrait()
     {
-        return new MainWindowViewModel(new StubFileDialogService());
+        string path = Path.Combine(Path.GetTempPath(),
+            $"YttStudio-viewport-tests-{Guid.NewGuid():N}.json");
+        try
+        {
+            using (MainWindowViewModel viewModel = CreateViewModel(new PreferencesStore(path)))
+            {
+                Assert.DoesNotContain(PreviewViewportMode.MobilePortrait, viewModel.ViewportModes);
+
+                viewModel.SelectYouTubeTheaterViewportCommand.Execute(null);
+
+                Assert.Equal(PreviewViewportMode.YouTubeTheater, viewModel.SelectedViewportMode);
+                Assert.True(viewModel.IsYouTubeTheaterViewport);
+                Assert.Equal(1280, viewModel.PreviewSubtitleSpace.Width, precision: 2);
+            }
+
+            using MainWindowViewModel restored = CreateViewModel(new PreferencesStore(path));
+
+            Assert.Equal(PreviewViewportMode.YouTubeTheater, restored.SelectedViewportMode);
+            Assert.Equal(PreviewViewportMode.YouTubeTheater, restored.PreviewViewport.Mode);
+            Assert.Equal(1280, restored.PreviewSubtitleSpace.Width, precision: 2);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public void KeepsOriginalSingleArgumentConstructor()
+    {
+        Assert.NotNull(typeof(MainWindowViewModel).GetConstructor([typeof(IFileDialogService)]));
+    }
+
+    [AvaloniaFact]
+    public void FullscreenUsesMeasuredPreviewPlayerSize()
+    {
+        using MainWindowViewModel viewModel = CreateViewModel();
+        viewModel.SelectYouTubeFullscreenViewportCommand.Execute(null);
+
+        viewModel.UpdatePreviewPlayerSize(900, 500);
+
+        Assert.Equal(new SkiaSharp.SKSize(900, 500), viewModel.PreviewViewport.PlayerSize);
+        Assert.Equal(900, viewModel.PreviewPlayerWidth);
+        Assert.Equal(500, viewModel.PreviewPlayerHeight);
+    }
+
+    [AvaloniaFact]
+    public void ViewportModeChangeRefreshesExistingW103Message()
+    {
+        using MainWindowViewModel viewModel = CreateViewModel();
+        Guid cueId = viewModel.AddCueAtCanvasPoint(640, 360)!.Value;
+        viewModel.BeginInlineEdit(cueId, 0, 0, 180);
+        // 위치는 정수 퍼센트로 양자화되어 최대 위치의 한 줄 상자는 안전선에 정확히 걸린다.
+        // 여러 줄로 상자를 키워 경계가 아니라 확실히 바깥에 놓이게 한다.
+        viewModel.InlineText = "하단 경고\n두 번째 줄\n세 번째 줄";
+        viewModel.CommitInlineEdit();
+        viewModel.PositionMilliseconds = 1;
+        viewModel.SelectYouTubeTheaterViewportCommand.Execute(null);
+        Assert.NotEmpty(viewModel.CanvasItems);
+        viewModel.CommitCanvasMove(0, viewModel.PreviewSubtitleSpace.Height, altPressed: true);
+        CanvasCueItem moved = Assert.Single(viewModel.CanvasItems);
+        Assert.True(moved.Bounds.Bottom > viewModel.PreviewSubtitleSpace.Bottom * 0.95,
+            $"bounds={moved.Bounds}, space={viewModel.PreviewSubtitleSpace}");
+        viewModel.ValidateCommand.Execute(null);
+        Assert.Contains(viewModel.ValidationIssues,
+            issue => issue.Code == ValidationCodes.W103 && issue.Message.Contains("극장"));
+
+        viewModel.SelectYouTubeDefaultViewportCommand.Execute(null);
+
+        // 데스크톱 모드는 서로 닮음이라 자막 공간의 비율이 같다. 모드를 바꾼다고 세이프
+        // 에어리어 판정이 뒤집히지는 않으며, 바뀌는 것은 경고가 가리키는 모드 이름이다.
+        Assert.Contains(viewModel.ValidationIssues,
+            issue => issue.Code == ValidationCodes.W103 && !issue.Message.Contains("극장"));
+        Assert.DoesNotContain(viewModel.ValidationIssues,
+            issue => issue.Code == ValidationCodes.W103 && issue.Message.Contains("극장"));
+    }
+
+    private static MainWindowViewModel CreateViewModel(PreferencesStore? preferencesStore = null)
+    {
+        return new MainWindowViewModel(new StubFileDialogService(), preferencesStore);
     }
 
     private static Guid AddInlineCue(MainWindowViewModel viewModel, string text)
