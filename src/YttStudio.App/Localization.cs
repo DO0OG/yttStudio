@@ -41,7 +41,12 @@ public sealed class Localizer : System.ComponentModel.INotifyPropertyChanged
         ["ViewportFullscreen"] = new("전체화면", "Fullscreen", "全画面"),
         ["ViewportMobile"] = new("모바일", "Mobile", "モバイル"),
         ["ViewportPending"] = new("측정 대기 중", "Awaiting measurement", "計測待ち"),
-        ["ViewportModeNote"] = new("자막 공간은 플레이어 전체 · 하단 인셋 2%", "Subtitle space is the full player · 2% bottom inset", "字幕空間はプレーヤー全体・下端インセット 2%"),
+        ["ViewportModeNote"] = new("자막 공간은 플레이어 전체", "Subtitle space is the full player", "字幕空間はプレーヤー全体"),
+        ["PlaybackQuality"] = new("재생 화질", "Playback quality", "再生画質"),
+        ["PlaybackQualityHint"] = new(
+            "재생 부하를 줄이려고 영상을 낮은 해상도로 받습니다. 내보내는 자막에는 영향이 없습니다.",
+            "Decodes the video at a lower resolution to lighten playback. Exported subtitles are unaffected.",
+            "再生負荷を下げるため映像を低い解像度で受け取ります。書き出す字幕には影響しません。"),
         ["StylePresets"] = new("스타일 프리셋", "Style Presets", "スタイルプリセット"),
         ["StyleName"] = new("스타일 이름", "Style name", "スタイル名"),
         ["Add"] = new("+ 추가", "+ Add", "+ 追加"),

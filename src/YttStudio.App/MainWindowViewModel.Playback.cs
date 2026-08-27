@@ -29,6 +29,8 @@ public sealed partial class MainWindowViewModel
         {
             MpvVideoSource loadedSource = source!;
             videoSource = loadedSource;
+            // 지난 실행에서 고른 재생 화질을 그대로 이어 쓴다.
+            loadedSource.PlaybackScaleDivisor = playbackScaleDivisor;
             loadedSource.FrameReady += OnVideoFrameReady;
             VideoStatus = $"libmpv {loadedSource.LibraryVersion} · SW 콜백 렌더링";
             Serilog.Log.Information("libmpv initialized: {Version}; {Path}", loadedSource.LibraryVersion,
@@ -203,6 +205,7 @@ public sealed partial class MainWindowViewModel
             bool targetExact = exact;
             while (true)
             {
+                long startedAt = Environment.TickCount64;
                 try
                 {
                     await videoSource.SeekAsync(TimeSpan.FromMilliseconds(target), targetExact);
@@ -215,6 +218,22 @@ public sealed partial class MainWindowViewModel
                     }
                 }
 
+                if (pendingSeekMilliseconds is null)
+                {
+                    break;
+                }
+
+                // 끌고 있는 동안에는 끝나는 즉시 다음 탐색이 나가서 디코딩과 화면 전송이
+                // 쉴 틈 없이 돌아간다. 사람 눈에는 초당 열몇 장이면 충분히 이어져 보이므로
+                // 최소 간격을 두어 그 위로는 올라가지 않게 한다.
+                long elapsed = Environment.TickCount64 - startedAt;
+                if (elapsed < MinimumScrubIntervalMilliseconds)
+                {
+                    await Task.Delay((int)(MinimumScrubIntervalMilliseconds - elapsed));
+                }
+
+                // 기다리는 사이에 더 새로운 목표가 들어왔을 수 있다. 지금 읽어야 마지막
+                // 목표로 간다.
                 if (pendingSeekMilliseconds is not double next)
                 {
                     break;

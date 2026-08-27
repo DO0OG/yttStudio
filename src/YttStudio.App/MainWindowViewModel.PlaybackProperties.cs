@@ -23,6 +23,43 @@ namespace YttStudio.App;
 public sealed partial class MainWindowViewModel
 {
 
+    /// <summary>재생 화질로 고를 수 있는 축소 배수다.</summary>
+    /// <remarks>
+    /// 편집 중에는 원본 해상도가 필요 없을 때가 많다. 배수를 올리면 디코딩 뒤의 변환 ·
+    /// 전송 · 합성이 함께 줄어 재생 부하가 크게 내려간다. 화면에 보이는 크기는 그대로이고
+    /// 선명도만 낮아지며, 내보내는 자막에는 아무 영향이 없다.
+    /// </remarks>
+    public IReadOnlyList<PlaybackQualityOption> PlaybackQualityOptions { get; } =
+    [
+        new(1, "원본"),
+        new(2, "1/2"),
+        new(4, "1/4"),
+        new(8, "1/8"),
+    ];
+
+    /// <summary>현재 선택한 재생 화질을 가져오거나 설정한다.</summary>
+    public PlaybackQualityOption? SelectedPlaybackQuality
+    {
+        get => PlaybackQualityOptions.FirstOrDefault(option => option.Divisor == playbackScaleDivisor)
+            ?? PlaybackQualityOptions[0];
+        set
+        {
+            int divisor = value?.Divisor ?? 1;
+            if (!SetField(ref playbackScaleDivisor, divisor))
+            {
+                return;
+            }
+
+            if (videoSource is not null)
+            {
+                videoSource.PlaybackScaleDivisor = divisor;
+            }
+
+            preferences.PlaybackScaleDivisor = divisor;
+            SavePreferences();
+        }
+    }
+
     public bool HasVideo => videoLoaded;
 
     public bool IsPlaying => videoSource?.IsPlaying == true;

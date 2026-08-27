@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using System.Runtime.InteropServices;
 
 namespace YttStudio.Video;
@@ -17,6 +18,7 @@ public sealed class MpvVideoSource : IVideoSource
     private const ulong RenderUpdateFrame = 1;
     private readonly object controlGate = new();
     private readonly MpvNativeLibrary native;
+    private int playbackScaleDivisor = 1;
     private readonly nint mpvHandle;
     private readonly LatestFrameBuffer frames = new();
     private readonly AutoResetEvent renderSignal = new(false);
@@ -54,7 +56,10 @@ public sealed class MpvVideoSource : IVideoSource
             SetOption("audio-display", "no");
             SetOption("keep-open", "yes");
             SetOption("pause", "yes");
-            SetOption("hwdec", "no");
+            // 디코딩을 GPU 로 넘긴다. 화면 합성은 여전히 소프트웨어 렌더 API 로 받으므로
+            // 프레임을 시스템 메모리로 되돌리는 copy-back 방식이어야 한다. 쓸 수 있는
+            // 하드웨어 디코더가 없으면 mpv 가 소프트웨어 디코딩으로 되돌아간다.
+            SetOption("hwdec", "auto-copy");
             Check(native.Initialize(mpvHandle), "mpv_initialize");
             LibraryVersion = ReadStringProperty("mpv-version") ?? GetApiVersionText(native.ClientApiVersion());
 
@@ -396,8 +401,11 @@ public sealed class MpvVideoSource : IVideoSource
         }
 
         VideoInfo current = Info;
-        int width = current.Width > 0 ? current.Width : 1280;
-        int height = current.Height > 0 ? current.Height : 720;
+        // 배수를 나눠 더 작은 화면으로 받는다. 디코딩 뒤의 변환 · 전송 · 알파 채우기 ·
+        // 화면 합성이 전부 이 크기를 따르므로 부하가 배수의 제곱에 가깝게 줄어든다.
+        int divisor = Math.Max(1, Volatile.Read(ref playbackScaleDivisor));
+        int width = Math.Max(1, (current.Width > 0 ? current.Width : 1280) / divisor);
+        int height = Math.Max(1, (current.Height > 0 ? current.Height : 720) / divisor);
         long epoch = frames.SeekEpoch;
         if (!frames.TryBeginWrite(width, height, out int index, out byte[] pixels, out int stride))
         {
@@ -424,15 +432,11 @@ public sealed class MpvVideoSource : IVideoSource
                 parameters[4] = default;
                 Check(native.RenderContextRender(renderContext, (nint)parameters), "mpv_render_context_render(sw)");
 
-                // mpv SW 의 "bgr0" 은 네 번째 바이트를 정의하지 않는다. Avalonia 는 불투명 BGRA 를 기대한다.
-                for (int row = 0; row < height; row++)
-                {
-                    int rowOffset = row * stride;
-                    for (int column = 0; column < width; column++)
-                    {
-                        pixels[rowOffset + (column * 4) + 3] = byte.MaxValue;
-                    }
-                }
+                // mpv SW 의 "bgr0" 은 네 번째 바이트를 정의하지 않는다. Avalonia 는 불투명
+                // BGRA 를 기대하므로 알파를 채워야 한다. 다만 화소마다 바이트 하나씩 쓰면
+                // 1080p 기준 프레임당 이백만 번이 넘어 재생 내내 렌더 스레드를 붙잡는다.
+                // 네 바이트를 한 낱말로 묶어 SIMD 로 알파 비트만 세운다.
+                FillOpaqueAlpha(pixelPointer, width, height, stride);
             }
 
             long sequence = Interlocked.Increment(ref sequenceNumber);
@@ -518,6 +522,45 @@ public sealed class MpvVideoSource : IVideoSource
             catch when (!Volatile.Read(ref stopping) && !Volatile.Read(ref disposed))
             {
                 // 파일을 열거나 닫는 동안에는 메타데이터가 없을 수 있다.
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public int PlaybackScaleDivisor
+    {
+        get => Volatile.Read(ref playbackScaleDivisor);
+        set => Volatile.Write(ref playbackScaleDivisor, Math.Clamp(value, 1, 8));
+    }
+
+    /// <summary>BGRA 버퍼의 알파 바이트를 한꺼번에 불투명으로 세운다.</summary>
+    /// <remarks>
+    /// 화소를 <c>uint</c> 한 낱말로 보고 최상위 바이트에만 비트를 세운다. 하드웨어가
+    /// 지원하면 여러 화소를 한 번에 처리하므로, 바이트 단위로 훑던 예전 방식보다 반복
+    /// 횟수가 크게 줄어든다. 색 성분은 건드리지 않는다.
+    /// </remarks>
+    private static unsafe void FillOpaqueAlpha(byte* pixels, int width, int height, int stride)
+    {
+        const uint OpaqueAlpha = 0xFF000000u;
+        Vector<uint> mask = new(OpaqueAlpha);
+        int lanes = Vector<uint>.Count;
+        for (int row = 0; row < height; row++)
+        {
+            uint* line = (uint*)(pixels + (row * stride));
+            Span<uint> span = new(line, width);
+            int index = 0;
+            if (Vector.IsHardwareAccelerated)
+            {
+                for (; index <= width - lanes; index += lanes)
+                {
+                    Span<uint> chunk = span.Slice(index, lanes);
+                    (new Vector<uint>(chunk) | mask).CopyTo(chunk);
+                }
+            }
+
+            for (; index < width; index++)
+            {
+                line[index] |= OpaqueAlpha;
             }
         }
     }

@@ -12,6 +12,17 @@ public interface IVideoSource : IAsyncDisposable
     /// <summary>재생 중인지 가져온다.</summary>
     bool IsPlaying { get; }
 
+    /// <summary>
+    /// 프레임을 받아올 해상도의 축소 배수를 가져오거나 설정한다. 1 이면 원본이고
+    /// 2 면 가로 세로 절반이다.
+    /// </summary>
+    /// <remarks>
+    /// 편집 중에는 원본 해상도가 필요 없을 때가 많다. 배수를 올리면 디코딩 뒤의 변환 ·
+    /// 전송 · 합성이 모두 그 제곱만큼 줄어 재생 부하가 크게 내려간다. 화면에 보이는
+    /// 크기는 그대로이고 선명도만 낮아진다.
+    /// </remarks>
+    int PlaybackScaleDivisor { get; set; }
+
     /// <summary>영상 소스를 불러온다.</summary>
     Task LoadAsync(string path, CancellationToken cancellationToken);
 

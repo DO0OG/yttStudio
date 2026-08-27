@@ -65,6 +65,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     private bool videoLoaded;
     private bool updatingFromVideo;
     private int frameUpdatePending;
+    // 타임라인을 끄는 동안 탐색이 나가는 최소 간격이다. 초당 열몇 번이면 눈으로는
+    // 이어져 보이고, 그 위로 올리면 디코딩과 화면 전송만 포화된다.
+    private const int MinimumScrubIntervalMilliseconds = 70;
+    private int playbackScaleDivisor = 1;
     private bool seekInFlight;
     private double? pendingSeekMilliseconds;
     private bool pendingSeekExact;
@@ -132,6 +136,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         snapThreshold = Math.Clamp(preferences.SnapThreshold, 0, 64);
         volume = double.IsFinite(preferences.Volume) ? Math.Clamp(preferences.Volume, 0, 100) : 100;
         isMuted = preferences.IsMuted;
+        playbackScaleDivisor = Math.Clamp(preferences.PlaybackScaleDivisor, 1, 8);
         mpvPath = NormalizeMpvPath(preferences.MpvPath);
         if (!string.IsNullOrWhiteSpace(mpvPath))
         {

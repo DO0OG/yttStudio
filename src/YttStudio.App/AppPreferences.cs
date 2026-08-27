@@ -53,6 +53,12 @@ public sealed class AppPreferences
     /// <summary>자동 저장 간격(초)이다.</summary>
     public int AutosaveIntervalSeconds { get; set; } = 60;
 
+    /// <summary>
+    /// 재생 화질의 축소 배수다. 1 이면 원본이고 2 면 가로 세로 절반이다.
+    /// 편집 중 재생 부하를 낮추려고 쓴다.
+    /// </summary>
+    public int PlaybackScaleDivisor { get; set; } = 1;
+
     /// <summary>환경설정에서 사용할 수 있는 데스크톱 뷰포트 모드인지 확인한다.</summary>
     public static bool IsSelectablePreviewViewportMode(PreviewViewportMode mode)
         => mode is PreviewViewportMode.VideoFrame
