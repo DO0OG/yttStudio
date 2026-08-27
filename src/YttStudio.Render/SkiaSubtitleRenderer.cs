@@ -7,6 +7,7 @@ namespace YttStudio.Render;
 /// <summary>헤드리스 Skia 캔버스에서 YTT 자막 큐를 측정하고 렌더한다.</summary>
 public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
 {
+    private const float MeasuredBottomSafeAreaInsetRatio = 0.02f;
     private readonly IFontResolver fontResolver;
     private readonly FontFallbackHelper fontFallback;
     private readonly SubtitleLayoutEngine layoutEngine;
@@ -69,8 +70,8 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
                 IsAntialias = true,
             };
             SKRect space = viewport.SubtitleSpace;
-            canvas.DrawRect(SKRect.Create(space.Left + (space.Width * 0.05f), space.Top + (space.Height * 0.05f),
-                space.Width * 0.9f, space.Height * 0.9f), safeAreaPaint);
+            canvas.DrawRect(SKRect.Create(space.Left, space.Top, space.Width,
+                space.Height * (1 - MeasuredBottomSafeAreaInsetRatio)), safeAreaPaint);
         }
 
         if (options.ShowAnchorPoints)

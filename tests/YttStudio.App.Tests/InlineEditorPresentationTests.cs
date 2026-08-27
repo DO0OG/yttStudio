@@ -103,4 +103,31 @@ public sealed class InlineEditorPresentationTests
             new Rect(0, 0, 64, 36));
         Assert.Equal(InlineEditorPresentationMapper.MinimumReadableFontSize, tiny.FontSize);
     }
+
+    [Fact]
+    public void ScaleUsesOffsetSubtitleSpaceForBoundsAndReferenceScale()
+    {
+        InlineEditorStyle style = new(
+            "Test",
+            32,
+            Colors.White,
+            TextAlignment.Center,
+            new Thickness(8, 4.8));
+        Rect subtitleSpace = new(100, 50, 1000, 800);
+        Rect content = PreviewCanvasGeometry.GetContentRect(new Size(1600, 900), subtitleSpace);
+
+        InlineEditorPresentation result = InlineEditorPresentationMapper.Scale(
+            style,
+            new CanvasRect(250, 150, 400, 300),
+            content,
+            subtitleSpace);
+
+        Assert.Equal(406.25, result.Bounds.Left, 10);
+        Assert.Equal(112.5, result.Bounds.Top, 10);
+        Assert.Equal(450, result.Bounds.Width, 10);
+        Assert.Equal(337.5, result.Bounds.Height, 10);
+        Assert.Equal(36, result.FontSize, 10);
+        Assert.Equal(9, result.Padding.Left, 10);
+        Assert.Equal(5.4, result.Padding.Top, 10);
+    }
 }

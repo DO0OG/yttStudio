@@ -111,11 +111,19 @@
 
       <Grid Grid.Column="2" MinWidth="500" RowDefinitions="Auto,3*,6,*,6,2*">
         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
-          <Button Content="{Binding Loc[ViewportVideo]}" IsEnabled="True" />
-          <Button Content="{Binding Loc[ViewportYouTube]}" IsEnabled="False" ToolTip.Tip="{Binding Loc[ViewportPending]}" />
-          <Button Content="{Binding Loc[ViewportTheater]}" IsEnabled="False" ToolTip.Tip="{Binding Loc[ViewportPending]}" />
-          <Button Content="{Binding Loc[ViewportFullscreen]}" IsEnabled="False" ToolTip.Tip="{Binding Loc[ViewportPending]}" />
-          <Button Content="{Binding Loc[ViewportMobile]}" IsEnabled="False" ToolTip.Tip="{Binding Loc[ViewportPending]}" />
+          <RadioButton GroupName="ViewportMode" Content="{Binding Loc[ViewportVideo]}"
+                       Command="{Binding SelectVideoFrameViewportCommand}"
+                       IsChecked="{Binding IsVideoFrameViewport}" />
+          <RadioButton GroupName="ViewportMode" Content="{Binding Loc[ViewportYouTube]}"
+                       Command="{Binding SelectYouTubeDefaultViewportCommand}"
+                       IsChecked="{Binding IsYouTubeDefaultViewport}" />
+          <RadioButton GroupName="ViewportMode" Content="{Binding Loc[ViewportTheater]}"
+                       Command="{Binding SelectYouTubeTheaterViewportCommand}"
+                       IsChecked="{Binding IsYouTubeTheaterViewport}" />
+          <RadioButton GroupName="ViewportMode" Content="{Binding Loc[ViewportFullscreen]}"
+                       Command="{Binding SelectYouTubeFullscreenViewportCommand}"
+                       IsChecked="{Binding IsYouTubeFullscreenViewport}" />
+          <TextBlock Text="{Binding SelectedViewportModeDisplayName}" VerticalAlignment="Center" Margin="4,0,0,0" />
           <TextBlock Text="{Binding Loc[ViewportModeNote]}" VerticalAlignment="Center" Margin="8,0" />
         </StackPanel>
 
@@ -123,9 +131,19 @@
         <Border Grid.Row="0" MinHeight="140"
                 Background="{DynamicResource AppVideoSurfaceBrush}" BorderBrush="{DynamicResource AppVideoBorderBrush}" BorderThickness="1" ClipToBounds="True">
           <Grid>
-            <Image Source="{Binding VideoFrameImage}" Stretch="Uniform" />
-            <Image Source="{Binding SubtitleImage}" Stretch="Uniform" IsHitTestVisible="False" />
-            <vm:PreviewCanvas>
+            <Viewbox Stretch="Uniform" IsHitTestVisible="False">
+              <Canvas Width="{Binding PreviewPlayerWidth}" Height="{Binding PreviewPlayerHeight}">
+                <Image Source="{Binding VideoFrameImage}" Stretch="Uniform"
+                       Canvas.Left="{Binding PreviewVideoContentLeft}"
+                       Canvas.Top="{Binding PreviewVideoContentTop}"
+                       Width="{Binding PreviewVideoContentWidth}"
+                       Height="{Binding PreviewVideoContentHeight}" />
+                <Image Source="{Binding SubtitleImage}" Stretch="Fill"
+                       Width="{Binding PreviewPlayerWidth}"
+                       Height="{Binding PreviewPlayerHeight}" />
+              </Canvas>
+            </Viewbox>
+            <vm:PreviewCanvas SubtitleSpace="{Binding PreviewSubtitleSpace}">
               <vm:PreviewCanvas.ContextMenu>
                 <ContextMenu>
                   <MenuItem Header="{Binding Loc[Duplicate]}" Command="{Binding DuplicateCueCommand}" />

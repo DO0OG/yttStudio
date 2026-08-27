@@ -7,6 +7,10 @@ namespace YttStudio.Render;
 /// <summary>픽셀을 그리지 않고 결정적인 자막 기하를 계산한다.</summary>
 public sealed class SubtitleLayoutEngine
 {
+    // [실측] 유튜브 자막 글자 크기는 플레이어 너비의 0.0244907 배다.
+    // 기본 글자 크기도 같은 실측 비율을 따르도록 기존 32 px 기준 배율로 환산한다.
+    private const double YouTubeSubtitleFontWidthFactor = 0.0244907;
+
     private readonly FontFallbackHelper fontFallback;
 
     public SubtitleLayoutEngine(IFontResolver fontResolver)
@@ -32,7 +36,7 @@ public sealed class SubtitleLayoutEngine
             throw new ArgumentOutOfRangeException(nameof(viewport));
         }
 
-        float viewportScale = viewport.SubtitleSpace.Height / YttConstants.ReferenceHeight;
+        float viewportScale = GetViewportScale(viewport);
         List<MeasuredLine> measuredLines = MeasureLines(project, cue, viewportScale, options);
         float maximumFontSize = measuredLines.SelectMany(line => line.Runs).Select(run => run.FontSize).DefaultIfEmpty(
             (float)(YttConstants.DefaultFontSizePixels * viewportScale)).Max();
@@ -242,6 +246,10 @@ public sealed class SubtitleLayoutEngine
 
     private static float MeasureVerticalHeight(MeasuredLine line)
         => line.Runs.Sum(run => run.Text.EnumerateRunes().Count() * run.FontSize);
+
+    private static float GetViewportScale(PlayerViewport viewport)
+        => (float)(viewport.SubtitleSpace.Width * YouTubeSubtitleFontWidthFactor /
+            YttConstants.DefaultFontSizePixels);
 
     private sealed record MeasuredLine(
         IReadOnlyList<MeasuredRun> Runs,

@@ -22,13 +22,13 @@ public enum PreviewViewportMode
     /// <summary>영상 프레임 자체를 플레이어이자 자막 좌표 공간으로 쓴다.</summary>
     VideoFrame,
 
-    /// <summary>유튜브 일반 플레이어 영역이다. 실측 대기 중이다.</summary>
+    /// <summary>유튜브 일반 플레이어 영역이다. 크기는 실측한 한 표본에서 가져왔다.</summary>
     YouTubeDefault,
 
-    /// <summary>유튜브 극장 플레이어 영역이다. 실측 대기 중이다.</summary>
+    /// <summary>유튜브 극장 플레이어 영역이다. 크기는 실측한 한 표본에서 가져왔다.</summary>
     YouTubeTheater,
 
-    /// <summary>유튜브 전체화면 플레이어 영역이다. 실측 대기 중이다.</summary>
+    /// <summary>호출자가 실제 플레이어 크기를 제공하는 유튜브 전체화면 영역이다.</summary>
     YouTubeFullscreen,
 
     /// <summary>유튜브 세로 모바일 플레이어 영역이다. 실측 대기 중이다.</summary>
@@ -39,12 +39,20 @@ public enum PreviewViewportMode
 /// 플레이어와 자막 배치에 관여하는 두 좌표 공간을 기술한다.
 /// </summary>
 /// <remarks>
-/// 브라우저 모드의 기하는 실측 전까지 의도적으로 추정하지 않는다.
-/// 기준 픽스처를 측정하기 전까지는 기하를 추정하지 않는다. 확정된 모드는
-/// 현재 항등 매핑뿐이다.
+/// 일반·극장 모드는 실측한 플레이어 크기를 사용한다. 전체화면 크기는 실측값을
+/// 추정하지 않고 호출자가 제공하며, 모바일 세로는 실측 전까지 팩터리를 만들지 않는다.
 /// </remarks>
 public sealed record PlayerViewport
 {
+    // 아래 네 값은 docs/viewport-modes.md 측정 당시의 플레이어 크기다. 유튜브가 정한
+    // 고정 규격이 아니라 창 크기에 딸린 한 표본이며, 브라우저 창이 다르면 값도 달라진다.
+    // 실측에서 확인된 것은 크기 자체가 아니라 글자 크기가 너비에 비례한다는 관계이고,
+    // 데스크톱 모드끼리는 서로 닮음이라 어느 표본을 쓰든 그림은 같다. 대표값으로만 쓴다.
+    private const float YouTubeDefaultPlayerWidth = 794f;
+    private const float YouTubeDefaultPlayerHeight = 437.5f;
+    private const float YouTubeTheaterPlayerWidth = 1162f;
+    private const float YouTubeTheaterPlayerHeight = 634f;
+
     public PlayerViewport(SKSize playerSize, SKRect videoContentRect, SKRect subtitleSpace,
         PreviewViewportMode mode)
     {
@@ -94,6 +102,99 @@ public sealed record PlayerViewport
 
     /// <summary>팩터리 형태 이름을 선호하는 호출자를 위한 별칭이다.</summary>
     public static PlayerViewport ForVideoFrame(SKSize playerSize) => VideoFrame(playerSize);
+
+    /// <summary>문서에서 측정한 유튜브 일반 플레이어 뷰포트를 만든다.</summary>
+    public static PlayerViewport YouTubeDefault()
+        => CreateMeasuredViewport(
+            new SKSize(YouTubeDefaultPlayerWidth, YouTubeDefaultPlayerHeight),
+            PreviewViewportMode.YouTubeDefault,
+            videoAspectRatio: null);
+
+    /// <summary>유튜브 일반 플레이어에 영상 종횡비를 적용한 뷰포트를 만든다.</summary>
+    public static PlayerViewport YouTubeDefault(SKSize videoSize)
+        => CreateMeasuredViewport(
+            new SKSize(YouTubeDefaultPlayerWidth, YouTubeDefaultPlayerHeight),
+            PreviewViewportMode.YouTubeDefault,
+            GetAspectRatio(videoSize));
+
+    /// <summary>유튜브 극장 플레이어 뷰포트를 만든다.</summary>
+    public static PlayerViewport YouTubeTheater()
+        => CreateMeasuredViewport(
+            new SKSize(YouTubeTheaterPlayerWidth, YouTubeTheaterPlayerHeight),
+            PreviewViewportMode.YouTubeTheater,
+            videoAspectRatio: null);
+
+    /// <summary>유튜브 극장 플레이어에 영상 종횡비를 적용한 뷰포트를 만든다.</summary>
+    public static PlayerViewport YouTubeTheater(SKSize videoSize)
+        => CreateMeasuredViewport(
+            new SKSize(YouTubeTheaterPlayerWidth, YouTubeTheaterPlayerHeight),
+            PreviewViewportMode.YouTubeTheater,
+            GetAspectRatio(videoSize));
+
+    /// <summary>
+    /// 호출자가 제공한 플레이어 크기로 유튜브 전체화면 뷰포트를 만든다.
+    /// 전체화면 크기는 실측되지 않았으므로 기본값을 두지 않는다.
+    /// </summary>
+    public static PlayerViewport YouTubeFullscreen(SKSize playerSize)
+        => CreateMeasuredViewport(playerSize, PreviewViewportMode.YouTubeFullscreen, videoAspectRatio: null);
+
+    /// <summary>호출자가 제공한 플레이어와 영상 크기로 전체화면 뷰포트를 만든다.</summary>
+    public static PlayerViewport YouTubeFullscreen(SKSize playerSize, SKSize videoSize)
+        => CreateMeasuredViewport(playerSize, PreviewViewportMode.YouTubeFullscreen, GetAspectRatio(videoSize));
+
+    private static PlayerViewport CreateMeasuredViewport(
+        SKSize playerSize,
+        PreviewViewportMode mode,
+        float? videoAspectRatio)
+    {
+        ValidateSize(playerSize);
+        SKRect playerRect = IdentityRect(playerSize);
+        SKRect videoRect = videoAspectRatio is float aspect
+            ? AspectFit(playerRect, aspect)
+            : playerRect;
+        return new PlayerViewport(playerSize, videoRect, playerRect, mode);
+    }
+
+    private static float GetAspectRatio(SKSize videoSize)
+    {
+        ValidateSize(videoSize);
+        return videoSize.Width / videoSize.Height;
+    }
+
+    private static float ToSingleAspectRatio(double videoAspectRatio)
+    {
+        if (!double.IsFinite(videoAspectRatio) || videoAspectRatio <= 0 ||
+            videoAspectRatio > float.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(nameof(videoAspectRatio),
+                "Video aspect ratio must be finite and positive.");
+        }
+
+        return (float)videoAspectRatio;
+    }
+
+    private static SKRect AspectFit(SKRect playerRect, float videoAspectRatio)
+    {
+        if (!float.IsFinite(videoAspectRatio) || videoAspectRatio <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(videoAspectRatio),
+                "Video aspect ratio must be finite and positive.");
+        }
+
+        float playerAspectRatio = playerRect.Width / playerRect.Height;
+        if (playerAspectRatio > videoAspectRatio)
+        {
+            float height = playerRect.Height;
+            float width = height * videoAspectRatio;
+            float left = playerRect.Left + ((playerRect.Width - width) / 2);
+            return SKRect.Create(left, playerRect.Top, width, height);
+        }
+
+        float widthToFit = playerRect.Width;
+        float heightToFit = widthToFit / videoAspectRatio;
+        float top = playerRect.Top + ((playerRect.Height - heightToFit) / 2);
+        return SKRect.Create(playerRect.Left, top, widthToFit, heightToFit);
+    }
 
     private static SKRect IdentityRect(SKSize size) => SKRect.Create(size.Width, size.Height);
 

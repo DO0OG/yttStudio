@@ -26,4 +26,19 @@ public sealed class InlineEditorPlacementTests
         Assert.Equal(100, result.Width);
         Assert.Equal(80, result.Height);
     }
+
+    [Fact]
+    public void ClampUsesTheLetterboxedContentRectForScreenPlacement()
+    {
+        Rect subtitleSpace = new(100, 50, 1000, 800);
+        Rect content = PreviewCanvasGeometry.GetContentRect(new Size(1600, 900), subtitleSpace);
+        Rect requested = new(1250, 787.5, 180, 150);
+
+        Rect result = InlineEditorPlacement.Clamp(requested, content);
+
+        Assert.Equal(1182.5, result.Left, 10);
+        Assert.Equal(750, result.Top, 10);
+        Assert.Equal(180, result.Width, 10);
+        Assert.Equal(150, result.Height, 10);
+    }
 }

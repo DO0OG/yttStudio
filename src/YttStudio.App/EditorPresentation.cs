@@ -8,6 +8,115 @@ using YttStudio.Render;
 
 namespace YttStudio.App;
 
+/// <summary>자막 공간과 화면 좌표 사이의 순수 변환을 제공한다.</summary>
+public static class PreviewCanvasGeometry
+{
+    /// <summary>기존 편집기와 호환되는 기본 자막 공간이다.</summary>
+    public static Rect DefaultSubtitleSpace =>
+        new(0, 0, YttConstants.ReferenceWidth, YttConstants.ReferenceHeight);
+
+    /// <summary>
+    /// 컨트롤 안에 자막 공간 전체를 비율을 유지해 배치한다. 자막 공간의 오프셋은
+    /// 원본 좌표에 남겨 두고, 반환된 사각형은 화면 좌표다.
+    /// </summary>
+    public static Rect GetContentRect(Size controlSize, Rect subtitleSpace)
+    {
+        Rect space = NormalizeSubtitleSpace(subtitleSpace);
+        double width = Math.Max(0, Finite(controlSize.Width));
+        double height = Math.Max(0, Finite(controlSize.Height));
+        if (space.Width <= 0 || space.Height <= 0 || width <= 0 || height <= 0)
+        {
+            return new Rect(0, 0, width, height);
+        }
+
+        double scale = Math.Min(width / space.Width, height / space.Height);
+        if (!double.IsFinite(scale) || scale < 0)
+        {
+            scale = 0;
+        }
+
+        double contentWidth = space.Width * scale;
+        double contentHeight = space.Height * scale;
+        return new Rect((width - contentWidth) / 2, (height - contentHeight) / 2,
+            contentWidth, contentHeight);
+    }
+
+    /// <summary>자막 공간의 절대 픽셀 점을 화면 점으로 바꾼다.</summary>
+    public static Point ToScreen(Point subtitlePoint, Rect contentRect, Rect subtitleSpace)
+    {
+        Rect space = NormalizeSubtitleSpace(subtitleSpace);
+        double contentWidth = Math.Max(0, Finite(contentRect.Width));
+        double contentHeight = Math.Max(0, Finite(contentRect.Height));
+        return new Point(
+            Finite(contentRect.X) + ((Finite(subtitlePoint.X) - space.X) / space.Width * contentWidth),
+            Finite(contentRect.Y) + ((Finite(subtitlePoint.Y) - space.Y) / space.Height * contentHeight));
+    }
+
+    /// <summary>화면 점을 자막 공간의 절대 픽셀 점으로 바꾼다.</summary>
+    public static Point ToSubtitle(Point screenPoint, Rect contentRect, Rect subtitleSpace)
+    {
+        Rect space = NormalizeSubtitleSpace(subtitleSpace);
+        double contentWidth = Math.Max(0, Finite(contentRect.Width));
+        double contentHeight = Math.Max(0, Finite(contentRect.Height));
+        if (contentWidth <= 0 || contentHeight <= 0)
+        {
+            return new Point(space.X, space.Y);
+        }
+
+        return new Point(
+            space.X + ((Finite(screenPoint.X) - Finite(contentRect.X)) / contentWidth * space.Width),
+            space.Y + ((Finite(screenPoint.Y) - Finite(contentRect.Y)) / contentHeight * space.Height));
+    }
+
+    /// <summary>자막 공간의 절대 픽셀 사각형을 화면 사각형으로 바꾼다.</summary>
+    public static Rect ToScreen(CanvasRect subtitleBounds, Rect contentRect, Rect subtitleSpace)
+    {
+        Point topLeft = ToScreen(new Point(subtitleBounds.Left, subtitleBounds.Top),
+            contentRect, subtitleSpace);
+        Point bottomRight = ToScreen(new Point(subtitleBounds.Right, subtitleBounds.Bottom),
+            contentRect, subtitleSpace);
+        return new Rect(topLeft, bottomRight);
+    }
+
+    /// <summary>자막 공간의 이동량을 화면 이동량으로 바꾼다.</summary>
+    public static Vector ToScreenDelta(double x, double y, Rect contentRect, Rect subtitleSpace)
+    {
+        Rect space = NormalizeSubtitleSpace(subtitleSpace);
+        return new Vector(
+            Finite(x) / space.Width * Math.Max(0, Finite(contentRect.Width)),
+            Finite(y) / space.Height * Math.Max(0, Finite(contentRect.Height)));
+    }
+
+    /// <summary>자막 공간의 가이드 좌표를 화면 좌표로 바꾼다.</summary>
+    public static double ToScreenCoordinate(double position, bool vertical,
+        Rect contentRect, Rect subtitleSpace)
+    {
+        Rect space = NormalizeSubtitleSpace(subtitleSpace);
+        double origin = vertical ? space.X : space.Y;
+        double extent = vertical ? space.Width : space.Height;
+        double contentOrigin = vertical ? contentRect.X : contentRect.Y;
+        double contentExtent = vertical ? contentRect.Width : contentRect.Height;
+        return Finite(contentOrigin) + ((Finite(position) - origin) / extent *
+            Math.Max(0, Finite(contentExtent)));
+    }
+
+    /// <summary>잘못된 자막 공간은 기존 1280×720 공간으로 되돌린다.</summary>
+    public static Rect NormalizeSubtitleSpace(Rect subtitleSpace)
+    {
+        if (!double.IsFinite(subtitleSpace.X) || !double.IsFinite(subtitleSpace.Y) ||
+            !double.IsFinite(subtitleSpace.Width) || !double.IsFinite(subtitleSpace.Height) ||
+            subtitleSpace.Width <= 0 || subtitleSpace.Height <= 0)
+        {
+            return DefaultSubtitleSpace;
+        }
+
+        return subtitleSpace;
+    }
+
+    private static double Finite(double value, double fallback = 0)
+        => double.IsFinite(value) ? value : fallback;
+}
+
 public sealed record CanvasCueItem(
     Guid Id,
     CanvasRect Bounds,
@@ -244,25 +353,24 @@ public static class InlineEditorPresentationMapper
     public static InlineEditorPresentation Scale(
         InlineEditorStyle style,
         CanvasRect referenceBounds,
-        Rect contentRect)
+        Rect contentRect,
+        Rect? subtitleSpace = null)
     {
         ArgumentNullException.ThrowIfNull(style);
 
+        Rect space = PreviewCanvasGeometry.NormalizeSubtitleSpace(
+            subtitleSpace ?? PreviewCanvasGeometry.DefaultSubtitleSpace);
         double contentWidth = Math.Max(0, Finite(contentRect.Width));
         double contentHeight = Math.Max(0, Finite(contentRect.Height));
-        double scaleX = contentWidth / YttConstants.ReferenceWidth;
-        double scaleY = contentHeight / YttConstants.ReferenceHeight;
+        double scaleX = contentWidth / space.Width;
+        double scaleY = contentHeight / space.Height;
         double scale = Math.Min(scaleX, scaleY);
         if (!double.IsFinite(scale) || scale < 0)
         {
             scale = 0;
         }
 
-        Rect bounds = new(
-            Finite(contentRect.X) + (Finite(referenceBounds.X) / YttConstants.ReferenceWidth * contentWidth),
-            Finite(contentRect.Y) + (Finite(referenceBounds.Y) / YttConstants.ReferenceHeight * contentHeight),
-            Math.Max(0, Finite(referenceBounds.Width) / YttConstants.ReferenceWidth * contentWidth),
-            Math.Max(0, Finite(referenceBounds.Height) / YttConstants.ReferenceHeight * contentHeight));
+        Rect bounds = PreviewCanvasGeometry.ToScreen(referenceBounds, contentRect, space);
         Thickness padding = new(
             style.ReferencePadding.Left * scale,
             style.ReferencePadding.Top * scale,

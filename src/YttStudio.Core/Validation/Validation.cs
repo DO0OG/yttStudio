@@ -49,6 +49,7 @@ public sealed record ValidationMetrics
 {
     public bool? MobileEffectRisk { get; init; }
     public bool? IsOutsideSafeArea { get; init; }
+    public string? ViewportModeDisplayName { get; init; }
     public bool? HasDarkText { get; init; }
     public bool? BoxWidthExceeded { get; init; }
     public bool? MultipleShadows { get; init; }
@@ -65,6 +66,7 @@ public sealed record ValidationMetrics
     {
         MobileEffectRisk = specific?.MobileEffectRisk ?? MobileEffectRisk,
         IsOutsideSafeArea = specific?.IsOutsideSafeArea ?? IsOutsideSafeArea,
+        ViewportModeDisplayName = specific?.ViewportModeDisplayName ?? ViewportModeDisplayName,
         HasDarkText = specific?.HasDarkText ?? HasDarkText,
         BoxWidthExceeded = specific?.BoxWidthExceeded ?? BoxWidthExceeded,
         MultipleShadows = specific?.MultipleShadows ?? MultipleShadows,
@@ -191,7 +193,11 @@ public class DocumentValidator
 
             if (metrics.IsOutsideSafeArea == true)
             {
-                issues.Add(new(IssueSeverity.Warning, ValidationCodes.W103, "세이프 에어리어 밖에 있어 극장 모드에서 화면 밖으로 밀릴 수 있습니다.", cue.Id, false));
+                string viewportModeDisplayName = string.IsNullOrWhiteSpace(metrics.ViewportModeDisplayName)
+                    ? "극장 모드"
+                    : metrics.ViewportModeDisplayName;
+                issues.Add(new(IssueSeverity.Warning, ValidationCodes.W103,
+                    $"세이프 에어리어 밖에 있어 {viewportModeDisplayName}에서 화면 밖으로 밀릴 수 있습니다.", cue.Id, false));
             }
 
             if (metrics.HasDarkText ?? dark)

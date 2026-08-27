@@ -13,6 +13,12 @@ namespace YttStudio.App;
 public sealed class PreviewCanvas : Control, ICustomHitTest
 {
     private const double AnchorHitRadius = 8.0;
+    private const double MeasuredBottomSafeAreaInsetRatio = 0.02;
+
+    /// <summary>자막 경계가 놓인 원본 픽셀 좌표 공간이다.</summary>
+    public static readonly StyledProperty<Rect> SubtitleSpaceProperty =
+        AvaloniaProperty.Register<PreviewCanvas, Rect>(nameof(SubtitleSpace),
+            PreviewCanvasGeometry.DefaultSubtitleSpace);
 
     /// <summary>이 거리를 넘게 끌어야 조절점 누름이 크기 조절로 바뀐다.</summary>
     private const double DragThresholdPixels = 4.0;
@@ -46,6 +52,38 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
         DataContextChanged += (_, _) => ObserveViewModel();
     }
 
+    /// <summary>
+    /// 렌더러의 자막 공간이다. 기본값은 기존 1280×720 캔버스와 같다. 경계와 앵커는
+    /// 이 사각형과 같은 절대 좌표 공간에 있어야 하며, 오프셋도 보존된다.
+    /// </summary>
+    public Rect SubtitleSpace
+    {
+        get => GetValue(SubtitleSpaceProperty);
+        set => SetValue(SubtitleSpaceProperty, value);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == BoundsProperty)
+        {
+            NotifyPreviewPlayerSize();
+            return;
+        }
+
+        if (change.Property != SubtitleSpaceProperty)
+        {
+            return;
+        }
+
+        InvalidateVisual();
+        NotifyPreviewPlayerSize();
+        if (DataContext is MainWindowViewModel viewModel && viewModel.IsInlineEditing)
+        {
+            viewModel.RefreshInlineEditorLayout(GetContentRect(), GetViewport());
+        }
+    }
+
     private void ObserveViewModel()
     {
         if (observedViewModel is not null)
@@ -60,6 +98,18 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
         }
 
         InvalidateVisual();
+        NotifyPreviewPlayerSize();
+    }
+
+    private void NotifyPreviewPlayerSize()
+    {
+        if (DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        Rect content = GetContentRect();
+        viewModel.UpdatePreviewPlayerSize(content.Width, content.Height);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -87,10 +137,10 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
 
         Rect content = GetContentRect();
         context.DrawRectangle(null, SafeAreaPen, new Rect(
-            content.X + (content.Width * 0.05),
-            content.Y + (content.Height * 0.05),
-            content.Width * 0.9,
-            content.Height * 0.9));
+            content.X,
+            content.Y,
+            content.Width,
+            content.Height * (1 - MeasuredBottomSafeAreaInsetRatio)));
 
         foreach (CanvasCueItem item in viewModel.CanvasItems.Where(item => item.Selected))
         {
@@ -111,12 +161,14 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
             {
                 if (guide.Vertical)
                 {
-                    double x = content.X + (guide.Position / YttConstants.ReferenceWidth * content.Width);
+                    double x = PreviewCanvasGeometry.ToScreenCoordinate(
+                        guide.Position, true, content, SubtitleSpace);
                     context.DrawLine(SnapPen, new Point(x, content.Top), new Point(x, content.Bottom));
                 }
                 else
                 {
-                    double y = content.Y + (guide.Position / YttConstants.ReferenceHeight * content.Height);
+                    double y = PreviewCanvasGeometry.ToScreenCoordinate(
+                        guide.Position, false, content, SubtitleSpace);
                     context.DrawLine(SnapPen, new Point(content.Left, y), new Point(content.Right, y));
                 }
             }
@@ -264,8 +316,9 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
         {
             Rect content = GetContentRect();
             Vector delta = current - pointerStart;
-            double deltaX = delta.X / content.Width * YttConstants.ReferenceWidth;
-            double deltaY = delta.Y / content.Height * YttConstants.ReferenceHeight;
+            Rect subtitleSpace = PreviewCanvasGeometry.NormalizeSubtitleSpace(SubtitleSpace);
+            double deltaX = delta.X / content.Width * subtitleSpace.Width;
+            double deltaY = delta.Y / content.Height * subtitleSpace.Height;
             shiftPressed = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
             altPressed = e.KeyModifiers.HasFlag(KeyModifiers.Alt);
             if (shiftPressed)
@@ -443,33 +496,20 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
     private Rect GetContentRect()
         => GetContentRect(Bounds.Size);
 
-    private static Rect GetContentRect(Size size)
-    {
-        double scale = Math.Min(size.Width / YttConstants.ReferenceWidth,
-            size.Height / YttConstants.ReferenceHeight);
-        double width = YttConstants.ReferenceWidth * scale;
-        double height = YttConstants.ReferenceHeight * scale;
-        return new Rect((size.Width - width) / 2, (size.Height - height) / 2, width, height);
-    }
+    private Rect GetContentRect(Size size)
+        => PreviewCanvasGeometry.GetContentRect(size, SubtitleSpace);
 
     private Rect GetViewport()
-        => new(0, 0, Math.Max(0, Bounds.Width), Math.Max(0, Bounds.Height));
+        => GetContentRect();
 
-    private static Point ToReference(Point point, Rect content)
-        => new(
-            (point.X - content.X) / content.Width * YttConstants.ReferenceWidth,
-            (point.Y - content.Y) / content.Height * YttConstants.ReferenceHeight);
+    private Point ToReference(Point point, Rect content)
+        => PreviewCanvasGeometry.ToSubtitle(point, content, SubtitleSpace);
 
-    private static Rect ToScreen(CanvasRect rectangle, Rect content)
-        => new(
-            content.X + (rectangle.X / YttConstants.ReferenceWidth * content.Width),
-            content.Y + (rectangle.Y / YttConstants.ReferenceHeight * content.Height),
-            rectangle.Width / YttConstants.ReferenceWidth * content.Width,
-            rectangle.Height / YttConstants.ReferenceHeight * content.Height);
+    private Rect ToScreen(CanvasRect rectangle, Rect content)
+        => PreviewCanvasGeometry.ToScreen(rectangle, content, SubtitleSpace);
 
-    private static Vector ToScreenDelta(double x, double y, Rect content)
-        => new(x / YttConstants.ReferenceWidth * content.Width,
-            y / YttConstants.ReferenceHeight * content.Height);
+    private Vector ToScreenDelta(double x, double y, Rect content)
+        => PreviewCanvasGeometry.ToScreenDelta(x, y, content, SubtitleSpace);
 
     private Rect ClampInlinePlacement(Rect requested)
         => InlineEditorPlacement.Clamp(
@@ -529,7 +569,7 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
         }
     }
 
-    private static bool TryHitHandle(
+    private bool TryHitHandle(
         MainWindowViewModel viewModel,
         Point screen,
         Rect content,
