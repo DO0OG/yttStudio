@@ -119,4 +119,27 @@ public sealed class ViewportTests
         Assert.InRange(Math.Abs(actual.Width - width), 0, 0.01f);
         Assert.InRange(Math.Abs(actual.Height - height), 0, 0.01f);
     }
+
+    [Fact]
+    public void ScaleToWidth_KeepsGeometryProportions()
+    {
+        PlayerViewport viewport = PlayerViewport.YouTubeDefault();
+        float originalAspect = viewport.PlayerSize.Width / viewport.PlayerSize.Height;
+        float subtitleShare = viewport.SubtitleSpace.Height / viewport.PlayerSize.Height;
+
+        PlayerViewport scaled = viewport.ScaleToWidth(1280);
+
+        Assert.Equal(1280, scaled.PlayerSize.Width, 3);
+        Assert.Equal(originalAspect, scaled.PlayerSize.Width / scaled.PlayerSize.Height, 3);
+        Assert.Equal(subtitleShare, scaled.SubtitleSpace.Height / scaled.PlayerSize.Height, 3);
+        Assert.Equal(viewport.Mode, scaled.Mode);
+    }
+
+    [Fact]
+    public void ScaleToWidth_RejectsNonPositiveWidth()
+    {
+        PlayerViewport viewport = PlayerViewport.YouTubeTheater();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => viewport.ScaleToWidth(0));
+    }
 }

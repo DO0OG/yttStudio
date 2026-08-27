@@ -142,6 +142,33 @@ public sealed record PlayerViewport
     public static PlayerViewport YouTubeFullscreen(SKSize playerSize, SKSize videoSize)
         => CreateMeasuredViewport(playerSize, PreviewViewportMode.YouTubeFullscreen, GetAspectRatio(videoSize));
 
+    /// <summary>
+    /// 기하 비율을 유지한 채 지정한 너비에 맞춰 뷰포트 전체를 확대하거나 축소한다.
+    /// </summary>
+    /// <remarks>
+    /// 데스크톱 모드는 서로 닮음이라 크기를 바꿔도 배치가 달라지지 않는다. 프리뷰를
+    /// 일정한 해상도로 그려 선명도를 유지하려고 쓴다. 자막 공간과 영상 영역이 함께
+    /// 스케일되므로 좌표 정합도 유지된다.
+    /// </remarks>
+    public PlayerViewport ScaleToWidth(float targetWidth)
+    {
+        if (!float.IsFinite(targetWidth) || targetWidth <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(targetWidth),
+                "Target width must be finite and positive.");
+        }
+
+        float factor = targetWidth / PlayerSize.Width;
+        return new PlayerViewport(
+            new SKSize(PlayerSize.Width * factor, PlayerSize.Height * factor),
+            Scale(VideoContentRect, factor),
+            Scale(SubtitleSpace, factor),
+            Mode);
+    }
+
+    private static SKRect Scale(SKRect rect, float factor)
+        => new(rect.Left * factor, rect.Top * factor, rect.Right * factor, rect.Bottom * factor);
+
     private static PlayerViewport CreateMeasuredViewport(
         SKSize playerSize,
         PreviewViewportMode mode,

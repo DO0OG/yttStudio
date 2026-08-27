@@ -23,7 +23,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
     private const string PlayIcon = "▶";
     private const string PauseIcon = "⏸";
-    private const double MeasuredBottomSafeAreaInsetPercent = 2.0;
+    // 편집 가이드용 여백이다. 유튜브를 측정해 얻은 값이 아니다. 실측에서 확인된 것은
+    // 자막 컨테이너가 플레이어 영역과 같다는 사실뿐이고 안전 여백 자체는 재본 적이 없다.
+    // 측정한 자막 창의 하단 2% 를 안전선으로 쓰면 최대 위치의 큐 바닥이 그 선에 정확히
+    // 걸려 W103 의 세로 판정이 영영 발동하지 않는다. 경고로 쓸 수 있는 여백을 남긴다.
+    private const double EditorSafeAreaInsetPercent = 5.0;
     private static readonly SKSize ReferencePlayerSize = new(
         YttConstants.ReferenceWidth, YttConstants.ReferenceHeight);
 
@@ -1382,16 +1386,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         validationHasRun = true;
         SKRect subtitleSpace = previewViewport.SubtitleSpace;
-        double safeBottom = subtitleSpace.Bottom -
-            (subtitleSpace.Height * MeasuredBottomSafeAreaInsetPercent / 100.0);
+        double horizontalInset = subtitleSpace.Width * EditorSafeAreaInsetPercent / 100.0;
+        double verticalInset = subtitleSpace.Height * EditorSafeAreaInsetPercent / 100.0;
         Dictionary<Guid, ValidationMetrics> metrics = [];
         foreach (Cue cue in project.Cues)
         {
             CanvasCueItem? item = CanvasItems.FirstOrDefault(candidate => candidate.Id == cue.Id);
-            bool outside = item is not null && (item.Bounds.Left < subtitleSpace.Left ||
-                item.Bounds.Top < subtitleSpace.Top ||
-                item.Bounds.Right > subtitleSpace.Right ||
-                item.Bounds.Bottom > safeBottom);
+            bool outside = item is not null && (
+                item.Bounds.Left < subtitleSpace.Left + horizontalInset ||
+                item.Bounds.Top < subtitleSpace.Top + verticalInset ||
+                item.Bounds.Right > subtitleSpace.Right - horizontalInset ||
+                item.Bounds.Bottom > subtitleSpace.Bottom - verticalInset);
             metrics[cue.Id] = new ValidationMetrics
             {
                 MobileEffectRisk = cue.Effects.Count >= 3,
@@ -3489,7 +3494,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private PlayerViewport CreatePlayerViewport(SKSize playerSize)
     {
         SKSize? videoSize = GetVideoSize();
-        return previewViewportMode switch
+        PlayerViewport viewport = previewViewportMode switch
         {
             PreviewViewportMode.YouTubeDefault => videoSize is SKSize defaultVideoSize
                 ? PlayerViewport.YouTubeDefault(defaultVideoSize)
@@ -3502,6 +3507,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 : PlayerViewport.YouTubeFullscreen(playerSize),
             _ => PlayerViewport.VideoFrame(playerSize),
         };
+
+        // 일반과 극장 팩터리가 주는 크기는 측정 당시의 창 크기라 기준 너비보다 작다.
+        // 그대로 그리면 프리뷰 비트맵 해상도가 모드에 따라 낮아져 흐릿해진다. 두 모드는
+        // 서로 닮음이라 배치가 달라지지 않으므로 기준 너비로 맞춰 선명도를 일정하게 둔다.
+        // 전체화면과 VideoFrame 은 호출자가 실제 크기를 정하므로 건드리지 않는다.
+        return viewport.Mode is PreviewViewportMode.YouTubeDefault or PreviewViewportMode.YouTubeTheater
+            ? viewport.ScaleToWidth(ReferencePlayerSize.Width)
+            : viewport;
     }
 
     private SKSize? GetVideoSize()

@@ -235,14 +235,14 @@ public sealed class MainWindowViewModelTests
 
                 Assert.Equal(PreviewViewportMode.YouTubeTheater, viewModel.SelectedViewportMode);
                 Assert.True(viewModel.IsYouTubeTheaterViewport);
-                Assert.Equal(1162, viewModel.PreviewSubtitleSpace.Width, precision: 2);
+                Assert.Equal(1280, viewModel.PreviewSubtitleSpace.Width, precision: 2);
             }
 
             using MainWindowViewModel restored = CreateViewModel(new PreferencesStore(path));
 
             Assert.Equal(PreviewViewportMode.YouTubeTheater, restored.SelectedViewportMode);
             Assert.Equal(PreviewViewportMode.YouTubeTheater, restored.PreviewViewport.Mode);
-            Assert.Equal(1162, restored.PreviewSubtitleSpace.Width, precision: 2);
+            Assert.Equal(1280, restored.PreviewSubtitleSpace.Width, precision: 2);
         }
         finally
         {
@@ -278,14 +278,16 @@ public sealed class MainWindowViewModelTests
         using MainWindowViewModel viewModel = CreateViewModel();
         Guid cueId = viewModel.AddCueAtCanvasPoint(640, 360)!.Value;
         viewModel.BeginInlineEdit(cueId, 0, 0, 180);
-        viewModel.InlineText = "하단 경고";
+        // 위치는 정수 퍼센트로 양자화되어 최대 위치의 한 줄 상자는 안전선에 정확히 걸린다.
+        // 여러 줄로 상자를 키워 경계가 아니라 확실히 바깥에 놓이게 한다.
+        viewModel.InlineText = "하단 경고\n두 번째 줄\n세 번째 줄";
         viewModel.CommitInlineEdit();
         viewModel.PositionMilliseconds = 1;
         viewModel.SelectYouTubeTheaterViewportCommand.Execute(null);
         Assert.NotEmpty(viewModel.CanvasItems);
         viewModel.CommitCanvasMove(0, viewModel.PreviewSubtitleSpace.Height, altPressed: true);
         CanvasCueItem moved = Assert.Single(viewModel.CanvasItems);
-        Assert.True(moved.Bounds.Bottom > viewModel.PreviewSubtitleSpace.Bottom * 0.98,
+        Assert.True(moved.Bounds.Bottom > viewModel.PreviewSubtitleSpace.Bottom * 0.95,
             $"bounds={moved.Bounds}, space={viewModel.PreviewSubtitleSpace}");
         viewModel.ValidateCommand.Execute(null);
         Assert.Contains(viewModel.ValidationIssues,
@@ -293,8 +295,12 @@ public sealed class MainWindowViewModelTests
 
         viewModel.SelectYouTubeDefaultViewportCommand.Execute(null);
 
+        // 데스크톱 모드는 서로 닮음이라 자막 공간의 비율이 같다. 모드를 바꾼다고 세이프
+        // 에어리어 판정이 뒤집히지는 않으며, 바뀌는 것은 경고가 가리키는 모드 이름이다.
+        Assert.Contains(viewModel.ValidationIssues,
+            issue => issue.Code == ValidationCodes.W103 && !issue.Message.Contains("극장"));
         Assert.DoesNotContain(viewModel.ValidationIssues,
-            issue => issue.Code == ValidationCodes.W103);
+            issue => issue.Code == ValidationCodes.W103 && issue.Message.Contains("극장"));
     }
 
     private static MainWindowViewModel CreateViewModel(PreferencesStore? preferencesStore = null)

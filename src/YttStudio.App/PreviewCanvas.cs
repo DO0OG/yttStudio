@@ -13,7 +13,8 @@ namespace YttStudio.App;
 public sealed class PreviewCanvas : Control, ICustomHitTest
 {
     private const double AnchorHitRadius = 8.0;
-    private const double MeasuredBottomSafeAreaInsetRatio = 0.02;
+    // 편집 가이드용 여백이다. 유튜브에서 측정한 값이 아니다. 판정과 같은 값을 쓴다.
+    private const double EditorSafeAreaInsetRatio = 0.05;
 
     /// <summary>자막 경계가 놓인 원본 픽셀 좌표 공간이다.</summary>
     public static readonly StyledProperty<Rect> SubtitleSpaceProperty =
@@ -137,10 +138,10 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
 
         Rect content = GetContentRect();
         context.DrawRectangle(null, SafeAreaPen, new Rect(
-            content.X,
-            content.Y,
-            content.Width,
-            content.Height * (1 - MeasuredBottomSafeAreaInsetRatio)));
+            content.X + (content.Width * EditorSafeAreaInsetRatio),
+            content.Y + (content.Height * EditorSafeAreaInsetRatio),
+            content.Width * (1 - (EditorSafeAreaInsetRatio * 2)),
+            content.Height * (1 - (EditorSafeAreaInsetRatio * 2))));
 
         foreach (CanvasCueItem item in viewModel.CanvasItems.Where(item => item.Selected))
         {

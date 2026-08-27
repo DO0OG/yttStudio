@@ -7,7 +7,9 @@ namespace YttStudio.Render;
 /// <summary>헤드리스 Skia 캔버스에서 YTT 자막 큐를 측정하고 렌더한다.</summary>
 public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
 {
-    private const float MeasuredBottomSafeAreaInsetRatio = 0.02f;
+    // 편집 가이드용 여백이다. 유튜브에서 측정한 값이 아니다. 실측으로 확인된 것은
+    // 자막 컨테이너가 플레이어 영역과 같다는 사실뿐이고 안전 여백은 재본 적이 없다.
+    private const float EditorSafeAreaInsetRatio = 0.05f;
     private readonly IFontResolver fontResolver;
     private readonly FontFallbackHelper fontFallback;
     private readonly SubtitleLayoutEngine layoutEngine;
@@ -70,8 +72,11 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
                 IsAntialias = true,
             };
             SKRect space = viewport.SubtitleSpace;
-            canvas.DrawRect(SKRect.Create(space.Left, space.Top, space.Width,
-                space.Height * (1 - MeasuredBottomSafeAreaInsetRatio)), safeAreaPaint);
+            canvas.DrawRect(SKRect.Create(
+                space.Left + (space.Width * EditorSafeAreaInsetRatio),
+                space.Top + (space.Height * EditorSafeAreaInsetRatio),
+                space.Width * (1 - (EditorSafeAreaInsetRatio * 2)),
+                space.Height * (1 - (EditorSafeAreaInsetRatio * 2))), safeAreaPaint);
         }
 
         if (options.ShowAnchorPoints)
