@@ -34,7 +34,38 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(options);
 
+        DrawLayouts(canvas, viewport, GetLayouts(viewport, project, time, options), time, options);
+    }
+
+    /// <summary>한 번 계산한 레이아웃으로 렌더와 측정을 함께 처리한다.</summary>
+    /// <remarks>
+    /// 프리뷰는 프레임마다 그리고 또 측정한다. <see cref="Render"/> 와 <see cref="Measure"/>
+    /// 를 따로 부르면 활성 큐 전체의 레이아웃을 프레임당 두 번 계산하게 된다. 재생 중에는
+    /// 그 비용이 그대로 두 배가 되므로 한 번만 계산해 양쪽에 쓴다.
+    /// </remarks>
+    public IReadOnlyList<CueHitBox> RenderAndMeasure(SKCanvas canvas, PlayerViewport viewport,
+        SubtitleProject project, TimeSpan time, RenderOptions options)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentNullException.ThrowIfNull(canvas);
+        ArgumentNullException.ThrowIfNull(project);
+        ArgumentNullException.ThrowIfNull(options);
+
         IReadOnlyList<CueLayout> layouts = GetLayouts(viewport, project, time, options);
+        DrawLayouts(canvas, viewport, layouts, time, options);
+        CueHitBox[] hitBoxes = new CueHitBox[layouts.Count];
+        for (int index = 0; index < layouts.Count; index++)
+        {
+            CueLayout layout = layouts[index];
+            hitBoxes[index] = new CueHitBox(layout.Cue, layout.Bounds, layout.AnchorScreenPoint);
+        }
+
+        return hitBoxes;
+    }
+
+    private void DrawLayouts(SKCanvas canvas, PlayerViewport viewport, IReadOnlyList<CueLayout> layouts,
+        TimeSpan time, RenderOptions options)
+    {
         foreach (CueLayout layout in layouts)
         {
             CueEffectState effect = CueEffectEvaluator.Evaluate(layout.Cue, time, options.FrameIndex,

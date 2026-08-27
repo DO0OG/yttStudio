@@ -3605,25 +3605,47 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         PlayerViewport viewport = CreatePlayerViewport(GetPreviewPlayerSize());
         SetPreviewViewport(viewport);
-        using SKBitmap bitmap = new(new SKImageInfo(
-            ToBitmapDimension(viewport.PlayerSize.Width),
-            ToBitmapDimension(viewport.PlayerSize.Height),
-            SKColorType.Bgra8888,
-            SKAlphaType.Premul));
-        using SKCanvas canvas = new(bitmap);
-        canvas.Clear(SKColors.Transparent);
+        int width = ToBitmapDimension(viewport.PlayerSize.Width);
+        int height = ToBitmapDimension(viewport.PlayerSize.Height);
+
+        // 이 경로는 재생 중 프레임마다 돈다. 매번 비트맵을 새로 만들고 PNG 로 압축했다가
+        // 곧바로 되읽으면 프레임당 수 MB 할당과 무손실 압축 한 번이 통째로 낭비된다.
+        // 영상 프레임과 같은 방식으로 비트맵을 재사용하고 Skia 가 그 화소 버퍼에 직접
+        // 그리게 한다. 같은 인스턴스를 고쳐 쓰므로 변경 알림은 아래에서 직접 올린다.
+        WriteableBitmap target;
+        if (SubtitleImage is WriteableBitmap existing &&
+            existing.PixelSize.Width == width && existing.PixelSize.Height == height)
+        {
+            target = existing;
+        }
+        else
+        {
+            target = new WriteableBitmap(new PixelSize(width, height), new Vector(96, 96),
+                PixelFormat.Bgra8888, AlphaFormat.Premul);
+            SubtitleImage = target;
+        }
+
         TimeSpan time = TimeSpan.FromMilliseconds(PositionMilliseconds);
         double framesPerSecond = project.Video?.NominalFps is > 0 ? project.Video.NominalFps : 30;
         long frameIndex = checked((long)Math.Floor(time.TotalSeconds * framesPerSecond));
-        renderer.Render(canvas, viewport, project, time, new SubtitleRenderOptions
+        IReadOnlyList<CueHitBox> hitBoxes;
+        using (ILockedFramebuffer framebuffer = target.Lock())
         {
-            FrameIndex = frameIndex,
-            ShowSafeArea = showSafeArea,
-            ShowAnchorPoints = showAnchors,
-            EditingCueId = isInlineEditing ? inlineEditCueId : null,
-        });
-        SubtitleImage = EncodeBitmap(bitmap);
-        CanvasItems = renderer.Measure(viewport, project, time)
+            SKImageInfo info = new(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
+            using SKSurface surface = SKSurface.Create(info, framebuffer.Address, framebuffer.RowBytes);
+            SKCanvas canvas = surface.Canvas;
+            canvas.Clear(SKColors.Transparent);
+            hitBoxes = renderer.RenderAndMeasure(canvas, viewport, project, time, new SubtitleRenderOptions
+            {
+                FrameIndex = frameIndex,
+                ShowSafeArea = showSafeArea,
+                ShowAnchorPoints = showAnchors,
+                EditingCueId = isInlineEditing ? inlineEditCueId : null,
+            });
+        }
+
+        OnPropertyChanged(nameof(SubtitleImage));
+        CanvasItems = hitBoxes
             .Select(hit => new CanvasCueItem(
                 hit.Cue.Id,
                 new CanvasRect(hit.Bounds.Left, hit.Bounds.Top, hit.Bounds.Width, hit.Bounds.Height),
