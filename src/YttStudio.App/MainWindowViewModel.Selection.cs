@@ -189,9 +189,8 @@ public sealed partial class MainWindowViewModel
 
     private void RefreshCanvasSelection()
     {
-        SetCanvasItems(CanvasItems
-            .Select(item => item with { Selected = selectedCueIds.Contains(item.Id) })
-            .ToArray());
+        CanvasItems = CanvasItems.Select(item => item with { Selected = selectedCueIds.Contains(item.Id) }).ToArray();
+        OnPropertyChanged(nameof(CanvasItems));
     }
 
     private void NotifySelectionProperties()

@@ -286,31 +286,6 @@ public sealed partial class MainWindowViewModel
         Dispatcher.UIThread.Post(BlitLatestFrame, DispatcherPriority.Render);
     }
 
-    /// <summary>위치 변경에 따른 자막 프리뷰를 다음 UI 렌더 시점에 한 번 예약한다.</summary>
-    /// <remarks>
-    /// 타임라인 입력과 영상 프레임 알림은 한 UI 프레임 안에 여러 번 도착할 수 있다.
-    /// 예약 플래그를 Interlocked 로 잡아 마지막 위치만 렌더 큐에 남기고, 실제 프리뷰
-    /// 렌더는 Avalonia 렌더 우선순위에서 수행한다.
-    /// </remarks>
-    private void RequestSubtitlePreviewRender()
-    {
-        if (disposed || Interlocked.Exchange(ref subtitlePreviewPending, 1) != 0)
-        {
-            return;
-        }
-
-        Dispatcher.UIThread.Post(RenderQueuedSubtitlePreview, DispatcherPriority.Render);
-    }
-
-    private void RenderQueuedSubtitlePreview()
-    {
-        Interlocked.Exchange(ref subtitlePreviewPending, 0);
-        if (!disposed)
-        {
-            RenderSubtitlePreview();
-        }
-    }
-
     private unsafe void BlitLatestFrame()
     {
         Interlocked.Exchange(ref frameUpdatePending, 0);
@@ -351,9 +326,6 @@ public sealed partial class MainWindowViewModel
         updatingFromVideo = true;
         PositionMilliseconds = videoSource.Position.TotalMilliseconds;
         updatingFromVideo = false;
-        // PositionMilliseconds 가 같은 값이면 setter 가 일찍 반환하므로, 새 프레임의
-        // 정확한 시각과 frame index 를 입력 키에서 확인할 기회를 항상 예약한다.
-        RequestSubtitlePreviewRender();
         NotifyPlaybackFrameState();
     }
 

@@ -16,7 +16,6 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
     private readonly Dictionary<PaintKey, FormatResources> formatCache = [];
     private readonly Dictionary<BlobKey, SKTextBlob> blobCache = [];
     private readonly Dictionary<YtFont, FontResolution> fontResolutions = [];
-    private LayoutCacheEntry? layoutCache;
     private bool disposed;
 
     public SkiaSubtitleRenderer(IFontResolver fontResolver, Action<string>? log = null)
@@ -35,7 +34,7 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(options);
 
-        DrawLayouts(canvas, viewport, GetLayoutResult(viewport, project, time, options).Layouts, time, options);
+        DrawLayouts(canvas, viewport, GetLayouts(viewport, project, time, options), time, options);
     }
 
     /// <summary>한 번 계산한 레이아웃으로 렌더와 측정을 함께 처리한다.</summary>
@@ -52,9 +51,16 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(options);
 
-        LayoutResult result = GetLayoutResult(viewport, project, time, options);
-        DrawLayouts(canvas, viewport, result.Layouts, time, options);
-        return result.HitBoxes;
+        IReadOnlyList<CueLayout> layouts = GetLayouts(viewport, project, time, options);
+        DrawLayouts(canvas, viewport, layouts, time, options);
+        CueHitBox[] hitBoxes = new CueHitBox[layouts.Count];
+        for (int index = 0; index < layouts.Count; index++)
+        {
+            CueLayout layout = layouts[index];
+            hitBoxes[index] = new CueHitBox(layout.Cue, layout.Bounds, layout.AnchorScreenPoint);
+        }
+
+        return hitBoxes;
     }
 
     private void DrawLayouts(SKCanvas canvas, PlayerViewport viewport, IReadOnlyList<CueLayout> layouts,
@@ -138,7 +144,9 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
     public IReadOnlyList<CueHitBox> Measure(PlayerViewport viewport, SubtitleProject project, TimeSpan time)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        return GetLayoutResult(viewport, project, time, new RenderOptions()).HitBoxes;
+        return GetLayouts(viewport, project, time, new RenderOptions())
+            .Select(layout => new CueHitBox(layout.Cue, layout.Bounds, layout.AnchorScreenPoint))
+            .ToArray();
     }
 
     /// <summary>진단과 결정적 테스트를 위한 완전한 수치 레이아웃 데이터를 돌려준다.</summary>
@@ -147,7 +155,7 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         SubtitleProject project,
         TimeSpan time,
         RenderOptions? options = null)
-        => GetLayoutResult(viewport, project, time, options ?? new RenderOptions()).Layouts;
+        => GetLayouts(viewport, project, time, options ?? new RenderOptions());
 
     /// <summary>Returns the same resolved family used by Skia text layout.</summary>
     public FontResolution ResolveFont(YtFont requested)
@@ -177,7 +185,6 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
 
         formatCache.Clear();
         blobCache.Clear();
-        layoutCache = null;
         fontFallback.Dispose();
 
         if (fontResolver is IDisposable disposableResolver)
@@ -188,122 +195,15 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         disposed = true;
     }
 
-    private LayoutResult GetLayoutResult(
+    private IReadOnlyList<CueLayout> GetLayouts(
         PlayerViewport viewport,
         SubtitleProject project,
         TimeSpan time,
         RenderOptions options)
-    {
-        if (layoutCache?.Matches(viewport, project, time, options) == true)
-        {
-            return layoutCache.Result;
-        }
-
-        Cue[] activeCues = project.Cues.GetActiveAt(time)
+        => project.Cues.GetActiveAt(time)
             .OrderBy(cue => cue.ZOrder)
-            .ToArray();
-        CueLayout[] layouts = activeCues
             .Select(cue => layoutEngine.LayoutCue(viewport, project, cue, options))
             .ToArray();
-        LayoutResult result = new(layouts, CreateHitBoxes(layouts));
-        layoutCache = CanCache(options, activeCues)
-            ? CreateCacheEntry(viewport, project, time, options, result)
-            : null;
-        return result;
-    }
-
-    private static bool CanCache(RenderOptions options, IReadOnlyList<Cue> activeCues)
-        => options.DocumentRevision.HasValue && activeCues.All(IsTimeInvariantLayout);
-
-    private static bool IsTimeInvariantLayout(Cue cue)
-        => cue.Effects.Count == 0 && cue.Sections.All(section => section.KaraokeOffset is null);
-
-    private static CueHitBox[] CreateHitBoxes(IReadOnlyList<CueLayout> layouts)
-    {
-        CueHitBox[] hitBoxes = new CueHitBox[layouts.Count];
-        for (int index = 0; index < layouts.Count; index++)
-        {
-            CueLayout layout = layouts[index];
-            hitBoxes[index] = new CueHitBox(layout.Cue, layout.Bounds, layout.AnchorScreenPoint);
-        }
-
-        return hitBoxes;
-    }
-
-    private static LayoutCacheEntry CreateCacheEntry(
-        PlayerViewport viewport,
-        SubtitleProject project,
-        TimeSpan time,
-        RenderOptions options,
-        LayoutResult result)
-    {
-        (TimeSpan start, TimeSpan end) = GetActiveInterval(project, time);
-        // 활성 집합은 Start <= time && End > time 인 경계 사이에서만 같다. 개정 번호가
-        // 명시되고 현재 활성 큐에 시간 의존 가라오케·효과가 없을 때만 그 반열린 구간의
-        // 레이아웃과 불변 히트박스 배열을 재사용한다.
-        return new LayoutCacheEntry(project, options.DocumentRevision!.Value, viewport,
-            options.FontScaleBase, options.ApplyCoordinateTransform, start, end, result);
-    }
-
-    private static (TimeSpan Start, TimeSpan End) GetActiveInterval(SubtitleProject project, TimeSpan time)
-    {
-        TimeSpan start = TimeSpan.MinValue;
-        TimeSpan end = TimeSpan.MaxValue;
-        foreach (Cue cue in project.Cues)
-        {
-            UpdateBoundary(cue.Start, time, ref start, ref end);
-            UpdateBoundary(cue.End, time, ref start, ref end);
-        }
-
-        return (start, end);
-    }
-
-    private static void UpdateBoundary(TimeSpan boundary, TimeSpan time, ref TimeSpan start, ref TimeSpan end)
-    {
-        if (boundary <= time && boundary > start)
-        {
-            start = boundary;
-        }
-        else if (boundary > time && boundary < end)
-        {
-            end = boundary;
-        }
-    }
-
-    private sealed class LayoutResult
-    {
-        public LayoutResult(CueLayout[] layouts, CueHitBox[] hitBoxes)
-        {
-            Layouts = layouts;
-            HitBoxes = Array.AsReadOnly(hitBoxes);
-        }
-
-        public CueLayout[] Layouts { get; }
-        public IReadOnlyList<CueHitBox> HitBoxes { get; }
-    }
-
-    private sealed record LayoutCacheEntry(
-        SubtitleProject Project,
-        long Revision,
-        PlayerViewport Viewport,
-        double FontScaleBase,
-        bool ApplyCoordinateTransform,
-        TimeSpan Start,
-        TimeSpan End,
-        LayoutResult Result)
-    {
-        public bool Matches(
-            PlayerViewport viewport,
-            SubtitleProject project,
-            TimeSpan time,
-            RenderOptions options)
-            => ReferenceEquals(Project, project) &&
-                options.DocumentRevision == Revision &&
-                Viewport == viewport &&
-                FontScaleBase.Equals(options.FontScaleBase) &&
-                ApplyCoordinateTransform == options.ApplyCoordinateTransform &&
-                time >= Start && time < End;
-    }
 
     private void DrawBackground(SKCanvas canvas, CueLayout layout)
     {
