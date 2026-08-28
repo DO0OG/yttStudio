@@ -3,6 +3,7 @@ namespace YttStudio.Core.Editing;
 /// <summary>자막 프로젝트의 유일한 공개 변경 경계를 제공한다.</summary>
 public sealed partial class DocumentEditor
 {
+    private static long nextIdentity;
     private readonly SubtitleProject project;
     private readonly List<IUndoableCommand> undoStack = [];
     private readonly List<IUndoableCommand> redoStack = [];
@@ -10,11 +11,28 @@ public sealed partial class DocumentEditor
     private string? transactionLabel;
     private int undoFreeDepth;
     private readonly Dictionary<Guid, KaraokeTabCursor> karaokeTabCursors = [];
+    private long revision;
+    private readonly long identity = Interlocked.Increment(ref nextIdentity);
 
     public DocumentEditor(SubtitleProject project)
     {
         this.project = project ?? throw new ArgumentNullException(nameof(project));
     }
+
+    /// <summary>이 편집기 인스턴스를 식별하는 단조 증가 값이다.</summary>
+    /// <remarks>
+    /// 새 프로젝트를 열면 Revision 이 다시 시작하므로, 이전 프로젝트에 대해 예약된
+    /// 프리뷰가 새 프로젝트와 같은 입력으로 오인되지 않도록 인스턴스 identity 를 함께
+    /// 사용한다.
+    /// </remarks>
+    public long Identity => identity;
+
+    /// <summary>성공적으로 적용된 모델 변경의 현재 Revision이다.</summary>
+    /// <remarks>
+    /// 실행·취소·재실행 모두 모델을 바꾸는 성공 경로에서만 증가한다. 명령이 예외를
+    /// 던지면 호출 전 값이 유지되므로 프리뷰 입력 키가 유효한 상태를 가리킨다.
+    /// </remarks>
+    public long Revision => Interlocked.Read(ref revision);
 
     public bool CanUndo => undoStack.Count > 0;
     public bool CanRedo => redoStack.Count > 0;
@@ -393,6 +411,11 @@ public sealed partial class DocumentEditor
         {
             commands[index].Undo();
         }
+
+        if (commands.Count > 0)
+        {
+            Interlocked.Increment(ref revision);
+        }
     }
 
     /// <summary>변경이 실행 취소 기록을 만들지 않는 범위를 연다.</summary>
@@ -413,6 +436,7 @@ public sealed partial class DocumentEditor
         IUndoableCommand command = undoStack[^1];
         undoStack.RemoveAt(undoStack.Count - 1);
         command.Undo();
+        Interlocked.Increment(ref revision);
         redoStack.Add(command);
     }
 
@@ -427,12 +451,14 @@ public sealed partial class DocumentEditor
         IUndoableCommand command = redoStack[^1];
         redoStack.RemoveAt(redoStack.Count - 1);
         command.Execute();
+        Interlocked.Increment(ref revision);
         PushUndo(command, clearRedo: false);
     }
 
     private void Execute(IUndoableCommand command)
     {
         command.Execute();
+        Interlocked.Increment(ref revision);
         if (undoFreeDepth > 0)
         {
             return;

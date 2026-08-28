@@ -165,55 +165,104 @@ public sealed partial class MainWindowViewModel
     {
         if (project is null || disposed)
         {
-            SubtitleImage = null;
-            CanvasItems = [];
-            OnPropertyChanged(nameof(CanvasItems));
+            ClearSubtitlePreview();
             return;
         }
 
         PlayerViewport viewport = CreatePlayerViewport(GetPreviewPlayerSize());
         SetPreviewViewport(viewport);
+        (TimeSpan time, long frameIndex) = GetPreviewFrame(project);
+        SubtitleRenderOptions options = CreatePreviewRenderOptions(frameIndex);
+        PreviewRenderKey key = new(editor?.Identity ?? 0, editor?.Revision ?? 0, viewport, frameIndex, options);
+        if (lastPreviewRenderKey == key &&
+            lastPreviewSelection is not null && lastPreviewSelection.SetEquals(selectedCueIds))
+        {
+            return;
+        }
+
+        RenderSubtitlePreview(project, viewport, time, options);
+        lastPreviewRenderKey = key;
+        lastPreviewSelection = [.. selectedCueIds];
+        Interlocked.Increment(ref previewRenderCount);
+    }
+
+    private void ClearSubtitlePreview()
+    {
+        lastPreviewRenderKey = null;
+        lastPreviewSelection = null;
+        SubtitleImage = null;
+        SetCanvasItems([]);
+    }
+
+    private (TimeSpan Time, long FrameIndex) GetPreviewFrame(SubtitleProject currentProject)
+    {
+        double framesPerSecond = currentProject.Video?.NominalFps is > 0
+            ? currentProject.Video.NominalFps
+            : 30;
+        long frameIndex = checked((long)Math.Floor(
+            TimeSpan.FromMilliseconds(PositionMilliseconds).TotalSeconds * framesPerSecond));
+        return (TimeSpan.FromSeconds(frameIndex / framesPerSecond), frameIndex);
+    }
+
+    private SubtitleRenderOptions CreatePreviewRenderOptions(long frameIndex)
+        => new()
+        {
+            FrameIndex = frameIndex,
+            ShowSafeArea = showSafeArea,
+            ShowAnchorPoints = showAnchors,
+            EditingCueId = isInlineEditing ? inlineEditCueId : null,
+        };
+
+    private void RenderSubtitlePreview(
+        SubtitleProject currentProject,
+        PlayerViewport viewport,
+        TimeSpan time,
+        SubtitleRenderOptions options)
+    {
         int width = ToBitmapDimension(viewport.PlayerSize.Width);
         int height = ToBitmapDimension(viewport.PlayerSize.Height);
+        WriteableBitmap target = GetSubtitleTarget(width, height);
+        IReadOnlyList<CueHitBox> hitBoxes = DrawSubtitlePreview(
+            target, width, height, viewport, currentProject, time, options);
+        OnPropertyChanged(nameof(SubtitleImage));
+        SetCanvasItems(CreateCanvasItems(hitBoxes));
+    }
 
-        // 이 경로는 재생 중 프레임마다 돈다. 매번 비트맵을 새로 만들고 PNG 로 압축했다가
-        // 곧바로 되읽으면 프레임당 수 MB 할당과 무손실 압축 한 번이 통째로 낭비된다.
-        // 영상 프레임과 같은 방식으로 비트맵을 재사용하고 Skia 가 그 화소 버퍼에 직접
-        // 그리게 한다. 같은 인스턴스를 고쳐 쓰므로 변경 알림은 아래에서 직접 올린다.
-        WriteableBitmap target;
+    private WriteableBitmap GetSubtitleTarget(int width, int height)
+    {
         if (SubtitleImage is WriteableBitmap existing &&
             existing.PixelSize.Width == width && existing.PixelSize.Height == height)
         {
-            target = existing;
-        }
-        else
-        {
-            target = new WriteableBitmap(new PixelSize(width, height), new Vector(96, 96),
-                PixelFormat.Bgra8888, AlphaFormat.Premul);
-            SubtitleImage = target;
+            return existing;
         }
 
-        TimeSpan time = TimeSpan.FromMilliseconds(PositionMilliseconds);
-        double framesPerSecond = project.Video?.NominalFps is > 0 ? project.Video.NominalFps : 30;
-        long frameIndex = checked((long)Math.Floor(time.TotalSeconds * framesPerSecond));
-        IReadOnlyList<CueHitBox> hitBoxes;
+        WriteableBitmap target = new(new PixelSize(width, height), new Vector(96, 96),
+            PixelFormat.Bgra8888, AlphaFormat.Premul);
+        SubtitleImage = target;
+        return target;
+    }
+
+    private IReadOnlyList<CueHitBox> DrawSubtitlePreview(
+        WriteableBitmap target,
+        int width,
+        int height,
+        PlayerViewport viewport,
+        SubtitleProject currentProject,
+        TimeSpan time,
+        SubtitleRenderOptions options)
+    {
         using (ILockedFramebuffer framebuffer = target.Lock())
         {
             SKImageInfo info = new(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
             using SKSurface surface = SKSurface.Create(info, framebuffer.Address, framebuffer.RowBytes);
             SKCanvas canvas = surface.Canvas;
             canvas.Clear(SKColors.Transparent);
-            hitBoxes = renderer.RenderAndMeasure(canvas, viewport, project, time, new SubtitleRenderOptions
-            {
-                FrameIndex = frameIndex,
-                ShowSafeArea = showSafeArea,
-                ShowAnchorPoints = showAnchors,
-                EditingCueId = isInlineEditing ? inlineEditCueId : null,
-            });
+            return renderer.RenderAndMeasure(canvas, viewport, currentProject, time, options);
         }
+    }
 
-        OnPropertyChanged(nameof(SubtitleImage));
-        CanvasItems = hitBoxes
+    private CanvasCueItem[] CreateCanvasItems(IReadOnlyList<CueHitBox> hitBoxes)
+        => hitBoxes
             .Select(hit => new CanvasCueItem(
                 hit.Cue.Id,
                 new CanvasRect(hit.Bounds.Left, hit.Bounds.Top, hit.Bounds.Width, hit.Bounds.Height),
@@ -221,8 +270,24 @@ public sealed partial class MainWindowViewModel
                 hit.Cue.Anchor,
                 selectedCueIds.Contains(hit.Cue.Id)))
             .ToArray();
+
+    private void SetCanvasItems(IReadOnlyList<CanvasCueItem> items)
+    {
+        if (CanvasItems.SequenceEqual(items))
+        {
+            return;
+        }
+
+        CanvasItems = items;
         OnPropertyChanged(nameof(CanvasItems));
     }
+
+    private readonly record struct PreviewRenderKey(
+        long EditorIdentity,
+        long ProjectRevision,
+        PlayerViewport Viewport,
+        long FrameIndex,
+        SubtitleRenderOptions Options);
 
     private static Bitmap EncodeBitmap(SKBitmap bitmap)
     {

@@ -65,6 +65,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     private bool videoLoaded;
     private bool updatingFromVideo;
     private int frameUpdatePending;
+    private int subtitlePreviewPending;
+    private long previewRenderCount;
+    private PreviewRenderKey? lastPreviewRenderKey;
+    private HashSet<Guid>? lastPreviewSelection;
     // 타임라인을 끄는 동안 탐색이 나가는 최소 간격이다. 초당 열몇 번이면 눈으로는
     // 이어져 보이고, 그 위로 올리면 디코딩과 화면 전송만 포화된다.
     private const int MinimumScrubIntervalMilliseconds = 70;
@@ -116,6 +120,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     private SettingsWindow? settingsWindow;
     private readonly MpvAutoInstaller? mpvAutoInstaller =
         MpvAutoInstaller.IsWindowsInstallationSupported ? new MpvAutoInstaller() : null;
+
+    /// <summary>실제로 프리뷰 픽셀을 다시 그린 횟수다. 성능 진단과 테스트에서 사용한다.</summary>
+    internal long PreviewRenderCount => Interlocked.Read(ref previewRenderCount);
 
     public MainWindowViewModel(IFileDialogService dialogs)
         : this(dialogs, null)

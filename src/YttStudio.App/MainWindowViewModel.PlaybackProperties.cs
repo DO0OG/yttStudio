@@ -104,7 +104,7 @@ public sealed partial class MainWindowViewModel
             }
 
             OnPropertyChanged(nameof(PositionDisplay));
-            RenderSubtitlePreview();
+            RequestSubtitlePreviewRender();
             if (!updatingFromVideo && videoLoaded && videoSource is not null)
             {
                 _ = SeekAsync(clamped, exact: false);

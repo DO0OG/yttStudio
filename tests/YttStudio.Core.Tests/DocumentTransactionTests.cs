@@ -5,6 +5,30 @@ namespace YttStudio.Core.Tests;
 public sealed class DocumentTransactionTests
 {
     [Fact]
+    public void RevisionAdvancesForExecuteUndoRedoAndRollback()
+    {
+        DocumentEditor editor = new(new SubtitleProject());
+        long initial = editor.Revision;
+        Cue cue = editor.AddCue(TimeSpan.Zero, TimeSpan.FromSeconds(1), "text");
+        long afterExecute = editor.Revision;
+
+        editor.Undo();
+        long afterUndo = editor.Revision;
+        editor.Redo();
+        long afterRedo = editor.Revision;
+        editor.BeginTransaction("typing");
+        editor.SetText(cue.Id, 0, "changed");
+        long beforeRollback = editor.Revision;
+        editor.CancelTransaction();
+
+        Assert.True(afterExecute > initial);
+        Assert.True(afterUndo > afterExecute);
+        Assert.True(afterRedo > afterUndo);
+        Assert.True(editor.Revision > beforeRollback);
+        Assert.Equal("text", cue.Sections[0].Text);
+    }
+
+    [Fact]
     public void DragTransactionCreatesOneUndoStep()
     {
         SubtitleProject project = new();

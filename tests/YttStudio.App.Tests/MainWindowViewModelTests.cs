@@ -1,4 +1,5 @@
 using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
 using YttStudio.App;
 using YttStudio.Core;
 using YttStudio.Core.Editing;
@@ -9,6 +10,42 @@ namespace YttStudio.App.Tests;
 
 public sealed class MainWindowViewModelTests
 {
+    [AvaloniaFact]
+    public async Task PositionChangesCoalesceAndSameFrameSkipsRendering()
+    {
+        using MainWindowViewModel viewModel = CreateViewModel();
+        Guid cueId = AddInlineCue(viewModel, "text");
+        viewModel.CommitInlineEdit();
+        await FlushRenderQueueAsync();
+        long initial = viewModel.PreviewRenderCount;
+
+        for (int milliseconds = 40; milliseconds <= 100; milliseconds++)
+        {
+            viewModel.PositionMilliseconds = milliseconds;
+        }
+
+        await FlushRenderQueueAsync();
+        Assert.Equal(initial + 1, viewModel.PreviewRenderCount);
+
+        viewModel.PositionMilliseconds = 101;
+        viewModel.PositionMilliseconds = 102;
+        await FlushRenderQueueAsync();
+        Assert.Equal(initial + 1, viewModel.PreviewRenderCount);
+        Assert.NotNull(viewModel.GetCue(cueId));
+    }
+
+    [AvaloniaFact]
+    public void RepeatedSelectionKeepsEqualCanvasItemsInstance()
+    {
+        using MainWindowViewModel viewModel = CreateViewModel();
+        Guid cueId = AddInlineCue(viewModel, "text");
+        IReadOnlyList<CanvasCueItem> initial = viewModel.CanvasItems;
+
+        viewModel.SelectCue(cueId, toggle: false);
+
+        Assert.Same(initial, viewModel.CanvasItems);
+    }
+
     [Fact]
     public void ReconcileSelectionDropsCueRemovedByUndo()
     {
@@ -306,6 +343,13 @@ public sealed class MainWindowViewModelTests
     private static MainWindowViewModel CreateViewModel(PreferencesStore? preferencesStore = null)
     {
         return new MainWindowViewModel(new StubFileDialogService(), preferencesStore);
+    }
+
+    private static async Task FlushRenderQueueAsync()
+    {
+        await Dispatcher.UIThread.InvokeAsync(
+            static () => { },
+            DispatcherPriority.Background);
     }
 
     private static Guid AddInlineCue(MainWindowViewModel viewModel, string text)
