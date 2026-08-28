@@ -235,9 +235,28 @@ public sealed partial class MainWindowViewModel
             () => project,
             () => unsavedChanges,
             message => Serilog.Log.Warning("{Autosave}", message),
-            TimeSpan.FromSeconds(NormalizeAutosaveIntervalSeconds(intervalSeconds)));
+            TimeSpan.FromSeconds(NormalizeAutosaveIntervalSeconds(intervalSeconds)),
+            SerializeProjectOnUiThreadAsync);
         autosave.Start();
     }
+
+    /// <summary>UI 스레드에서 프로젝트를 직렬화해 배경이 쓸 바이트를 만든다.</summary>
+    /// <remarks>
+    /// 편집은 전부 UI 스레드에서 일어난다. 그 스레드에서 직렬화하면 열거 도중 컬렉션이 바뀌는
+    /// 일이 없다. 파일에 쓰는 것은 배경이 맡으므로 UI 가 묶이는 시간은 직렬화뿐이다.
+    /// </remarks>
+    private Task<byte[]?> SerializeProjectOnUiThreadAsync()
+        => Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            if (project is null || disposed)
+            {
+                return null;
+            }
+
+            using MemoryStream buffer = new();
+            ProjectPackage.Save(project, buffer);
+            return buffer.ToArray();
+        }).GetTask();
 
     private static int NormalizeAutosaveIntervalSeconds(int seconds)
         => seconds is 15 or 30 or 60 or 120 or 300 or 600 ? seconds : 60;

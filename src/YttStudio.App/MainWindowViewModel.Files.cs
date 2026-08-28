@@ -38,30 +38,42 @@ public sealed partial class MainWindowViewModel
     /// 명령줄 인자나 파일 연결로 전달된 경로를 연다.
     /// 확장자로 프로젝트 패키지와 자막 파일을 구분한다.
     /// </summary>
-    public async Task OpenPathAsync(string path)
+    public async Task<bool> OpenPathAsync(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
-            return;
+            return true;
         }
 
         OpenPathKind kind = OpenPathClassifier.Classify(path);
+        if (kind == OpenPathKind.Unsupported)
+        {
+            return true;
+        }
+
+        if (!await ConfirmDocumentReplacementAsync())
+        {
+            return false;
+        }
+
         if (kind == OpenPathKind.Project)
         {
             await LoadProjectPackageAsync(path, clearSnapshots: true);
-            return;
+            return true;
         }
 
         if (kind == OpenPathKind.Video)
         {
             await LoadVideoAsync(path);
-            return;
+            return true;
         }
 
         if (kind == OpenPathKind.Subtitle)
         {
             ImportSubtitle(path);
         }
+
+        return true;
     }
 
     /// <summary>드롭된 자막·영상 파일을 전달된 순서대로 기존 열기 경로로 처리한다.</summary>
@@ -76,8 +88,32 @@ public sealed partial class MainWindowViewModel
                 continue;
             }
 
-            await OpenPathAsync(path);
+            if (!await OpenPathAsync(path))
+            {
+                break;
+            }
         }
+    }
+
+    private async Task<bool> ConfirmDocumentReplacementAsync()
+    {
+        if (!unsavedChanges)
+        {
+            return true;
+        }
+
+        UnsavedChangesChoice choice = await dialogs.ConfirmUnsavedChangesAsync(
+            "저장되지 않은 변경",
+            "현재 문서에 저장되지 않은 변경이 있습니다.",
+            Loc["SaveProject"],
+            "버리기",
+            "취소");
+        return choice switch
+        {
+            UnsavedChangesChoice.Save => await TrySaveProjectAsync(),
+            UnsavedChangesChoice.Discard => true,
+            _ => false,
+        };
     }
 
     private void ImportSubtitle(string path)
@@ -88,6 +124,7 @@ public sealed partial class MainWindowViewModel
             project = result.Project;
             editor = new DocumentEditor(project);
             sourcePath = path;
+            projectPath = null;
             UpdateMaximum();
             PositionMilliseconds = Math.Min(
                 project.Cues.Select(cue => cue.Start.TotalMilliseconds).DefaultIfEmpty(0).Min() + 1,
@@ -119,11 +156,11 @@ public sealed partial class MainWindowViewModel
             return;
         }
 
-        await LoadVideoAsync(path);
+        await OpenPathAsync(path);
     }
 
     /// <summary>공유 소스에 영상을 불러온다. 열기 명령과 프로젝트 재연결이 함께 쓴다.</summary>
-    private async Task LoadVideoAsync(string path)
+    private async Task LoadVideoAsync(string path, bool undoFree = false)
     {
         if (videoSource is null)
         {
@@ -138,6 +175,32 @@ public sealed partial class MainWindowViewModel
             videoSource.SetVolume(volume);
             videoSource.SetMuted(isMuted);
             loadedVideoPath = Path.GetFullPath(path);
+            if (project is not null && editor is not null)
+            {
+                YttStudio.Video.VideoInfo sourceInfo = videoSource.Info;
+                YttStudio.Core.VideoInfo documentInfo = new(
+                    sourceInfo.Width,
+                    sourceInfo.Height,
+                    sourceInfo.Duration,
+                    sourceInfo.NominalFps);
+                bool changed;
+                if (undoFree)
+                {
+                    using (editor.BeginUndoFreeMutation())
+                    {
+                        changed = editor.SetVideo(loadedVideoPath, documentInfo);
+                    }
+                }
+                else
+                {
+                    changed = editor.SetVideo(loadedVideoPath, documentInfo);
+                }
+
+                if (changed)
+                {
+                    AfterMutation();
+                }
+            }
             UpdateMaximum();
             VideoStatus = $"{Path.GetFileName(path)} · {videoSource.Info.Width}×{videoSource.Info.Height} · " +
                 $"{videoSource.Info.NominalFps:0.###} fps (표시용)";
@@ -162,36 +225,43 @@ public sealed partial class MainWindowViewModel
             return;
         }
 
-        await LoadProjectPackageAsync(path, clearSnapshots: true);
+        await OpenPathAsync(path);
     }
 
     /// <summary>열려 있는 프로젝트를 <c>.yttproj</c> 패키지로 저장한다.</summary>
     private async Task SaveProjectAsync()
     {
+        await TrySaveProjectAsync();
+    }
+
+    private async Task<bool> TrySaveProjectAsync()
+    {
         if (project is null)
         {
-            return;
+            return true;
         }
 
         string suggested = Path.GetFileNameWithoutExtension(projectPath ?? sourcePath ?? "project") + ".yttproj";
         string? path = await dialogs.SaveProjectAsync(suggested);
         if (path is null)
         {
-            return;
+            return false;
         }
 
         try
         {
             ProjectPackage.Save(project, path, RenderThumbnailPng());
             projectPath = path;
-            unsavedChanges = false;
+            SetDirty(false);
             // 정상 저장은 크래시 스냅샷을 무효화한다.
             AutosaveService.ClearSnapshots();
             Status = $"{Loc["SaveProject"]}: {path}";
+            return true;
         }
         catch (Exception exception)
         {
             Status = $"{Loc["SaveProject"]} — {exception.Message}";
+            return false;
         }
     }
 
@@ -205,7 +275,7 @@ public sealed partial class MainWindowViewModel
             editor = new DocumentEditor(project);
             projectPath = clearSnapshots ? path : null;
             sourcePath = path;
-            unsavedChanges = false;
+            SetDirty(false);
 
             await RelinkVideoIfMissingAsync();
 
@@ -213,7 +283,7 @@ public sealed partial class MainWindowViewModel
             selectedCueIds.Clear();
             lastSelectedCueId = null;
             RefreshRowsAndStyles();
-            AfterMutation(refreshRows: false);
+            AfterMutation(refreshRows: false, markDirty: false);
 
             string migrated = result.WasMigrated
                 ? $" (v{result.SourceSchemaVersion} → v{result.SchemaVersion})"
@@ -234,10 +304,44 @@ public sealed partial class MainWindowViewModel
     /// 패키지는 영상 경로만 저장하므로 끊어진 연결을 복구할 수 있어야 하고
     /// 조용히 영상 없는 프로젝트로 두지 않는다.
     /// </summary>
+    /// <summary>존재 확인이 네트워크를 타지 않도록 기다려 주는 한도다.</summary>
+    private static readonly TimeSpan RemoteProbeTimeout = TimeSpan.FromSeconds(3);
+
+    /// <summary>경로가 이 기기 밖을 가리키는지 본다.</summary>
+    private static bool IsRemotePath(string path)
+    {
+        if (path.StartsWith(@"\\", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return Uri.TryCreate(path, UriKind.Absolute, out Uri? uri)
+            && !uri.IsFile
+            && !uri.IsLoopback;
+    }
+
     private async Task RelinkVideoIfMissingAsync()
     {
         string? recorded = project?.VideoPath;
-        if (project is null || string.IsNullOrEmpty(recorded) || File.Exists(recorded))
+        if (project is null || string.IsNullOrEmpty(recorded))
+        {
+            return;
+        }
+
+        // 경로는 프로젝트 파일에서 온 값이라 신뢰할 수 없다. 남이 만든 .yttproj 를 열었을
+        // 뿐인데 UNC 경로를 그대로 두드리면 윈도우가 SMB 접속을 시도한다.
+        // 응답 없는 호스트면 UI 가 멈추고, 악의적인 호스트면 통합 인증이 오갈 수 있다.
+        // 원격 경로는 건드리기 전에 물어본다.
+        if (IsRemotePath(recorded) && !await dialogs.ConfirmAsync(
+                Loc["VideoMissingTitle"],
+                $"{Loc["RemoteVideoPathPrompt"]}\n\n{recorded}",
+                Loc["Continue"]))
+        {
+            return;
+        }
+
+        if (await Task.Run(() => File.Exists(recorded)).WaitAsync(RemoteProbeTimeout)
+            .ConfigureAwait(true))
         {
             return;
         }
@@ -254,7 +358,7 @@ public sealed partial class MainWindowViewModel
         string? replacement = await dialogs.RelinkVideoAsync(recorded);
         if (replacement is not null)
         {
-            await LoadVideoAsync(replacement);
+            await LoadVideoAsync(replacement, undoFree: true);
         }
     }
 
@@ -282,7 +386,7 @@ public sealed partial class MainWindowViewModel
 
         await LoadProjectPackageAsync(snapshot, clearSnapshots: false);
         // 복구된 문서는 정의상 저장되지 않은 상태다.
-        unsavedChanges = true;
+        SetDirty(true);
     }
 
     /// <summary>현재 프레임을 썸네일로 렌더한다. 아직 그릴 것이 없으면 <c>null</c> 이다.</summary>

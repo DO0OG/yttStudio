@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Security.Cryptography;
 using SharpCompress.Archives;
 
 namespace YttStudio.App;
@@ -8,26 +9,19 @@ internal static class MpvInstallerTransport
 {
     private const string UserAgent = "YttStudio/1.0";
 
-    public static async Task<GitHubAsset> GetLatestAssetAsync(
+    /// <summary>설치할 자산을 돌려준다.</summary>
+    /// <remarks>
+    /// 릴리즈 메타데이터를 물어보지 않는다. 그 메타데이터도 바뀔 수 있는 값이라 거기서 온
+    /// 주소나 해시를 믿을 근거가 없다. 코드에 못박은 주소로 바로 간다.
+    /// </remarks>
+    public static Task<GitHubAsset> GetLatestAssetAsync(
         HttpClient httpClient,
         CancellationToken cancellationToken)
     {
-        using HttpResponseMessage response = await SendAsync(
-                httpClient,
-                MpvAutoInstaller.GitHubLatestReleaseUrl,
-                MpvAutoInstallErrorKind.ReleaseMetadataRequestFailed,
-                "GitHub에서 최신 mpv 릴리스 정보를 가져오지 못했습니다.",
-                cancellationToken)
-            .ConfigureAwait(false);
-        await EnsureSuccessAsync(
-                response,
-                MpvAutoInstallErrorKind.ReleaseMetadataRequestFailed,
-                "GitHub 최신 mpv 릴리스 요청",
-                cancellationToken)
-            .ConfigureAwait(false);
-        GitHubReleaseDto? release = await ReadReleaseAsync(response, cancellationToken)
-            .ConfigureAwait(false);
-        return CreateAsset(SelectAsset(release));
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new GitHubAsset(
+            MpvAutoInstaller.PinnedAssetName,
+            MpvAutoInstaller.PinnedAssetUri));
     }
 
     public static async Task DownloadArchiveAsync(
@@ -50,10 +44,71 @@ internal static class MpvInstallerTransport
                 "mpv libmpv 아카이브 다운로드",
                 cancellationToken)
             .ConfigureAwait(false);
+        EnsureAllowedHost(response.RequestMessage?.RequestUri ?? asset.DownloadUri);
         long? totalBytes = response.Content.Headers.ContentLength;
         ValidateArchiveLength(totalBytes);
         await SaveResponseAsync(response, asset.Name, destinationPath, totalBytes, progress, cancellationToken)
             .ConfigureAwait(false);
+        await VerifyPinnedHashAsync(destinationPath, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>최종 응답이 허용한 호스트에서 왔는지 본다.</summary>
+    /// <remarks>리디렉션을 따라가다 다른 곳으로 새면 여기서 걸린다.</remarks>
+    private static void EnsureAllowedHost(Uri uri)
+    {
+        if (uri.Scheme != Uri.UriSchemeHttps ||
+            !MpvAutoInstaller.AllowedDownloadHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new MpvAutoInstallException(
+                MpvAutoInstallErrorKind.DownloadFailed,
+                $"허용하지 않은 곳에서 내려받으려 했습니다: {uri.Host}");
+        }
+    }
+
+    /// <summary>내려받은 파일이 못박아 둔 자산과 같은지 확인한다.</summary>
+    /// <remarks>
+    /// 압축을 풀기 전에 한다. 여기서 걸러야 검증되지 않은 파일이 디스크에 펼쳐지지 않는다.
+    /// 다르면 지우고 실패한다. 사용자에게는 설치 안내로 물러난다.
+    /// </remarks>
+    private static async Task VerifyPinnedHashAsync(string path, CancellationToken cancellationToken)
+    {
+        FileInfo info = new(path);
+        if (info.Length != MpvAutoInstaller.PinnedAssetLength)
+        {
+            TryDeleteQuietly(path);
+            throw new MpvAutoInstallException(
+                MpvAutoInstallErrorKind.DownloadFailed,
+                $"내려받은 파일 크기가 다릅니다. {info.Length} 바이트이며 {MpvAutoInstaller.PinnedAssetLength} 바이트여야 합니다.");
+        }
+
+        string actual;
+        await using (FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
+            actual = Convert.ToHexStringLower(hash);
+        }
+
+        if (!string.Equals(actual, MpvAutoInstaller.PinnedAssetSha256, StringComparison.OrdinalIgnoreCase))
+        {
+            TryDeleteQuietly(path);
+            throw new MpvAutoInstallException(
+                MpvAutoInstallErrorKind.DownloadFailed,
+                "내려받은 파일이 확인된 것과 다릅니다. 설치를 중단했습니다.");
+        }
+    }
+
+    private static void TryDeleteQuietly(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     private static async Task<HttpResponseMessage> SendAsync(

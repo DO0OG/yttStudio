@@ -25,6 +25,47 @@ public sealed class ProjectPackageTests
     }
 
     [Fact]
+    public void SaveToFilePreservesOriginalAndCleansTemporaryFileWhenSaveFails()
+    {
+        string directory = CreateTemporaryDirectory();
+        string path = Path.Combine(directory, "project.yttproj");
+        byte[] original = [1, 2, 3, 4, 5];
+        File.WriteAllBytes(path, original);
+
+        try
+        {
+            Assert.Throws<ArgumentNullException>(() => ProjectPackage.Save(null!, path));
+
+            Assert.Equal(original, File.ReadAllBytes(path));
+            Assert.Empty(Directory.GetFiles(directory, $".{Path.GetFileName(path)}.*.tmp"));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SaveToFileCreatesNewPackageAndCleansTemporaryFile()
+    {
+        string directory = CreateTemporaryDirectory();
+        string path = Path.Combine(directory, "project.yttproj");
+
+        try
+        {
+            ProjectPackage.Save(CreateProject(), path);
+
+            SubtitleProject loaded = ProjectPackage.Load(path);
+            Assert.Equal("text", Assert.Single(loaded.Cues).Sections[0].Text);
+            Assert.Empty(Directory.GetFiles(directory, $".{Path.GetFileName(path)}.*.tmp"));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void RoundTripPreservesStylesRubyAndOverrides()
     {
         SubtitleProject project = CreateProject();
@@ -102,6 +143,13 @@ public sealed class ProjectPackageTests
         cue.AddSection(new Section { Text = "text" });
         project.Cues.Add(cue);
         return project;
+    }
+
+    private static string CreateTemporaryDirectory()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "YttStudio.Core.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        return directory;
     }
 
     private static SubtitleProject RoundTrip(SubtitleProject project)

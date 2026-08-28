@@ -23,18 +23,49 @@ namespace YttStudio.App;
 public sealed partial class MainWindowViewModel
 {
 
+    private bool TryCreateVideoSource(out IVideoSource? source, out string diagnostic)
+    {
+        if (videoSourceFactory is null)
+        {
+            bool created = MpvVideoSource.TryCreate(out MpvVideoSource? nativeSource, out diagnostic);
+            source = nativeSource;
+            return created;
+        }
+
+        try
+        {
+            source = videoSourceFactory();
+            diagnostic = source is null ? "video source factory returned null" : "injected video source";
+            return source is not null;
+        }
+        catch (Exception exception)
+        {
+            source = null;
+            diagnostic = $"video source factory failed: {exception.Message}";
+            return false;
+        }
+    }
+
     private void InitializeVideoSource()
     {
-        if (MpvVideoSource.TryCreate(out MpvVideoSource? source, out string diagnostic))
+        if (TryCreateVideoSource(out IVideoSource? source, out string diagnostic))
         {
-            MpvVideoSource loadedSource = source!;
+            IVideoSource loadedSource = source!;
             videoSource = loadedSource;
             // 지난 실행에서 고른 재생 화질을 그대로 이어 쓴다.
             loadedSource.PlaybackScaleDivisor = playbackScaleDivisor;
             loadedSource.FrameReady += OnVideoFrameReady;
-            VideoStatus = $"libmpv {loadedSource.LibraryVersion} · SW 콜백 렌더링";
-            Serilog.Log.Information("libmpv initialized: {Version}; {Path}", loadedSource.LibraryVersion,
-                loadedSource.LibraryPath);
+            loadedSource.RenderFailed += OnVideoRenderFailed;
+            if (loadedSource is MpvVideoSource nativeSource)
+            {
+                VideoStatus = $"libmpv {nativeSource.LibraryVersion} · SW 콜백 렌더링";
+                Serilog.Log.Information("libmpv initialized: {Version}; {Path}", nativeSource.LibraryVersion,
+                    nativeSource.LibraryPath);
+            }
+            else
+            {
+                VideoStatus = "video source ready";
+            }
         }
         else
         {
@@ -47,12 +78,13 @@ public sealed partial class MainWindowViewModel
 
     private void DisposeVideoSource()
     {
-        MpvVideoSource? source = videoSource;
+        IVideoSource? source = videoSource;
         videoSource = null;
         videoLoaded = false;
         if (source is not null)
         {
             source.FrameReady -= OnVideoFrameReady;
+            source.RenderFailed -= OnVideoRenderFailed;
             source.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
 
@@ -268,6 +300,30 @@ public sealed partial class MainWindowViewModel
 
         pendingSeekMilliseconds = null;
         return (true, next, pendingSeekExact);
+    }
+
+    /// <summary>렌더 스레드가 실패로 끝났음을 사용자에게 알린다.</summary>
+    /// <remarks>
+    /// 이 시점부터 프레임이 오지 않는다. 재생 상태만 살아 있으면 화면이 멎은 채로 남아
+    /// 사용자는 무엇이 잘못됐는지 알 수 없다. 재생을 내리고 무슨 일이 있었는지 적는다.
+    /// 자막 편집은 영상 없이도 계속할 수 있으므로 앱을 끝내지는 않는다.
+    /// </remarks>
+    private void OnVideoRenderFailed(Exception exception)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            videoLoaded = false;
+            Status = $"{Loc["VideoRenderStopped"]}: {exception.Message}";
+            VideoStatus = Loc["VideoRenderStopped"];
+            Serilog.Log.Error(exception, "libmpv 렌더 스레드가 실패로 종료됨");
+            RenderFallbackFrame();
+            NotifyVideoState();
+        });
     }
 
     private void OnVideoFrameReady()

@@ -17,19 +17,27 @@ public sealed class AutosaveService : IAsyncDisposable
     private readonly Func<SubtitleProject?> projectAccessor;
     private readonly Func<bool> hasUnsavedChanges;
     private readonly Action<string> onError;
+    private readonly Func<Task<byte[]?>>? serializeOnOwnerThread;
     private readonly TimeSpan interval;
     private readonly CancellationTokenSource cancellation = new();
     private Task? loop;
 
+    /// <param name="serializeOnOwnerThread">
+    /// 모델을 소유한 스레드에서 직렬화해 바이트를 돌려주는 함수다. 배경 타이머가 모델을 직접
+    /// 읽으면 편집 중인 컬렉션을 열거하게 되어 예외가 나거나 앞뒤가 맞지 않는 스냅샷이 남는다.
+    /// 넘기지 않으면 배경에서 그대로 읽는다 — 단일 스레드 테스트에서만 쓴다.
+    /// </param>
     public AutosaveService(
         Func<SubtitleProject?> projectAccessor,
         Func<bool> hasUnsavedChanges,
         Action<string> onError,
-        TimeSpan interval)
+        TimeSpan interval,
+        Func<Task<byte[]?>>? serializeOnOwnerThread = null)
     {
         this.projectAccessor = projectAccessor;
         this.hasUnsavedChanges = hasUnsavedChanges;
         this.onError = onError;
+        this.serializeOnOwnerThread = serializeOnOwnerThread;
         this.interval = interval > TimeSpan.Zero && interval <= MaximumInterval
             ? interval
             : DefaultInterval;
@@ -94,6 +102,29 @@ public sealed class AutosaveService : IAsyncDisposable
         return path;
     }
 
+    /// <summary>모델 소유 스레드에서 뜬 스냅샷을 배경에서 파일로 남긴다.</summary>
+    private async Task WriteSnapshotFromOwnerAsync()
+    {
+        if (serializeOnOwnerThread is null)
+        {
+            WriteSnapshot();
+            return;
+        }
+
+        byte[]? bytes = await serializeOnOwnerThread().ConfigureAwait(false);
+        if (bytes is null || bytes.Length == 0)
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(AutosaveDirectory);
+        string path = Path.Combine(
+            AutosaveDirectory,
+            $"autosave-{DateTime.Now:yyyyMMdd-HHmmss-fff}.yttproj");
+        await File.WriteAllBytesAsync(path, bytes).ConfigureAwait(false);
+        TrimOldSnapshots();
+    }
+
     private static void TrimOldSnapshots()
     {
         foreach (string stale in Directory
@@ -135,7 +166,7 @@ public sealed class AutosaveService : IAsyncDisposable
 
                 try
                 {
-                    WriteSnapshot();
+                    await WriteSnapshotFromOwnerAsync().ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
                 {

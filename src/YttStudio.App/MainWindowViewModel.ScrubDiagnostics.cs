@@ -18,7 +18,7 @@ public sealed partial class MainWindowViewModel
 
     private void SampleRenderDiagnostics()
     {
-        if (videoSource is null)
+        if (videoSource is not MpvVideoSource source)
         {
             return;
         }
@@ -26,7 +26,7 @@ public sealed partial class MainWindowViewModel
         long now = Stopwatch.GetTimestamp();
         if (lastDiagnosticsTimestamp == 0)
         {
-            lastDiagnostics = videoSource.ReadDiagnostics();
+            lastDiagnostics = source.ReadDiagnostics();
             lastDiagnosticsTimestamp = now;
             return;
         }
@@ -37,7 +37,7 @@ public sealed partial class MainWindowViewModel
             return;
         }
 
-        VideoRenderDiagnostics current = videoSource.ReadDiagnostics();
+        VideoRenderDiagnostics current = source.ReadDiagnostics();
         VideoRenderDiagnostics delta = current.Since(lastDiagnostics);
         lastDiagnostics = current;
         lastDiagnosticsTimestamp = now;

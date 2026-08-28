@@ -85,6 +85,43 @@ public sealed class CueCollection : IReadOnlyCollection<Cue>, INotifyCollectionC
         CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, cue));
     }
 
+    /// <summary>여러 큐를 한 번에 넣는다.</summary>
+    /// <remarks>
+    /// 하나씩 넣으면 정렬 위치를 찾는 것은 이분 탐색이라 싸지만 리스트 삽입이 뒤쪽 전체를
+    /// 밀어낸다. 시작 시각 역순으로 들어오면 매번 맨 앞에 넣게 되어 큐 수의 제곱에 비례한다.
+    /// 프로젝트를 열 때 이 경로를 타므로 큐가 많은 파일에서 그대로 체감된다.
+    ///
+    /// 삽입 순서를 먼저 부여한 뒤 한 번만 정렬한다. 같은 시각인 큐의 순서는 삽입 순서로
+    /// 갈리므로 하나씩 넣었을 때와 결과가 같다.
+    /// </remarks>
+    internal void AddRange(IEnumerable<Cue> cues)
+    {
+        ArgumentNullException.ThrowIfNull(cues);
+        List<Cue> added = [];
+        foreach (Cue cue in cues)
+        {
+            ArgumentNullException.ThrowIfNull(cue);
+            byId.Add(cue.Id, cue);
+            if (!insertionSequence.ContainsKey(cue.Id))
+            {
+                insertionSequence.Add(cue.Id, nextSequence++);
+            }
+
+            added.Add(cue);
+        }
+
+        if (added.Count == 0)
+        {
+            return;
+        }
+
+        sortedByStart.AddRange(added);
+        sortedByStart.Sort(CompareStart);
+        InvalidateAdvanceState();
+        CollectionChanged?.Invoke(this,
+            new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, added));
+    }
+
     internal void Remove(Guid id)
     {
         if (!byId.Remove(id, out Cue? cue))

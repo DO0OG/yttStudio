@@ -517,4 +517,30 @@ public sealed partial class DocumentEditor
         public void Undo() => section.Overrides = oldOverrides.Clone();
         public bool TryMergeWith(IUndoableCommand previous) => false;
     }
+
+    private sealed class SetVideoCommand(
+        SubtitleProject project,
+        string? path,
+        VideoInfo? video) : IUndoableCommand
+    {
+        private readonly string? oldPath = project.VideoPath;
+        private readonly VideoInfo? oldVideo = project.Video;
+
+        public string Label => "영상 정보 변경";
+        public IReadOnlyCollection<Guid> AffectedCueIds { get; } = [];
+
+        public void Execute()
+        {
+            project.VideoPath = path;
+            project.Video = video;
+        }
+
+        public void Undo()
+        {
+            project.VideoPath = oldPath;
+            project.Video = oldVideo;
+        }
+
+        public bool TryMergeWith(IUndoableCommand previous) => false;
+    }
 }

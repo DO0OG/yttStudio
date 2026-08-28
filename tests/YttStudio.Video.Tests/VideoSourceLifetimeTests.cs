@@ -87,6 +87,11 @@ public sealed class VideoSourceLifetimeTests
         public int PlaybackScaleDivisor { get; set; } = 1;
         public long Epoch => buffer.SeekEpoch;
         public event Action? FrameReady;
+        public event Action<Exception>? RenderFailed
+        {
+            add { }
+            remove { }
+        }
 
         public Task LoadAsync(string path, CancellationToken cancellationToken) => Task.CompletedTask;
         public void Play() => IsPlaying = true;

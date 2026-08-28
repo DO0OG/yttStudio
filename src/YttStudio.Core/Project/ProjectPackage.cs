@@ -29,7 +29,8 @@ public static class ProjectPackage
 
     private const long MaximumManifestBytes = 64 * 1024;
     private const long MaximumProjectBytes = 16 * 1024 * 1024;
-    private const long MaximumThumbnailBytes = 16 * 1024 * 1024;
+    /// <summary>패키지에 담을 수 있는 썸네일 최대 바이트다.</summary>
+    public const long MaximumThumbnailBytes = 16 * 1024 * 1024;
 
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
@@ -76,8 +77,35 @@ public static class ProjectPackage
     public static void Save(SubtitleProject project, string filePath, byte[]? thumbnailPng = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-        using FileStream stream = File.Create(filePath);
-        Save(project, stream, thumbnailPng);
+        string fullPath = Path.GetFullPath(filePath);
+        string directory = Path.GetDirectoryName(fullPath)
+            ?? throw new ArgumentException("The file path must include a directory.", nameof(filePath));
+        string temporaryPath = Path.Combine(
+            directory,
+            $".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            using (FileStream stream = new(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                Save(project, stream, thumbnailPng);
+                stream.Flush(flushToDisk: true);
+            }
+
+            if (File.Exists(fullPath))
+            {
+                File.Replace(temporaryPath, fullPath, destinationBackupFileName: null);
+            }
+            else
+            {
+                File.Move(temporaryPath, fullPath);
+            }
+        }
+        catch
+        {
+            TryDeleteTemporaryFile(temporaryPath);
+            throw;
+        }
     }
 
     /// <summary>패키지 스트림에서 프로젝트 모델을 불러온다.</summary>
@@ -227,6 +255,20 @@ public static class ProjectPackage
         ZipArchiveEntry entry = archive.CreateEntry(name, CompressionLevel.Optimal);
         using Stream stream = entry.Open();
         stream.Write(content);
+    }
+
+    private static void TryDeleteTemporaryFile(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     private static Dictionary<string, ZipArchiveEntry> CollectAndValidateEntries(ZipArchive archive)

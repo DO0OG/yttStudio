@@ -24,6 +24,13 @@ internal sealed class ProjectJsonDto
 
     public SubtitleProject ToModel()
     {
+        // JSON 의 명시적 null 은 속성 초기값을 덮는다. 그대로 역참조하면 어느 필드가 문제인지
+        // 알 수 없는 NullReferenceException 이 사용자에게 그대로 나간다. 필드 이름을 담아
+        // 실패한다.
+        RequireField(Settings, "settings");
+        RequireField(Styles, "styles");
+        RequireField(Cues, "cues");
+
         SubtitleProject project = new()
         {
             VideoPath = VideoPath,
@@ -32,6 +39,7 @@ internal sealed class ProjectJsonDto
         };
         foreach (StyleJsonDto style in Styles)
         {
+            RequireField(style, "styles[]");
             if (style.Id == Guid.Empty)
             {
                 style.ApplyTo(project.Styles.Default);
@@ -45,9 +53,19 @@ internal sealed class ProjectJsonDto
         }
         foreach (CueJsonDto cue in Cues)
         {
-            project.Cues.Add(cue.ToModel());
+            RequireField(cue, "cues[]");
         }
+
+        project.Cues.AddRange(Cues.Select(cue => cue.ToModel()));
         return project;
+    }
+
+    private static void RequireField(object? value, string name)
+    {
+        if (value is null)
+        {
+            throw new InvalidDataException($"프로젝트 파일의 '{name}' 항목이 비어 있습니다.");
+        }
     }
 }
 
