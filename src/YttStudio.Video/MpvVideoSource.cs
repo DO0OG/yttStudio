@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 namespace YttStudio.Video;
 
 /// <summary>네이티브 자식 창을 붙이지 않고 콜백 렌더링으로 libmpv 재생을 제공한다.</summary>
-public sealed class MpvVideoSource : IVideoSource
+public sealed partial class MpvVideoSource : IVideoSource
 {
     private const int MpvFormatFlag = 3;
     private const int MpvFormatInt64 = 4;
@@ -20,12 +20,6 @@ public sealed class MpvVideoSource : IVideoSource
     private readonly object controlGate = new();
     private readonly MpvNativeLibrary native;
     private int playbackScaleDivisor = 1;
-    private long seekCount;
-    private long renderedFrameCount;
-    private long skippedFrameCount;
-    private long renderTicks;
-    private long alphaTicks;
-    private long pixelBytes;
     private readonly nint mpvHandle;
     private readonly LatestFrameBuffer frames = new();
     private readonly AutoResetEvent renderSignal = new(false);
@@ -35,6 +29,7 @@ public sealed class MpvVideoSource : IVideoSource
     private readonly MpvRenderUpdateCallback renderUpdateCallback;
     private nint renderContext;
     private Exception? renderFailure;
+    private bool renderStopped;
     private Task? disposeTask;
     private VideoInfo info = new(0, 0, TimeSpan.Zero, 0);
     private double positionSeconds;
@@ -106,6 +101,13 @@ public sealed class MpvVideoSource : IVideoSource
     }
 
     public event Action? FrameReady;
+
+    /// <summary>초기화 이후 렌더 스레드가 끝난 실패를 알린다.</summary>
+    /// <remarks>이 신호가 오면 더 이상 프레임이 오지 않는다. 재생을 되살릴 방법은 없다.</remarks>
+    public event Action<Exception>? RenderFailed;
+
+    /// <summary>렌더 스레드가 실패로 끝났는지 가져온다.</summary>
+    public bool IsRenderStopped => Volatile.Read(ref renderStopped);
 
     public VideoInfo Info => Volatile.Read(ref info);
     public TimeSpan Position => TimeSpan.FromSeconds(Math.Max(0, Volatile.Read(ref positionSeconds)));
@@ -357,135 +359,19 @@ public sealed class MpvVideoSource : IVideoSource
         catch (Exception exception)
         {
             renderFailure = exception;
+            // 초기화가 끝난 뒤에 터진 실패는 생성자가 읽지 않는다. 그대로 두면 렌더 스레드만
+            // 조용히 끝나고 타이머와 재생 상태는 살아 있어, 사용자에게는 화면이 멎은 것으로만
+            // 보인다. 밖에서 알 수 있게 표시하고 알린다.
+            if (renderReady.IsSet)
+            {
+                Volatile.Write(ref renderStopped, true);
+                Volatile.Write(ref playing, false);
+                RaiseRenderFailed(exception);
+            }
         }
         finally
         {
             CleanupRenderContext();
-        }
-    }
-
-    private void CleanupRenderContext()
-    {
-        Exception? cleanupFailure = null;
-        nint context = renderContext;
-        if (context != 0)
-        {
-            try
-            {
-                native.RenderContextSetUpdateCallback(context, 0, 0);
-            }
-            catch (Exception exception)
-            {
-                cleanupFailure = exception;
-            }
-
-            try
-            {
-                native.RenderContextFree(context);
-            }
-            catch (Exception exception)
-            {
-                cleanupFailure ??= exception;
-            }
-            finally
-            {
-                renderContext = 0;
-            }
-        }
-
-        // 정리 과정도 실패하면 원래의 렌더 루프 실패를 보존한다.
-        renderFailure ??= cleanupFailure;
-        renderReady.Set();
-    }
-
-    private unsafe void CreateSoftwareRenderContext()
-    {
-        byte* api = stackalloc byte[] { (byte)'s', (byte)'w', 0 };
-        MpvRenderParam* parameters = stackalloc MpvRenderParam[2];
-        parameters[0] = new MpvRenderParam(RenderParamApiType, (nint)api);
-        parameters[1] = default;
-        Check(native.RenderContextCreate(out renderContext, mpvHandle, (nint)parameters),
-            "mpv_render_context_create(sw)");
-        nint callback = Marshal.GetFunctionPointerForDelegate(renderUpdateCallback);
-        native.RenderContextSetUpdateCallback(renderContext, callback, 0);
-    }
-
-    private unsafe void RenderLatestFrame()
-    {
-        // [API] 이 스레드는 mpv_render_* 만 호출한다. 콜백은 renderSignal 만 설정한다.
-        if ((native.RenderContextUpdate(renderContext) & RenderUpdateFrame) == 0)
-        {
-            return;
-        }
-
-        VideoInfo current = Info;
-        // 배수를 나눠 더 작은 화면으로 받는다. 디코딩 뒤의 변환 · 전송 · 알파 채우기 ·
-        // 화면 합성이 전부 이 크기를 따르므로 부하가 배수의 제곱에 가깝게 줄어든다.
-        int divisor = Math.Max(1, Volatile.Read(ref playbackScaleDivisor));
-        int width = Math.Max(1, (current.Width > 0 ? current.Width : 1280) / divisor);
-        int height = Math.Max(1, (current.Height > 0 ? current.Height : 720) / divisor);
-        long epoch = frames.SeekEpoch;
-        if (!frames.TryBeginWrite(width, height, out int index, out byte[] pixels, out int stride))
-        {
-            RenderSkippedFrame();
-            return;
-        }
-
-        try
-        {
-            RenderSoftwareFrame(width, height, stride, pixels);
-
-            long sequence = Interlocked.Increment(ref sequenceNumber);
-            if (frames.Publish(index, Position, sequence, epoch))
-            {
-                RaiseFrameReady();
-            }
-        }
-        catch
-        {
-            frames.CancelWrite(index);
-            throw;
-        }
-    }
-
-    private unsafe void RenderSkippedFrame()
-    {
-        Interlocked.Increment(ref skippedFrameCount);
-        int skip = 1;
-        MpvRenderParam* skipParameters = stackalloc MpvRenderParam[2];
-        skipParameters[0] = new MpvRenderParam(13, (nint)(&skip));
-        skipParameters[1] = default;
-        Check(native.RenderContextRender(renderContext, (nint)skipParameters), "mpv_render_context_render(skip)");
-    }
-
-    private unsafe void RenderSoftwareFrame(int width, int height, int stride, byte[] pixels)
-    {
-        fixed (byte* pixelPointer = pixels)
-        {
-            int* size = stackalloc int[2] { width, height };
-            nuint nativeStride = (nuint)stride;
-            byte* format = stackalloc byte[] { (byte)'b', (byte)'g', (byte)'r', (byte)'0', 0 };
-            MpvRenderParam* parameters = stackalloc MpvRenderParam[5];
-            parameters[0] = new MpvRenderParam(RenderParamSoftwareSize, (nint)size);
-            parameters[1] = new MpvRenderParam(RenderParamSoftwareFormat, (nint)format);
-            parameters[2] = new MpvRenderParam(RenderParamSoftwareStride, (nint)(&nativeStride));
-            parameters[3] = new MpvRenderParam(RenderParamSoftwarePointer, (nint)pixelPointer);
-            parameters[4] = default;
-            long startedAt = Stopwatch.GetTimestamp();
-            Check(native.RenderContextRender(renderContext, (nint)parameters), "mpv_render_context_render(sw)");
-            long renderedAt = Stopwatch.GetTimestamp();
-
-            // mpv SW 의 "bgr0" 은 네 번째 바이트를 정의하지 않는다. Avalonia 는 불투명
-            // BGRA 를 기대하므로 알파를 채워야 한다. 다만 화소마다 바이트 하나씩 쓰면
-            // 1080p 기준 프레임당 이백만 번이 넘어 재생 내내 렌더 스레드를 붙잡는다.
-            // 네 바이트를 한 낱말로 묶어 SIMD 로 알파 비트만 세운다.
-            FillOpaqueAlpha(pixelPointer, width, height, stride);
-            long filledAt = Stopwatch.GetTimestamp();
-
-            Interlocked.Add(ref renderTicks, renderedAt - startedAt);
-            Interlocked.Add(ref alphaTicks, filledAt - renderedAt);
-            Interlocked.Add(ref pixelBytes, (long)height * stride);
-            Interlocked.Increment(ref renderedFrameCount);
         }
     }
 
@@ -564,24 +450,6 @@ public sealed class MpvVideoSource : IVideoSource
     }
 
     /// <inheritdoc />
-    /// <summary>렌더 경로가 지금까지 한 일을 읽는다.</summary>
-    /// <remarks>
-    /// 구간의 비용을 알고 싶으면 앞뒤에서 한 번씩 읽어 <see cref="VideoRenderDiagnostics.Since"/>
-    /// 로 빼라. 각 값은 원자적으로 읽지만 서로 같은 순간의 값은 아니다. 부하의 크기를 가늠하는
-    /// 용도이지 회계 장부가 아니다.
-    /// </remarks>
-    public VideoRenderDiagnostics ReadDiagnostics()
-        => new(
-            Interlocked.Read(ref seekCount),
-            Interlocked.Read(ref renderedFrameCount),
-            Interlocked.Read(ref skippedFrameCount),
-            TicksToMilliseconds(Interlocked.Read(ref renderTicks)),
-            TicksToMilliseconds(Interlocked.Read(ref alphaTicks)),
-            Interlocked.Read(ref pixelBytes));
-
-    private static double TicksToMilliseconds(long ticks)
-        => ticks * 1000.0 / Stopwatch.Frequency;
-
     public int PlaybackScaleDivisor
     {
         get => Volatile.Read(ref playbackScaleDivisor);

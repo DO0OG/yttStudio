@@ -4,11 +4,36 @@ using Avalonia.Layout;
 
 namespace YttStudio.App;
 
+public enum UnsavedChangesChoice
+{
+    Save,
+    Discard,
+    Cancel,
+}
+
 public interface IFileDialogService
 {
     Task<string?> OpenSubtitleAsync();
     Task<string?> OpenVideoAsync();
     Task<string?> SaveYttAsync(string? suggestedName);
+
+    /// <summary>문서 교체 전에 저장, 버림, 취소 중 하나를 고르게 한다.</summary>
+    async Task<UnsavedChangesChoice> ConfirmUnsavedChangesAsync(
+        string title,
+        string message,
+        string saveLabel = "저장",
+        string discardLabel = "버리기",
+        string cancelLabel = "취소")
+    {
+        if (await ConfirmAsync(title, message, saveLabel))
+        {
+            return UnsavedChangesChoice.Save;
+        }
+
+        return await ConfirmAsync(title, message, discardLabel)
+            ? UnsavedChangesChoice.Discard
+            : UnsavedChangesChoice.Cancel;
+    }
     Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "삭제");
 
     /// <summary>열 <c>.yttproj</c> 패키지를 고른다.</summary>
@@ -178,5 +203,45 @@ public sealed class FileDialogService : IFileDialogService
             },
         };
         return dialog.ShowDialog<bool>(owner);
+    }
+
+    public Task<UnsavedChangesChoice> ConfirmUnsavedChangesAsync(
+        string title,
+        string message,
+        string saveLabel = "저장",
+        string discardLabel = "버리기",
+        string cancelLabel = "취소")
+    {
+        Window dialog = new()
+        {
+            Title = title,
+            Width = 460,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+        Button save = new() { Content = saveLabel, MinWidth = 80 };
+        Button discard = new() { Content = discardLabel, MinWidth = 80 };
+        Button cancel = new() { Content = cancelLabel, MinWidth = 80 };
+        save.Click += (_, _) => dialog.Close(UnsavedChangesChoice.Save);
+        discard.Click += (_, _) => dialog.Close(UnsavedChangesChoice.Discard);
+        cancel.Click += (_, _) => dialog.Close(UnsavedChangesChoice.Cancel);
+        dialog.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(20),
+            Spacing = 16,
+            Children =
+            {
+                new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Spacing = 8,
+                    Children = { cancel, discard, save },
+                },
+            },
+        };
+        return dialog.ShowDialog<UnsavedChangesChoice>(owner);
     }
 }

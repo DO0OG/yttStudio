@@ -33,12 +33,43 @@ internal sealed class LatestFrameBuffer
         }
     }
 
-    public bool TryBeginWrite(int width, int height, out int index, out byte[] pixels, out int stride)
+    /// <summary>한 변의 최대 화소 수다. 8K 를 크게 웃도는 값이라 실사용을 막지 않는다.</summary>
+    private const int MaximumDimension = 16384;
+
+    /// <summary>프레임 하나가 쓸 수 있는 최대 바이트다. 16384 x 8192 BGRA 를 담는다.</summary>
+    private const long MaximumFrameBytes = 512L * 1024 * 1024;
+
+    /// <summary>네이티브에 넘기기 전에 프레임 크기가 현실적인지 본다.</summary>
+    /// <remarks>
+    /// 폭과 높이는 libmpv 가 읽은 미디어 메타데이터에서 온다. 손상된 파일이나 오작동하는
+    /// 디코더가 터무니없는 값을 주면 stride 계산이 int 를 넘겨 음수나 작은 값이 되고, 그
+    /// 크기로 잡은 버퍼의 포인터를 원래 크기로 알고 있는 네이티브 렌더에 넘기게 된다.
+    /// 곱하기 전에 막는다.
+    /// </remarks>
+    private static void ValidateFrameSize(int width, int height)
     {
         if (width <= 0 || height <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(width));
         }
+
+        if (width > MaximumDimension || height > MaximumDimension)
+        {
+            throw new ArgumentOutOfRangeException(nameof(width),
+                $"Frame size {width}x{height} exceeds the supported maximum of {MaximumDimension}.");
+        }
+
+        long requiredBytes = Align(width * 4L, 64) * height;
+        if (requiredBytes > MaximumFrameBytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(width),
+                $"Frame size {width}x{height} needs {requiredBytes} bytes, over the {MaximumFrameBytes} limit.");
+        }
+    }
+
+    public bool TryBeginWrite(int width, int height, out int index, out byte[] pixels, out int stride)
+    {
+        ValidateFrameSize(width, height);
 
         lock (gate)
         {
@@ -61,7 +92,7 @@ internal sealed class LatestFrameBuffer
 
             Slot slot = slots[index];
 
-            stride = Align(width * 4, 64);
+            stride = (int)Align(width * 4L, 64);
             int requiredLength = checked(stride * height);
             if (slot.Pixels.Length != requiredLength)
             {
@@ -207,8 +238,8 @@ internal sealed class LatestFrameBuffer
         }
     }
 
-    private static int Align(int value, int alignment)
-        => checked(((value + alignment - 1) / alignment) * alignment);
+    private static long Align(long value, long alignment)
+        => ((value + alignment - 1) / alignment) * alignment;
 
     private sealed class Slot
     {

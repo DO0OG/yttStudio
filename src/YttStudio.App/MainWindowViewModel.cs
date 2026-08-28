@@ -39,7 +39,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     private readonly HashSet<Guid> selectedCueIds = [];
     private SubtitleProject? project;
     private DocumentEditor? editor;
-    private MpvVideoSource? videoSource;
+    private IVideoSource? videoSource;
     private Bitmap? videoFrameImage;
     private Bitmap? subtitleImage;
     private string? sourcePath;
@@ -117,15 +117,25 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     private SettingsWindow? settingsWindow;
     private readonly MpvAutoInstaller? mpvAutoInstaller =
         MpvAutoInstaller.IsWindowsInstallationSupported ? new MpvAutoInstaller() : null;
+    private readonly Func<IVideoSource?>? videoSourceFactory;
 
     public MainWindowViewModel(IFileDialogService dialogs)
-        : this(dialogs, null)
+        : this(dialogs, null, null)
     {
     }
 
     public MainWindowViewModel(IFileDialogService dialogs, PreferencesStore? preferencesStore)
+        : this(dialogs, preferencesStore, null)
+    {
+    }
+
+    internal MainWindowViewModel(
+        IFileDialogService dialogs,
+        PreferencesStore? preferencesStore,
+        Func<IVideoSource?>? videoSourceFactory)
     {
         this.dialogs = dialogs;
+        this.videoSourceFactory = videoSourceFactory;
         this.preferencesStore = preferencesStore ?? new PreferencesStore();
         preferences = this.preferencesStore.Load();
         preferences.AutosaveIntervalSeconds = NormalizeAutosaveIntervalSeconds(
@@ -585,6 +595,11 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         new(KaraokeType.LeftCursor, "LeftCursor"),
     ];
     public bool HasProject => project is not null;
+
+    public bool IsDirty => unsavedChanges;
+
+    internal SubtitleProject? CurrentProject => project;
+    internal DocumentEditor? CurrentEditor => editor;
     public string Status
     {
         get => status;

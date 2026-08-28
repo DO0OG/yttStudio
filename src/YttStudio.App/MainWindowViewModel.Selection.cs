@@ -92,10 +92,13 @@ public sealed partial class MainWindowViewModel
         NotifySelectionProperties();
     }
 
-    private void AfterMutation(bool refreshRows = false)
+    private void AfterMutation(bool refreshRows = false, bool markDirty = true)
     {
         // 자동 저장은 복구할 내용이 있을 때만 기록한다.
-        unsavedChanges = true;
+        if (markDirty)
+        {
+            SetDirty(true);
+        }
         if (refreshRows)
         {
             RefreshRowsAndStyles();
@@ -107,6 +110,17 @@ public sealed partial class MainWindowViewModel
         RenderSubtitlePreview();
         NotifySelectionProperties();
         NotifyCommandStates();
+    }
+
+    private void SetDirty(bool value)
+    {
+        if (unsavedChanges == value)
+        {
+            return;
+        }
+
+        unsavedChanges = value;
+        OnPropertyChanged(nameof(IsDirty));
     }
 
     private void RefreshInlinePreview()

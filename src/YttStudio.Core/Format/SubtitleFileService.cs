@@ -23,9 +23,18 @@ public sealed partial class SubtitleFileService
     };
 
     /// <summary>.ytt 나 .srv3 나 .ass 문서를 가져온다.</summary>
+    /// <summary>자막 파일 하나가 가질 수 있는 최대 바이트다.</summary>
+    /// <remarks>
+    /// 두 포맷 모두 파일을 통째로 메모리에 올린 뒤 다시 모델로 펼친다. 상한이 없으면 아주 큰
+    /// 파일 하나로 메모리를 소진시킬 수 있다. 유튜브 자막은 압축 전 기준으로도 수백 KB 를
+    /// 넘기 어렵다. 64MB 는 그 천 배가 넘어 정상적인 작업을 막지 않으면서 폭주만 끊는다.
+    /// </remarks>
+    public const long MaximumImportBytes = 64L * 1024 * 1024;
+
     public ImportResult Import(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        EnsureImportSizeWithinLimit(path);
         string extension = Path.GetExtension(path).ToLowerInvariant();
         return extension switch
         {
@@ -65,6 +74,16 @@ public sealed partial class SubtitleFileService
                 break;
             default:
                 throw new NotSupportedException($"The '{extension}' format is outside the M1 export scope.");
+        }
+    }
+
+    private static void EnsureImportSizeWithinLimit(string path)
+    {
+        FileInfo info = new(path);
+        if (info.Exists && info.Length > MaximumImportBytes)
+        {
+            throw new InvalidDataException(
+                $"자막 파일이 너무 큽니다. {info.Length:N0} 바이트이며 한도는 {MaximumImportBytes:N0} 바이트입니다.");
         }
     }
 

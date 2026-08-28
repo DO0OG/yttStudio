@@ -86,6 +86,39 @@ public sealed class MpvAutoInstaller
     public const string WindowsLibraryFileName = "libmpv-2.dll";
 
     public const string WindowsAssetPrefix = "mpv-dev-x86_64-";
+    /// <summary>설치할 mpv 빌드의 릴리즈 태그다.</summary>
+    /// <remarks>
+    /// 최신 릴리즈를 따라가지 않고 특정 빌드에 못박는다. 내려받은 바이너리는 압축을 풀어
+    /// 이 프로세스에 로드된다. 무엇이 올지 모르는 채로 그 일을 할 수는 없다. HTTPS 는 전송만
+    /// 보호하고 산출물은 보증하지 않으므로 아래 해시로 확인한다.
+    ///
+    /// 버전을 올리려면 새 자산을 받아 SHA-256 을 다시 계산해 세 상수를 함께 고쳐야 한다.
+    /// 번거롭지만 검증되지 않은 네이티브 코드를 로드하는 것보다 낫다. 지우지 마라.
+    /// </remarks>
+    public const string PinnedReleaseTag = "20260828";
+
+    /// <summary>고정한 릴리즈에서 받을 자산 이름이다.</summary>
+    public const string PinnedAssetName = "mpv-dev-x86_64-20260828-git-182fa6ca49.7z";
+
+    /// <summary>고정한 자산의 SHA-256 이다. 받아서 직접 계산한 값이다.</summary>
+    public const string PinnedAssetSha256 =
+        "9efd04d351e09eca350d01da1b8b0c406537c037537111ba65ab43c91905635b";
+
+    /// <summary>고정한 자산의 바이트 수다. 해시를 계산하기 전에 먼저 걸러낸다.</summary>
+    public const long PinnedAssetLength = 31354441;
+
+    /// <summary>다운로드를 허용하는 호스트다. 리디렉션이 이 밖으로 나가면 거부한다.</summary>
+    public static readonly string[] AllowedDownloadHosts =
+    [
+        "github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
+    ];
+
+    /// <summary>고정한 자산의 내려받기 주소다.</summary>
+    public static Uri PinnedAssetUri { get; } = new(
+        $"https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/{PinnedReleaseTag}/{PinnedAssetName}");
+
 
     private const string DocumentationUrl = "https://mpv.io/installation/";
     private static readonly HttpClient SharedHttpClient = new();

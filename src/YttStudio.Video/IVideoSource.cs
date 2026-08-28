@@ -3,6 +3,10 @@ namespace YttStudio.Video;
 /// <summary>재생 상태와 최신 프레임 접근을 제공한다.</summary>
 public interface IVideoSource : IAsyncDisposable
 {
+    /// <summary>초기화 이후 렌더가 실패로 끝났음을 알린다.</summary>
+    /// <remarks>이 신호 뒤로는 프레임이 오지 않는다.</remarks>
+    event Action<Exception>? RenderFailed;
+
     /// <summary>불러온 영상의 메타데이터를 가져온다.</summary>
     VideoInfo Info { get; }
 

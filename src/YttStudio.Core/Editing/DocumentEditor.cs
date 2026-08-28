@@ -183,6 +183,20 @@ public sealed partial class DocumentEditor
         Execute(new SetTextCommand(cueId, section, text ?? string.Empty));
     }
 
+    /// <summary>연결된 영상 경로와 메타데이터를 문서 변경 경계에서 갱신한다.</summary>
+    /// <returns>문서 메타데이터가 실제로 변경되었는지 여부.</returns>
+    public bool SetVideo(string? path, VideoInfo? video)
+    {
+        if (string.Equals(project.VideoPath, path, StringComparison.Ordinal) &&
+            AreEqual(project.Video, video))
+        {
+            return false;
+        }
+
+        Execute(new SetVideoCommand(project, path, video));
+        return true;
+    }
+
     /// <summary>
     /// 섹션 하나의 루비 역할과 루비 텍스트를 설정한다.
     /// [UPSTREAM] <c>rb</c> 는 PC 전용이므로 호출자가 호환성 배지를 노출한다.
@@ -503,6 +517,12 @@ public sealed partial class DocumentEditor
 
         return cue.Sections[sectionIndex];
     }
+
+    private static bool AreEqual(VideoInfo? first, VideoInfo? second)
+        => first is null
+            ? second is null
+            : second is not null && first.Width == second.Width && first.Height == second.Height &&
+                first.Duration == second.Duration && first.NominalFps.Equals(second.NominalFps);
 
     private void ExecuteForCues(
         string label,

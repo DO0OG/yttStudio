@@ -5,11 +5,19 @@ namespace YttStudio.Video;
 internal sealed class MpvNativeLibrary : IDisposable
 {
     private readonly nint libraryHandle;
+    private readonly Func<nint, string, nint> getExport;
+    private readonly Action<nint> freeLibrary;
     private bool disposed;
 
-    private MpvNativeLibrary(nint libraryHandle, string loadedPath)
+    private MpvNativeLibrary(
+        nint libraryHandle,
+        string loadedPath,
+        Func<nint, string, nint> getExport,
+        Action<nint> freeLibrary)
     {
         this.libraryHandle = libraryHandle;
+        this.getExport = getExport;
+        this.freeLibrary = freeLibrary;
         LoadedPath = loadedPath;
         Create = GetExport<MpvCreate>("mpv_create");
         Initialize = GetExport<MpvInitialize>("mpv_initialize");
@@ -49,25 +57,47 @@ internal sealed class MpvNativeLibrary : IDisposable
     public MpvRenderContextFree RenderContextFree { get; }
 
     public static bool TryLoad(out MpvNativeLibrary? library, out string diagnostic)
+        => TryLoadCandidates(
+            EnumerateCandidates(),
+            TryLoadNative,
+            NativeLibrary.GetExport,
+            NativeLibrary.Free,
+            out library,
+            out diagnostic);
+
+    internal static bool TryLoadCandidatesForTest(
+        IReadOnlyList<string> candidates,
+        Func<string, nint?> tryLoad,
+        Func<nint, string, nint> getExport,
+        Action<nint> freeLibrary,
+        out MpvNativeLibrary? library,
+        out string diagnostic)
+        => TryLoadCandidates(candidates, tryLoad, getExport, freeLibrary, out library, out diagnostic);
+
+    private static bool TryLoadCandidates(
+        IEnumerable<string> candidates,
+        Func<string, nint?> tryLoad,
+        Func<nint, string, nint> getExport,
+        Action<nint> freeLibrary,
+        out MpvNativeLibrary? library,
+        out string diagnostic)
     {
         List<string> attempted = [];
-        foreach (string candidate in EnumerateCandidates())
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string candidate in candidates)
         {
-            if (!attempted.Contains(candidate, StringComparer.OrdinalIgnoreCase))
+            if (!seen.Add(candidate))
             {
-                attempted.Add(candidate);
+                continue;
             }
 
-            if (TryLoadCandidate(candidate, out library, out string? error))
+            if (TryLoadCandidate(candidate, tryLoad, getExport, freeLibrary, out library, out string? error))
             {
                 diagnostic = $"libmpv loaded from {candidate}";
                 return true;
             }
 
-            if (error is not null)
-            {
-                attempted[^1] = $"{candidate} ({error})";
-            }
+            attempted.Add($"{candidate} ({error ?? "not found or could not load"})");
         }
 
         library = null;
@@ -75,8 +105,14 @@ internal sealed class MpvNativeLibrary : IDisposable
         return false;
     }
 
+    private static nint? TryLoadNative(string candidate)
+        => NativeLibrary.TryLoad(candidate, out nint handle) ? handle : null;
+
     private static bool TryLoadCandidate(
         string candidate,
+        Func<string, nint?> tryLoad,
+        Func<nint, string, nint> getExport,
+        Action<nint> freeLibrary,
         out MpvNativeLibrary? library,
         out string? error)
     {
@@ -84,23 +120,28 @@ internal sealed class MpvNativeLibrary : IDisposable
         error = null;
         try
         {
-            if (!NativeLibrary.TryLoad(candidate, out nint handle))
+            nint? loadedHandle = tryLoad(candidate);
+            if (loadedHandle is null)
             {
                 return false;
             }
 
+            nint handle = loadedHandle.Value;
             try
             {
-                library = new MpvNativeLibrary(handle, candidate);
+                library = new MpvNativeLibrary(handle, candidate, getExport, freeLibrary);
                 return true;
             }
             catch
             {
-                NativeLibrary.Free(handle);
+                freeLibrary(handle);
                 throw;
             }
         }
-        catch (Exception exception) when (exception is BadImageFormatException or DllNotFoundException)
+        catch (Exception exception) when (
+            exception is BadImageFormatException
+            or DllNotFoundException
+            or EntryPointNotFoundException)
         {
             error = exception.Message;
             return false;
@@ -114,13 +155,13 @@ internal sealed class MpvNativeLibrary : IDisposable
     {
         if (!disposed)
         {
-            NativeLibrary.Free(libraryHandle);
+            freeLibrary(libraryHandle);
             disposed = true;
         }
     }
 
     private T GetExport<T>(string name) where T : Delegate
-        => Marshal.GetDelegateForFunctionPointer<T>(NativeLibrary.GetExport(libraryHandle, name));
+        => Marshal.GetDelegateForFunctionPointer<T>(getExport(libraryHandle, name));
 
     private static IEnumerable<string> EnumerateCandidates()
     {
@@ -146,9 +187,17 @@ internal sealed class MpvNativeLibrary : IDisposable
             yield return Path.Combine(AppContext.BaseDirectory, name);
         }
 
-        foreach (string name in GetLibraryNames())
+        // 리눅스와 macOS 는 시스템 라이브러리 경로에 설치하는 것이 정상적인 배포 방식이라
+        // 로더의 탐색에 맡긴다. 윈도우는 다르다. LoadLibrary 의 기본 탐색 순서에 현재 작업
+        // 디렉터리가 들어 있어, 쓸 수 있는 폴더에서 앱을 실행하면 그 자리에 놓인 DLL 이
+        // 로드된다. 버전 검사는 방어가 되지 않는다 — 로드가 끝난 뒤에 도는 검사라 그 시점엔
+        // 이미 진입점이 실행된 뒤다. 그래서 윈도우에서는 맨 이름으로 찾지 않는다.
+        if (!OperatingSystem.IsWindows())
         {
-            yield return name;
+            foreach (string name in GetLibraryNames())
+            {
+                yield return name;
+            }
         }
     }
 
