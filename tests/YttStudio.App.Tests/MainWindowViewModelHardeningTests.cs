@@ -294,7 +294,8 @@ public sealed class MainWindowViewModelHardeningTests
         private string CreateSubtitle(string name, string text)
         {
             string path = Path.Combine(Root, name);
-            string content = string.Join("\n", [
+            string[] lines =
+            [
                 "[Script Info]",
                 "PlayResX: 1280",
                 "PlayResY: 720",
@@ -306,7 +307,8 @@ public sealed class MainWindowViewModelHardeningTests
                 "[Events]",
                 "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
                 $"Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{text}",
-            ]);
+            ];
+            string content = string.Join("\n", lines);
             File.WriteAllText(path, content,
                 new UTF8Encoding(false));
             return path;
