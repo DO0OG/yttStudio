@@ -84,6 +84,7 @@ public sealed class VideoSourceLifetimeTests
         public VideoInfo Info { get; } = new(2, 2, TimeSpan.FromSeconds(1), 30);
         public TimeSpan Position { get; private set; }
         public bool IsPlaying { get; private set; }
+        public int PlaybackScaleDivisor { get; set; } = 1;
         public long Epoch => buffer.SeekEpoch;
         public event Action? FrameReady;
 

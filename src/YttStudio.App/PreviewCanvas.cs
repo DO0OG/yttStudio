@@ -137,49 +137,10 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
         }
 
         Rect content = GetContentRect();
-        context.DrawRectangle(null, SafeAreaPen, new Rect(
-            content.X + (content.Width * EditorSafeAreaInsetRatio),
-            content.Y + (content.Height * EditorSafeAreaInsetRatio),
-            content.Width * (1 - (EditorSafeAreaInsetRatio * 2)),
-            content.Height * (1 - (EditorSafeAreaInsetRatio * 2))));
-
-        foreach (CanvasCueItem item in viewModel.CanvasItems.Where(item => item.Selected))
-        {
-            Rect bounds = ToScreen(item.Bounds, content);
-            if (movePreview is not null)
-            {
-                Vector delta = ToScreenDelta(movePreview.DeltaX, movePreview.DeltaY, content);
-                bounds = bounds.Translate(delta);
-            }
-
-            context.DrawRectangle(null, SelectionPen, bounds);
-            DrawHandles(context, bounds, item.AnchorKind);
-        }
-
-        if (movePreview is not null)
-        {
-            foreach (SnapGuide guide in movePreview.Guides)
-            {
-                if (guide.Vertical)
-                {
-                    double x = PreviewCanvasGeometry.ToScreenCoordinate(
-                        guide.Position, true, content, SubtitleSpace);
-                    context.DrawLine(SnapPen, new Point(x, content.Top), new Point(x, content.Bottom));
-                }
-                else
-                {
-                    double y = PreviewCanvasGeometry.ToScreenCoordinate(
-                        guide.Position, false, content, SubtitleSpace);
-                    context.DrawLine(SnapPen, new Point(content.Left, y), new Point(content.Right, y));
-                }
-            }
-        }
-
-        if (selectingRange)
-        {
-            context.DrawRectangle(new SolidColorBrush(Color.FromArgb(35, 0, 180, 255)), SelectionPen,
-                selectionRectangle);
-        }
+        DrawSafeArea(context, content);
+        DrawSelectedCues(context, viewModel, content);
+        DrawSnapGuides(context, content);
+        DrawSelectionRectangle(context);
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -194,27 +155,8 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
         Point screen = e.GetPosition(this);
         Rect content = GetContentRect();
 
-        if (TryHitHandle(viewModel, screen, content, out Guid handleCueId, out int row, out int column))
+        if (TryBeginHandlePress(viewModel, e, screen, content))
         {
-            if (PreviewResizeGeometry.IsResizeHandle(row, column))
-            {
-                // A press on an outer handle is still ambiguous: a drag resizes
-                // the cue, while a click without movement picks that anchor.
-                pendingHandlePress = true;
-                pendingHandleCueId = handleCueId;
-                pendingHandleRow = row;
-                pendingHandleColumn = column;
-                resizePrimaryBounds = ToScreen(
-                    viewModel.CanvasItems.First(item => item.Id == handleCueId).Bounds, content);
-                resizeMultiplier = 1.0;
-                pointerStart = screen;
-                e.Pointer.Capture(this);
-            }
-            else
-            {
-                viewModel.ChangeAnchor(handleCueId, ToAnchor(row, column));
-            }
-
             e.Handled = true;
             return;
         }
@@ -226,159 +168,285 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
 
         Point reference = ToReference(screen, content);
 
-        CanvasCueItem? hit = viewModel.CanvasItems.Reverse()
-            .FirstOrDefault(item => Contains(item.Bounds, reference));
-        bool control = e.KeyModifiers.HasFlag(KeyModifiers.Control);
-        if (hit is not null)
+        if (TryBeginCueInteraction(viewModel, e, screen, reference, content))
         {
-            if (!hit.Selected || control)
-            {
-                viewModel.SelectCue(hit.Id, control);
-            }
-
-            if (e.ClickCount == 2)
-            {
-                viewModel.BeginInlineEdit(
-                    hit.Id,
-                    hit.Bounds,
-                    content,
-                    GetViewport());
-                e.Handled = true;
-                return;
-            }
-
-            draggingCue = true;
-            pointerStart = screen;
-            e.Pointer.Capture(this);
-        }
-        else
-        {
-            if (e.ClickCount == 2)
-            {
-                Guid? addedCueId = viewModel.AddCueAtCanvasPoint(reference.X, reference.Y);
-                if (addedCueId is Guid id)
-                {
-                    if (viewModel.CanvasItems.FirstOrDefault(item => item.Id == id) is CanvasCueItem added)
-                    {
-                        viewModel.BeginInlineEdit(id, added.Bounds, content, GetViewport());
-                    }
-                    else
-                    {
-                        Rect inlineBounds = ClampInlinePlacement(new Rect(screen.X, screen.Y, 180,
-                            InlineEditorPlacement.DefaultHeight));
-                        viewModel.BeginInlineEdit(id, inlineBounds.Left, inlineBounds.Top,
-                            inlineBounds.Width);
-                    }
-                }
-
-                e.Handled = true;
-                return;
-            }
-
-            selectingRange = true;
-            pointerStart = screen;
-            selectionRectangle = new Rect(screen, screen);
-            e.Pointer.Capture(this);
+            e.Handled = true;
+            return;
         }
 
+        BeginEmptyCanvasInteraction(viewModel, e, screen, reference, content);
         e.Handled = true;
     }
-
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
         Point current = e.GetPosition(this);
-        if (pendingHandlePress && DataContext is MainWindowViewModel pendingViewModel)
-        {
-            Vector moved = current - pointerStart;
-            if (Math.Sqrt((moved.X * moved.X) + (moved.Y * moved.Y)) > DragThresholdPixels)
-            {
-                pendingHandlePress = false;
-                if (pendingViewModel.BeginCanvasResize(
-                        pendingHandleCueId, pendingHandleRow, pendingHandleColumn))
-                {
-                    resizingCue = true;
-                }
-            }
-        }
+        ActivatePendingResize(current);
 
         if (resizingCue && DataContext is MainWindowViewModel resizeViewModel)
         {
-            bool shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
-            resizeMultiplier = PreviewResizeGeometry.ComputeMultiplier(
-                resizePrimaryBounds, pendingHandleRow, pendingHandleColumn,
-                current - pointerStart, shift);
-            // Alt is intentionally ignored for size changes; it belongs to
-            // the move-snap gesture and must not affect this path.
-            resizeViewModel.PreviewCanvasResize(resizeMultiplier);
-            InvalidateVisual();
+            UpdateResizePreview(resizeViewModel, e, current);
+            return;
         }
-        else if (draggingCue && DataContext is MainWindowViewModel viewModel)
+
+        if (draggingCue && DataContext is MainWindowViewModel viewModel)
         {
-            Rect content = GetContentRect();
-            Vector delta = current - pointerStart;
-            Rect subtitleSpace = PreviewCanvasGeometry.NormalizeSubtitleSpace(SubtitleSpace);
-            double deltaX = delta.X / content.Width * subtitleSpace.Width;
-            double deltaY = delta.Y / content.Height * subtitleSpace.Height;
-            shiftPressed = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
-            altPressed = e.KeyModifiers.HasFlag(KeyModifiers.Alt);
-            if (shiftPressed)
-            {
-                if (Math.Abs(deltaX) >= Math.Abs(deltaY))
-                {
-                    deltaY = 0;
-                }
-                else
-                {
-                    deltaX = 0;
-                }
-            }
-
-            movePreview = viewModel.PreviewCanvasMove(deltaX, deltaY, altPressed);
-            CanvasCueItem? coordinateCue = viewModel.CanvasItems.LastOrDefault(item => item.Selected);
-            if (coordinateCue is not null)
-            {
-                ToolTip.SetTip(this,
-                    $"ah {coordinateCue.Anchor.X + movePreview.DeltaX:F1} · av {coordinateCue.Anchor.Y + movePreview.DeltaY:F1}");
-                ToolTip.SetIsOpen(this, true);
-            }
-
-            InvalidateVisual();
+            UpdateMovePreview(viewModel, e, current);
+            return;
         }
-        else if (selectingRange)
+
+        if (selectingRange)
         {
             selectionRectangle = Normalize(pointerStart, current);
             InvalidateVisual();
         }
     }
+    private static void DrawSafeArea(DrawingContext context, Rect content)
+        => context.DrawRectangle(null, SafeAreaPen, new Rect(
+            content.X + (content.Width * EditorSafeAreaInsetRatio),
+            content.Y + (content.Height * EditorSafeAreaInsetRatio),
+            content.Width * (1 - (EditorSafeAreaInsetRatio * 2)),
+            content.Height * (1 - (EditorSafeAreaInsetRatio * 2))));
 
+    private void DrawSelectedCues(
+        DrawingContext context,
+        MainWindowViewModel viewModel,
+        Rect content)
+    {
+        foreach (CanvasCueItem item in viewModel.CanvasItems.Where(item => item.Selected))
+        {
+            Rect bounds = ToScreen(item.Bounds, content);
+            if (movePreview is not null)
+            {
+                Vector delta = ToScreenDelta(movePreview.DeltaX, movePreview.DeltaY, content);
+                bounds = bounds.Translate(delta);
+            }
+
+            context.DrawRectangle(null, SelectionPen, bounds);
+            DrawHandles(context, bounds, item.AnchorKind);
+        }
+    }
+
+    private void DrawSnapGuides(DrawingContext context, Rect content)
+    {
+        if (movePreview is null)
+        {
+            return;
+        }
+
+        foreach (SnapGuide guide in movePreview.Guides)
+        {
+            if (guide.Vertical)
+            {
+                double x = PreviewCanvasGeometry.ToScreenCoordinate(
+                    guide.Position, true, content, SubtitleSpace);
+                context.DrawLine(SnapPen, new Point(x, content.Top), new Point(x, content.Bottom));
+            }
+            else
+            {
+                double y = PreviewCanvasGeometry.ToScreenCoordinate(
+                    guide.Position, false, content, SubtitleSpace);
+                context.DrawLine(SnapPen, new Point(content.Left, y), new Point(content.Right, y));
+            }
+        }
+    }
+
+    private void DrawSelectionRectangle(DrawingContext context)
+    {
+        if (selectingRange)
+        {
+            context.DrawRectangle(new SolidColorBrush(Color.FromArgb(35, 0, 180, 255)), SelectionPen,
+                selectionRectangle);
+        }
+    }
+
+    private bool TryBeginHandlePress(
+        MainWindowViewModel viewModel,
+        PointerPressedEventArgs e,
+        Point screen,
+        Rect content)
+    {
+        if (!TryHitHandle(viewModel, screen, content,
+                out Guid handleCueId, out int row, out int column))
+        {
+            return false;
+        }
+
+        if (PreviewResizeGeometry.IsResizeHandle(row, column))
+        {
+            pendingHandlePress = true;
+            pendingHandleCueId = handleCueId;
+            pendingHandleRow = row;
+            pendingHandleColumn = column;
+            resizePrimaryBounds = ToScreen(
+                viewModel.CanvasItems.First(item => item.Id == handleCueId).Bounds, content);
+            resizeMultiplier = 1.0;
+            pointerStart = screen;
+            e.Pointer.Capture(this);
+        }
+        else
+        {
+            viewModel.ChangeAnchor(handleCueId, ToAnchor(row, column));
+        }
+
+        return true;
+    }
+
+    private bool TryBeginCueInteraction(
+        MainWindowViewModel viewModel,
+        PointerPressedEventArgs e,
+        Point screen,
+        Point reference,
+        Rect content)
+    {
+        CanvasCueItem? hit = viewModel.CanvasItems.Reverse()
+            .FirstOrDefault(item => Contains(item.Bounds, reference));
+        if (hit is null)
+        {
+            return false;
+        }
+
+        bool control = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+        if (!hit.Selected || control)
+        {
+            viewModel.SelectCue(hit.Id, control);
+        }
+
+        if (e.ClickCount == 2)
+        {
+            viewModel.BeginInlineEdit(hit.Id, hit.Bounds, content, GetViewport());
+            return true;
+        }
+
+        draggingCue = true;
+        pointerStart = screen;
+        e.Pointer.Capture(this);
+        return true;
+    }
+
+    private void BeginEmptyCanvasInteraction(
+        MainWindowViewModel viewModel,
+        PointerPressedEventArgs e,
+        Point screen,
+        Point reference,
+        Rect content)
+    {
+        if (e.ClickCount == 2)
+        {
+            Guid? addedCueId = viewModel.AddCueAtCanvasPoint(reference.X, reference.Y);
+            if (addedCueId is Guid id)
+            {
+                BeginInlineEditForAddedCue(viewModel, id, screen, content);
+            }
+
+            return;
+        }
+
+        selectingRange = true;
+        pointerStart = screen;
+        selectionRectangle = new Rect(screen, screen);
+        e.Pointer.Capture(this);
+    }
+
+    private void BeginInlineEditForAddedCue(
+        MainWindowViewModel viewModel,
+        Guid cueId,
+        Point screen,
+        Rect content)
+    {
+        if (viewModel.CanvasItems.FirstOrDefault(item => item.Id == cueId) is CanvasCueItem added)
+        {
+            viewModel.BeginInlineEdit(cueId, added.Bounds, content, GetViewport());
+            return;
+        }
+
+        Rect inlineBounds = ClampInlinePlacement(new Rect(screen.X, screen.Y, 180,
+            InlineEditorPlacement.DefaultHeight));
+        viewModel.BeginInlineEdit(cueId, inlineBounds.Left, inlineBounds.Top,
+            inlineBounds.Width);
+    }
+
+    private void ActivatePendingResize(Point current)
+    {
+        if (!pendingHandlePress || DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        Vector moved = current - pointerStart;
+        if (Math.Sqrt((moved.X * moved.X) + (moved.Y * moved.Y)) <= DragThresholdPixels)
+        {
+            return;
+        }
+
+        pendingHandlePress = false;
+        if (viewModel.BeginCanvasResize(pendingHandleCueId, pendingHandleRow, pendingHandleColumn))
+        {
+            resizingCue = true;
+        }
+    }
+
+    private void UpdateResizePreview(
+        MainWindowViewModel viewModel,
+        PointerEventArgs e,
+        Point current)
+    {
+        bool shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        resizeMultiplier = PreviewResizeGeometry.ComputeMultiplier(
+            resizePrimaryBounds, pendingHandleRow, pendingHandleColumn,
+            current - pointerStart, shift);
+        viewModel.PreviewCanvasResize(resizeMultiplier);
+        InvalidateVisual();
+    }
+
+    private void UpdateMovePreview(
+        MainWindowViewModel viewModel,
+        PointerEventArgs e,
+        Point current)
+    {
+        Rect content = GetContentRect();
+        Vector delta = current - pointerStart;
+        Rect subtitleSpace = PreviewCanvasGeometry.NormalizeSubtitleSpace(SubtitleSpace);
+        double deltaX = delta.X / content.Width * subtitleSpace.Width;
+        double deltaY = delta.Y / content.Height * subtitleSpace.Height;
+        shiftPressed = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        altPressed = e.KeyModifiers.HasFlag(KeyModifiers.Alt);
+        ConstrainMoveToAxis(ref deltaX, ref deltaY);
+
+        movePreview = viewModel.PreviewCanvasMove(deltaX, deltaY, altPressed);
+        CanvasCueItem? coordinateCue = viewModel.CanvasItems.LastOrDefault(item => item.Selected);
+        if (coordinateCue is not null)
+        {
+            ToolTip.SetTip(this,
+                $"ah {coordinateCue.Anchor.X + movePreview.DeltaX:F1} \\u00B7 av {coordinateCue.Anchor.Y + movePreview.DeltaY:F1}");
+            ToolTip.SetIsOpen(this, true);
+        }
+
+        InvalidateVisual();
+    }
+
+    private void ConstrainMoveToAxis(ref double deltaX, ref double deltaY)
+    {
+        if (!shiftPressed)
+        {
+            return;
+        }
+
+        if (Math.Abs(deltaX) >= Math.Abs(deltaY))
+        {
+            deltaY = 0;
+        }
+        else
+        {
+            deltaX = 0;
+        }
+    }
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
         if (DataContext is MainWindowViewModel viewModel)
         {
-            if (pendingHandlePress)
-            {
-                // Never crossed the drag threshold, so treat it as an anchor pick.
-                viewModel.ChangeAnchor(pendingHandleCueId,
-                    ToAnchor(pendingHandleRow, pendingHandleColumn));
-            }
-            else if (resizingCue)
-            {
-                viewModel.EndCanvasResize(resizeMultiplier);
-            }
-            else if (draggingCue && movePreview is not null)
-            {
-                viewModel.CommitCanvasMove(movePreview.DeltaX, movePreview.DeltaY, altPressed);
-            }
-            else if (selectingRange)
-            {
-                Rect content = GetContentRect();
-                Point first = ToReference(selectionRectangle.TopLeft, content);
-                Point second = ToReference(selectionRectangle.BottomRight, content);
-                viewModel.SelectInRectangle(new CanvasRect(first.X, first.Y,
-                    Math.Max(0, second.X - first.X), Math.Max(0, second.Y - first.Y)));
-            }
+            CommitPointerRelease(viewModel);
         }
 
         pendingHandlePress = false;
@@ -391,6 +459,37 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
         ToolTip.SetIsOpen(this, false);
         e.Pointer.Capture(null);
         InvalidateVisual();
+    }
+
+    private void CommitPointerRelease(MainWindowViewModel viewModel)
+    {
+        if (pendingHandlePress)
+        {
+            // Never crossed the drag threshold, so treat it as an anchor pick.
+            viewModel.ChangeAnchor(pendingHandleCueId,
+                ToAnchor(pendingHandleRow, pendingHandleColumn));
+        }
+        else if (resizingCue)
+        {
+            viewModel.EndCanvasResize(resizeMultiplier);
+        }
+        else if (draggingCue && movePreview is not null)
+        {
+            viewModel.CommitCanvasMove(movePreview.DeltaX, movePreview.DeltaY, altPressed);
+        }
+        else if (selectingRange)
+        {
+            CommitSelection(viewModel);
+        }
+    }
+
+    private void CommitSelection(MainWindowViewModel viewModel)
+    {
+        Rect content = GetContentRect();
+        Point first = ToReference(selectionRectangle.TopLeft, content);
+        Point second = ToReference(selectionRectangle.BottomRight, content);
+        viewModel.SelectInRectangle(new CanvasRect(first.X, first.Y,
+            Math.Max(0, second.X - first.X), Math.Max(0, second.Y - first.Y)));
     }
 
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
@@ -415,51 +514,79 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
             return;
         }
 
-        if (ShouldDeleteSelectedCues(e.Key, e.KeyModifiers, viewModel.IsInlineEditing,
-                viewModel.SelectedCueIds.Count) &&
-            viewModel.DeleteCueCommand.CanExecute(null))
+        if (TryHandleDelete(viewModel, e) ||
+            TryHandleInlineEdit(viewModel, e) ||
+            TryHandleAlignment(viewModel, e))
         {
-            viewModel.DeleteCueCommand.Execute(null);
-            e.Handled = true;
             return;
         }
 
-        if ((e.Key is Key.F2 or Key.Enter) && e.KeyModifiers == KeyModifiers.None &&
-            viewModel.SelectedCueIds.Count == 1)
+        if (TryNudge(viewModel, e))
         {
-            CanvasCueItem? selected = viewModel.CanvasItems.FirstOrDefault(item => item.Selected);
-            if (selected is not null)
-            {
-                viewModel.BeginInlineEdit(
-                    selected.Id,
-                    selected.Bounds,
-                    GetContentRect(),
-                    GetViewport());
-                e.Handled = true;
-                return;
-            }
+            e.Handled = true;
+        }
+    }
+    private static bool TryHandleDelete(MainWindowViewModel viewModel, KeyEventArgs e)
+    {
+        if (!ShouldDeleteSelectedCues(e.Key, e.KeyModifiers, viewModel.IsInlineEditing,
+                viewModel.SelectedCueIds.Count) ||
+            !viewModel.DeleteCueCommand.CanExecute(null))
+        {
+            return false;
         }
 
-        double amount = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 0.1 : 1.0;
+        viewModel.DeleteCueCommand.Execute(null);
+        e.Handled = true;
+        return true;
+    }
+
+    private bool TryHandleInlineEdit(MainWindowViewModel viewModel, KeyEventArgs e)
+    {
+        if ((e.Key is not (Key.F2 or Key.Enter)) || e.KeyModifiers != KeyModifiers.None ||
+            viewModel.SelectedCueIds.Count != 1)
+        {
+            return false;
+        }
+
+        if (viewModel.CanvasItems.FirstOrDefault(item => item.Selected) is not CanvasCueItem selected)
+        {
+            return false;
+        }
+
+        viewModel.BeginInlineEdit(selected.Id, selected.Bounds, GetContentRect(), GetViewport());
+        e.Handled = true;
+        return true;
+    }
+
+    private static bool TryHandleAlignment(MainWindowViewModel viewModel, KeyEventArgs e)
+    {
         const KeyModifiers alignmentModifiers = KeyModifiers.Control | KeyModifiers.Shift;
-        if ((e.KeyModifiers & alignmentModifiers) == alignmentModifiers)
+        if ((e.KeyModifiers & alignmentModifiers) != alignmentModifiers)
         {
-            char? alignment = e.Key switch
-            {
-                Key.H => 'H',
-                Key.V => 'V',
-                Key.C => 'C',
-                Key.B => 'B',
-                _ => null,
-            };
-            if (alignment.HasValue)
-            {
-                viewModel.AlignSelected(alignment.Value);
-                e.Handled = true;
-                return;
-            }
+            return false;
         }
 
+        char? alignment = e.Key switch
+        {
+            Key.H => 'H',
+            Key.V => 'V',
+            Key.C => 'C',
+            Key.B => 'B',
+            _ => null,
+        };
+        if (!alignment.HasValue)
+        {
+            return false;
+        }
+
+        viewModel.AlignSelected(alignment.Value);
+        e.Handled = true;
+        return true;
+    }
+
+    private static bool TryNudge(MainWindowViewModel viewModel, KeyEventArgs e)
+    {
+        double amount = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 0.1 : 1.0;
         switch (e.Key)
         {
             case Key.Left:
@@ -475,12 +602,11 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
                 viewModel.NudgeSelected(0, amount);
                 break;
             default:
-                return;
+                return false;
         }
 
-        e.Handled = true;
+        return true;
     }
-
     protected override Size ArrangeOverride(Size finalSize)
     {
         Size arranged = base.ArrangeOverride(finalSize);

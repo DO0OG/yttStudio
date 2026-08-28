@@ -110,22 +110,26 @@
                     Background="{DynamicResource AppDividerBrush}" />
 
       <Grid Grid.Column="2" MinWidth="500" RowDefinitions="Auto,3*,6,*,6,2*">
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+        <!-- 폭이 모자라면 다음 줄로 넘긴다. 가로로 잘려 나가지 않게 한다. -->
+        <WrapPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center">
           <RadioButton GroupName="ViewportMode" Content="{Binding Loc[ViewportVideo]}"
-                       Command="{Binding SelectVideoFrameViewportCommand}"
+                       Command="{Binding SelectVideoFrameViewportCommand}" Margin="0,0,8,0"
                        IsChecked="{Binding IsVideoFrameViewport}" />
           <RadioButton GroupName="ViewportMode" Content="{Binding Loc[ViewportYouTube]}"
-                       Command="{Binding SelectYouTubeDefaultViewportCommand}"
+                       Command="{Binding SelectYouTubeDefaultViewportCommand}" Margin="0,0,8,0"
                        IsChecked="{Binding IsYouTubeDefaultViewport}" />
           <RadioButton GroupName="ViewportMode" Content="{Binding Loc[ViewportTheater]}"
-                       Command="{Binding SelectYouTubeTheaterViewportCommand}"
+                       Command="{Binding SelectYouTubeTheaterViewportCommand}" Margin="0,0,8,0"
                        IsChecked="{Binding IsYouTubeTheaterViewport}" />
           <RadioButton GroupName="ViewportMode" Content="{Binding Loc[ViewportFullscreen]}"
-                       Command="{Binding SelectYouTubeFullscreenViewportCommand}"
+                       Command="{Binding SelectYouTubeFullscreenViewportCommand}" Margin="0,0,8,0"
                        IsChecked="{Binding IsYouTubeFullscreenViewport}" />
-          <TextBlock Text="{Binding SelectedViewportModeDisplayName}" VerticalAlignment="Center" Margin="4,0,0,0" />
-          <TextBlock Text="{Binding Loc[ViewportModeNote]}" VerticalAlignment="Center" Margin="8,0" />
-        </StackPanel>
+          <TextBlock Text="{Binding Loc[PlaybackQuality]}" VerticalAlignment="Center" Margin="12,0,4,0" />
+          <ComboBox MinWidth="86" VerticalAlignment="Center"
+                    ToolTip.Tip="{Binding Loc[PlaybackQualityHint]}"
+                    ItemsSource="{Binding PlaybackQualityOptions}"
+                    SelectedItem="{Binding SelectedPlaybackQuality}" />
+        </WrapPanel>
 
         <Grid Grid.Row="1" MinHeight="190" RowDefinitions="*,Auto,Auto" Margin="0,6,0,0">
         <Border Grid.Row="0" MinHeight="140"
@@ -206,8 +210,10 @@
           </Grid>
         </Border>
 
-        <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,100" ColumnSpacing="6"
-              Margin="0,6,0,0" HorizontalAlignment="Stretch" IsEnabled="{Binding HasVideo}">
+        <!-- 재생 위치 슬라이더만 남는 폭을 가져가고 나머지는 제 크기를 지킨다.
+             볼륨 열에는 여백을 두어 오른쪽 끝을 넘지 않게 한다. -->
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="6"
+              Margin="0,6,4,0" HorizontalAlignment="Stretch" IsEnabled="{Binding HasVideo}">
           <Button Grid.Column="0" Content="◀" Command="{Binding StepBackCommand}"
                   Width="36" MinHeight="32" VerticalAlignment="Center" />
           <Button Grid.Column="1" Content="{Binding PlayPauseLabel}" Command="{Binding PlayPauseCommand}"
@@ -217,14 +223,14 @@
           <Button Grid.Column="2" Content="▶" Command="{Binding StepForwardCommand}"
                   Width="36" MinHeight="32" VerticalAlignment="Center" />
           <Slider Grid.Column="3" Minimum="0" Maximum="{Binding MaximumMilliseconds}"
-                  Value="{Binding PositionMilliseconds}" VerticalAlignment="Center" />
-          <TextBlock Grid.Column="4" Text="{Binding PositionDisplay}" Width="92" TextAlignment="Right"
+                  MinWidth="80" Value="{Binding PositionMilliseconds}" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="4" Text="{Binding PositionDisplay}" Width="80" TextAlignment="Right"
                      VerticalAlignment="Center" />
           <ComboBox Grid.Column="5" ItemsSource="{Binding SpeedOptions}" SelectedItem="{Binding PlaybackSpeed}"
-                    Width="72" MinHeight="32" VerticalAlignment="Center" />
+                    Width="66" MinHeight="32" VerticalAlignment="Center" />
           <ToggleButton Grid.Column="6" Content="{Binding MuteLabel}" IsChecked="{Binding IsMuted}"
                         ToolTip.Tip="{Binding Loc[Mute]}" MinHeight="32" VerticalAlignment="Center" />
-          <Slider Grid.Column="7" Minimum="0" Maximum="100" Value="{Binding Volume}" Width="100"
+          <Slider Grid.Column="7" Minimum="0" Maximum="100" Value="{Binding Volume}" Width="88"
                   ToolTip.Tip="{Binding Loc[Volume]}" VerticalAlignment="Center" />
         </Grid>
 

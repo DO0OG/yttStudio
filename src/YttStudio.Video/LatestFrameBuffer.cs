@@ -50,15 +50,7 @@ internal sealed class LatestFrameBuffer
                 return false;
             }
 
-            index = -1;
-            for (int candidate = 0; candidate < slots.Length; candidate++)
-            {
-                if (candidate != frontIndex && slots[candidate].Readers == 0)
-                {
-                    index = candidate;
-                    break;
-                }
-            }
+            index = FindWritableSlot();
 
             if (index < 0)
             {
@@ -189,6 +181,19 @@ internal sealed class LatestFrameBuffer
                 slot.Valid = false;
             }
         }
+    }
+
+    private int FindWritableSlot()
+    {
+        for (int candidate = 0; candidate < slots.Length; candidate++)
+        {
+            if (candidate != frontIndex && slots[candidate].Readers == 0)
+            {
+                return candidate;
+            }
+        }
+
+        return -1;
     }
 
     private void Release(int index)

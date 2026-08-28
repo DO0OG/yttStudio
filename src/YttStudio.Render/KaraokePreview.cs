@@ -187,6 +187,19 @@ public static class KaraokePreview
     private static bool TryGetRange(Rune rune, out int rangeStart, out int rangeEnd)
     {
         int value = rune.Value;
+        if (TryGetPrimaryScriptRange(value, out rangeStart, out rangeEnd) ||
+            TryGetCjkScriptRange(value, out rangeStart, out rangeEnd))
+        {
+            return true;
+        }
+
+        rangeStart = 0;
+        rangeEnd = 0;
+        return false;
+    }
+
+    private static bool TryGetPrimaryScriptRange(int value, out int rangeStart, out int rangeEnd)
+    {
         if (value is >= LatinUpperStart and <= LatinUpperEnd)
         {
             rangeStart = LatinUpperStart;
@@ -222,6 +235,13 @@ public static class KaraokePreview
             return true;
         }
 
+        rangeStart = 0;
+        rangeEnd = 0;
+        return false;
+    }
+
+    private static bool TryGetCjkScriptRange(int value, out int rangeStart, out int rangeEnd)
+    {
         if (value is >= 0x3400 and <= 0x4DBF)
         {
             rangeStart = 0x3400;

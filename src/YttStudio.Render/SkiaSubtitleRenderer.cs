@@ -34,58 +34,110 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
         ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(options);
 
+        DrawLayouts(canvas, viewport, GetLayouts(viewport, project, time, options), time, options);
+    }
+
+    /// <summary>한 번 계산한 레이아웃으로 렌더와 측정을 함께 처리한다.</summary>
+    /// <remarks>
+    /// 프리뷰는 프레임마다 그리고 또 측정한다. <see cref="Render"/> 와 <see cref="Measure"/>
+    /// 를 따로 부르면 활성 큐 전체의 레이아웃을 프레임당 두 번 계산하게 된다. 재생 중에는
+    /// 그 비용이 그대로 두 배가 되므로 한 번만 계산해 양쪽에 쓴다.
+    /// </remarks>
+    public IReadOnlyList<CueHitBox> RenderAndMeasure(SKCanvas canvas, PlayerViewport viewport,
+        SubtitleProject project, TimeSpan time, RenderOptions options)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentNullException.ThrowIfNull(canvas);
+        ArgumentNullException.ThrowIfNull(project);
+        ArgumentNullException.ThrowIfNull(options);
+
         IReadOnlyList<CueLayout> layouts = GetLayouts(viewport, project, time, options);
+        DrawLayouts(canvas, viewport, layouts, time, options);
+        CueHitBox[] hitBoxes = new CueHitBox[layouts.Count];
+        for (int index = 0; index < layouts.Count; index++)
+        {
+            CueLayout layout = layouts[index];
+            hitBoxes[index] = new CueHitBox(layout.Cue, layout.Bounds, layout.AnchorScreenPoint);
+        }
+
+        return hitBoxes;
+    }
+
+    private void DrawLayouts(SKCanvas canvas, PlayerViewport viewport, IReadOnlyList<CueLayout> layouts,
+        TimeSpan time, RenderOptions options)
+    {
         foreach (CueLayout layout in layouts)
         {
-            CueEffectState effect = CueEffectEvaluator.Evaluate(layout.Cue, time, options.FrameIndex,
-                layout.AnchorScreenPoint);
-            int saveCount = canvas.Save();
-            canvas.Translate(effect.Translation);
-            if (effect.Scale != 1)
-            {
-                canvas.Scale(effect.Scale, effect.Scale, layout.Bounds.MidX, layout.Bounds.MidY);
-            }
-            if (effect.Alpha < 1)
-            {
-                using SKPaint alphaPaint = new() { Color = SKColors.White.WithAlpha((byte)Math.Round(effect.Alpha * 255)) };
-                canvas.SaveLayer(alphaPaint);
-            }
-            if (options.EditingCueId != layout.Cue.Id)
-            {
-                DrawChroma(canvas, layout, time, options, effect);
-                DrawBackground(canvas, layout);
-                DrawEdges(canvas, layout, time, options);
-                DrawBody(canvas, layout, time, options, effect);
-                DrawUnderlines(canvas, layout);
-                DrawRuby(canvas, layout);
-            }
-            canvas.RestoreToCount(saveCount);
+            DrawLayout(canvas, layout, time, options);
         }
 
         if (options.ShowSafeArea)
         {
-            using SKPaint safeAreaPaint = new()
-            {
-                Color = new SKColor(255, 255, 255, 96),
-                Style = SKPaintStyle.Stroke,
-                StrokeWidth = 1,
-                IsAntialias = true,
-            };
-            SKRect space = viewport.SubtitleSpace;
-            canvas.DrawRect(SKRect.Create(
-                space.Left + (space.Width * EditorSafeAreaInsetRatio),
-                space.Top + (space.Height * EditorSafeAreaInsetRatio),
-                space.Width * (1 - (EditorSafeAreaInsetRatio * 2)),
-                space.Height * (1 - (EditorSafeAreaInsetRatio * 2))), safeAreaPaint);
+            DrawSafeArea(canvas, viewport);
         }
 
         if (options.ShowAnchorPoints)
         {
-            using SKPaint anchorPaint = new() { Color = SKColors.Magenta, IsAntialias = true };
-            foreach (CueLayout layout in layouts)
+            DrawAnchorPoints(canvas, layouts);
+        }
+    }
+
+    private void DrawLayout(SKCanvas canvas, CueLayout layout, TimeSpan time, RenderOptions options)
+    {
+        CueEffectState effect = CueEffectEvaluator.Evaluate(layout.Cue, time, options.FrameIndex,
+            layout.AnchorScreenPoint);
+        int saveCount = canvas.Save();
+        canvas.Translate(effect.Translation);
+        if (effect.Scale != 1)
+        {
+            canvas.Scale(effect.Scale, effect.Scale, layout.Bounds.MidX, layout.Bounds.MidY);
+        }
+
+        if (effect.Alpha < 1)
+        {
+            using SKPaint alphaPaint = new()
             {
-                canvas.DrawCircle(layout.AnchorScreenPoint, 3, anchorPaint);
-            }
+                Color = SKColors.White.WithAlpha((byte)Math.Round(effect.Alpha * 255)),
+            };
+            canvas.SaveLayer(alphaPaint);
+        }
+
+        if (options.EditingCueId != layout.Cue.Id)
+        {
+            DrawChroma(canvas, layout, time, options, effect);
+            DrawBackground(canvas, layout);
+            DrawEdges(canvas, layout, time, options);
+            DrawBody(canvas, layout, time, options, effect);
+            DrawUnderlines(canvas, layout);
+            DrawRuby(canvas, layout);
+        }
+
+        canvas.RestoreToCount(saveCount);
+    }
+
+    private static void DrawSafeArea(SKCanvas canvas, PlayerViewport viewport)
+    {
+        using SKPaint safeAreaPaint = new()
+        {
+            Color = new SKColor(255, 255, 255, 96),
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 1,
+            IsAntialias = true,
+        };
+        SKRect space = viewport.SubtitleSpace;
+        canvas.DrawRect(SKRect.Create(
+            space.Left + (space.Width * EditorSafeAreaInsetRatio),
+            space.Top + (space.Height * EditorSafeAreaInsetRatio),
+            space.Width * (1 - (EditorSafeAreaInsetRatio * 2)),
+            space.Height * (1 - (EditorSafeAreaInsetRatio * 2))), safeAreaPaint);
+    }
+
+    private static void DrawAnchorPoints(SKCanvas canvas, IReadOnlyList<CueLayout> layouts)
+    {
+        using SKPaint anchorPaint = new() { Color = SKColors.Magenta, IsAntialias = true };
+        foreach (CueLayout layout in layouts)
+        {
+            canvas.DrawCircle(layout.AnchorScreenPoint, 3, anchorPaint);
         }
     }
 

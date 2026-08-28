@@ -83,80 +83,119 @@ internal static partial class AssEffectCodec
         StringBuilder tags = new();
         foreach (CueEffect effect in effects)
         {
-            switch (effect)
-            {
-                case MoveEffect move:
-                    tags.Append("\\move(").Append(F(move.FromX)).Append(',').Append(F(move.FromY)).Append(',')
-                        .Append(F(move.ToX)).Append(',').Append(F(move.ToY));
-                    if (move.StartTime.HasValue && move.EndTime.HasValue)
-                        tags.Append(',').Append(Ms(move.StartTime.Value)).Append(',').Append(Ms(move.EndTime.Value));
-                    tags.Append(')');
-                    break;
-                case FadeEffect fade when fade.Alpha1.HasValue && fade.Alpha2.HasValue && fade.Alpha3.HasValue &&
-                    fade.T1.HasValue && fade.T2.HasValue && fade.T3.HasValue && fade.T4.HasValue:
-                    tags.Append("\\fade(").Append(fade.Alpha1.Value).Append(',').Append(fade.Alpha2.Value).Append(',')
-                        .Append(fade.Alpha3.Value).Append(',').Append(Ms(fade.T1.Value)).Append(',').Append(Ms(fade.T2.Value))
-                        .Append(',').Append(Ms(fade.T3.Value)).Append(',').Append(Ms(fade.T4.Value)).Append(')');
-                    break;
-                case FadeEffect fade:
-                    tags.Append("\\fad(").Append(Ms(fade.FadeIn)).Append(',').Append(Ms(fade.FadeOut)).Append(')');
-                    break;
-                case ShakeEffect shake:
-                    tags.Append("\\ytshake(").Append(F(shake.RadiusX)).Append(',').Append(F(shake.RadiusY));
-                    if (shake.StartTime.HasValue && shake.EndTime.HasValue)
-                        tags.Append(',').Append(Ms(shake.StartTime.Value)).Append(',').Append(Ms(shake.EndTime.Value));
-                    tags.Append(')');
-                    break;
-                case ChromaEffect chroma:
-                    tags.Append("\\ytchroma(");
-                    if (chroma.CustomColors is { Count: > 0 } colors)
-                    {
-                        foreach (RgbaColor color in colors)
-                            tags.Append("&H").Append(color.Blue.ToString("X2", CultureInfo.InvariantCulture))
-                                .Append(color.Green.ToString("X2", CultureInfo.InvariantCulture)).Append(color.Red.ToString("X2", CultureInfo.InvariantCulture)).Append('&').Append(',');
-                        tags.Append("&H").Append((255 - colors[0].Alpha).ToString("X2", CultureInfo.InvariantCulture)).Append('&').Append(',');
-                    }
-                    tags.Append(F(chroma.OffsetX)).Append(',').Append(F(chroma.OffsetY)).Append(',')
-                        .Append(Ms(chroma.InTime)).Append(',').Append(Ms(chroma.OutTime)).Append(')');
-                    break;
-                case AnimateEffect animate:
-                    string modifiers = string.Empty;
-                    if (animate.ToForeground is RgbaColor foreground)
-                        modifiers += "\\1c" + Color(foreground);
-                    if (animate.ToEdgeColor is RgbaColor edge)
-                        modifiers += "\\3c" + Color(edge);
-                    if (animate.ToSizePercent is int size)
-                        modifiers += "\\fs" + size.ToString(CultureInfo.InvariantCulture);
-                    if (modifiers.Length > 0)
-                        tags.Append("\\t(").Append(Ms(animate.Start)).Append(',').Append(Ms(animate.End)).Append(',')
-                            .Append(F(animate.Accel)).Append(',').Append(modifiers).Append(')');
-                    break;
-                case KaraokeSettings karaoke:
-                    tags.Append("\\ytkt(").Append(karaoke.Type switch
-                    {
-                        KaraokeType.Fade => "fade",
-                        KaraokeType.Glitch => "glitch",
-                        KaraokeType.Cursor => "cursor",
-                        KaraokeType.LeftCursor => "lcursor",
-                        KaraokeType.None => "none",
-                        _ => "simple",
-                    });
-                    if (karaoke.Type is KaraokeType.Cursor or KaraokeType.LeftCursor)
-                    {
-                        if (karaoke.CursorInterval.HasValue)
-                            tags.Append(',').Append(Ms(karaoke.CursorInterval.Value));
-                        if (karaoke.CursorText is not null)
-                            tags.Append(',').Append(karaoke.CursorText);
-                    }
-                    tags.Append(')');
-                    break;
-                default:
-                    // ASS 표현이 없는 효과 종류는 태그를 만들지 않는다.
-                    break;
-            }
+            AppendEffect(tags, effect);
         }
 
         return tags.Length == 0 ? string.Empty : "{" + tags + "}";
+    }
+
+    private static void AppendEffect(StringBuilder tags, CueEffect effect)
+    {
+        switch (effect)
+        {
+            case MoveEffect move:
+                AppendMove(tags, move);
+                break;
+            case FadeEffect fade:
+                AppendFade(tags, fade);
+                break;
+            case ShakeEffect shake:
+                AppendShake(tags, shake);
+                break;
+            case ChromaEffect chroma:
+                AppendChroma(tags, chroma);
+                break;
+            case AnimateEffect animate:
+                AppendAnimate(tags, animate);
+                break;
+            case KaraokeSettings karaoke:
+                AppendKaraoke(tags, karaoke);
+                break;
+            default:
+                // ASS 표현이 없는 효과 종류는 태그를 만들지 않는다.
+                break;
+        }
+    }
+
+    private static void AppendMove(StringBuilder tags, MoveEffect move)
+    {
+        tags.Append("\\move(").Append(F(move.FromX)).Append(',').Append(F(move.FromY)).Append(',')
+            .Append(F(move.ToX)).Append(',').Append(F(move.ToY));
+        if (move.StartTime.HasValue && move.EndTime.HasValue)
+            tags.Append(',').Append(Ms(move.StartTime.Value)).Append(',').Append(Ms(move.EndTime.Value));
+        tags.Append(')');
+    }
+
+    private static void AppendFade(StringBuilder tags, FadeEffect fade)
+    {
+        if (fade.Alpha1 is int alpha1 && fade.Alpha2 is int alpha2 && fade.Alpha3 is int alpha3 &&
+            fade.T1 is TimeSpan t1 && fade.T2 is TimeSpan t2 &&
+            fade.T3 is TimeSpan t3 && fade.T4 is TimeSpan t4)
+        {
+            tags.Append("\\fade(").Append(alpha1).Append(',').Append(alpha2).Append(',')
+                .Append(alpha3).Append(',').Append(Ms(t1)).Append(',').Append(Ms(t2))
+                .Append(',').Append(Ms(t3)).Append(',').Append(Ms(t4)).Append(')');
+            return;
+        }
+
+        tags.Append("\\fad(").Append(Ms(fade.FadeIn)).Append(',').Append(Ms(fade.FadeOut)).Append(')');
+    }
+
+    private static void AppendShake(StringBuilder tags, ShakeEffect shake)
+    {
+        tags.Append("\\ytshake(").Append(F(shake.RadiusX)).Append(',').Append(F(shake.RadiusY));
+        if (shake.StartTime.HasValue && shake.EndTime.HasValue)
+            tags.Append(',').Append(Ms(shake.StartTime.Value)).Append(',').Append(Ms(shake.EndTime.Value));
+        tags.Append(')');
+    }
+
+    private static void AppendChroma(StringBuilder tags, ChromaEffect chroma)
+    {
+        tags.Append("\\ytchroma(");
+        if (chroma.CustomColors is { Count: > 0 } colors)
+        {
+            foreach (RgbaColor color in colors)
+                tags.Append("&H").Append(color.Blue.ToString("X2", CultureInfo.InvariantCulture))
+                    .Append(color.Green.ToString("X2", CultureInfo.InvariantCulture)).Append(color.Red.ToString("X2", CultureInfo.InvariantCulture)).Append('&').Append(',');
+            tags.Append("&H").Append((255 - colors[0].Alpha).ToString("X2", CultureInfo.InvariantCulture)).Append('&').Append(',');
+        }
+        tags.Append(F(chroma.OffsetX)).Append(',').Append(F(chroma.OffsetY)).Append(',')
+            .Append(Ms(chroma.InTime)).Append(',').Append(Ms(chroma.OutTime)).Append(')');
+    }
+
+    private static void AppendAnimate(StringBuilder tags, AnimateEffect animate)
+    {
+        string modifiers = string.Empty;
+        if (animate.ToForeground is RgbaColor foreground)
+            modifiers += "\\1c" + Color(foreground);
+        if (animate.ToEdgeColor is RgbaColor edge)
+            modifiers += "\\3c" + Color(edge);
+        if (animate.ToSizePercent is int size)
+            modifiers += "\\fs" + size.ToString(CultureInfo.InvariantCulture);
+        if (modifiers.Length > 0)
+            tags.Append("\\t(").Append(Ms(animate.Start)).Append(',').Append(Ms(animate.End)).Append(',')
+                .Append(F(animate.Accel)).Append(',').Append(modifiers).Append(')');
+    }
+
+    private static void AppendKaraoke(StringBuilder tags, KaraokeSettings karaoke)
+    {
+        tags.Append("\\ytkt(").Append(karaoke.Type switch
+        {
+            KaraokeType.Fade => "fade",
+            KaraokeType.Glitch => "glitch",
+            KaraokeType.Cursor => "cursor",
+            KaraokeType.LeftCursor => "lcursor",
+            KaraokeType.None => "none",
+            _ => "simple",
+        });
+        if (karaoke.Type is KaraokeType.Cursor or KaraokeType.LeftCursor)
+        {
+            if (karaoke.CursorInterval.HasValue)
+                tags.Append(',').Append(Ms(karaoke.CursorInterval.Value));
+            if (karaoke.CursorText is not null)
+                tags.Append(',').Append(karaoke.CursorText);
+        }
+        tags.Append(')');
     }
 
     public static string Inject(string source, IReadOnlyList<IReadOnlyList<CueEffect>> effectsByLine)

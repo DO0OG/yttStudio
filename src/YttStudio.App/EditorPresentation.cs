@@ -464,3 +464,9 @@ public sealed class CueRowViewModel : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
+
+/// <summary>재생 화질 선택 항목이다. <paramref name="Divisor"/> 는 해상도 축소 배수다.</summary>
+public sealed record PlaybackQualityOption(int Divisor, string Name)
+{
+    public override string ToString() => Name;
+}

@@ -31,49 +31,89 @@ public static class CueEffectEvaluator
 
         foreach (CueEffect effect in cue.Effects)
         {
-            switch (effect)
-            {
-                case MoveEffect move:
-                    double moveProgress = Progress(elapsed, move.StartTime ?? TimeSpan.Zero,
-                        move.EndTime ?? duration);
-                    translation += new SKPoint(
-                        (float)(Lerp(move.FromX, move.ToX, moveProgress) - baseAnchor.X),
-                        (float)(Lerp(move.FromY, move.ToY, moveProgress) - baseAnchor.Y));
-                    break;
-                case FadeEffect fade:
-                    alpha *= EvaluateFade(fade, elapsed, duration);
-                    break;
-                case ShakeEffect shake when IsActive(elapsed, shake.StartTime, shake.EndTime, duration):
-                    translation += DeterministicShake(cue.Id, frameIndex, shake.RadiusX, shake.RadiusY);
-                    break;
-                case ChromaEffect chroma:
-                    chromaAmount = Math.Max(chromaAmount, EvaluateChroma(chroma, elapsed, duration));
-                    chromaEffect = chroma;
-                    break;
-                case AnimateEffect animate:
-                    double raw = Progress(elapsed, animate.Start, animate.End);
-                    double eased = Math.Pow(raw, Math.Max(0, animate.Accel));
-                    if (animate.ToSizePercent is int targetSize)
-                    {
-                        scale *= (float)Lerp(1, targetSize / 100.0, eased);
-                    }
-                    if (animate.ToForeground is RgbaColor targetForeground)
-                    {
-                        foreground = Interpolate(RgbaColor.White, targetForeground, eased);
-                    }
-                    if (animate.ToEdgeColor is RgbaColor targetEdge)
-                    {
-                        edge = Interpolate(RgbaColor.EdgeDefault, targetEdge, eased);
-                    }
-                    break;
-                default:
-                    // 비활성이거나 시각 효과가 아닌 항목은 이 프레임에 기여하지 않는다.
-                    break;
-            }
+            ApplyEffect(effect, cue, elapsed, duration, frameIndex, baseAnchor,
+                ref translation, ref alpha, ref scale, ref foreground, ref edge,
+                ref chromaAmount, ref chromaEffect);
         }
 
         return new CueEffectState(translation, Math.Clamp(alpha, 0, 1), Math.Max(0.01f, scale),
             foreground, edge, chromaAmount, chromaEffect);
+    }
+
+    private static void ApplyEffect(
+        CueEffect effect,
+        Cue cue,
+        TimeSpan elapsed,
+        TimeSpan duration,
+        long frameIndex,
+        SKPoint baseAnchor,
+        ref SKPoint translation,
+        ref float alpha,
+        ref float scale,
+        ref RgbaColor? foreground,
+        ref RgbaColor? edge,
+        ref float chromaAmount,
+        ref ChromaEffect? chromaEffect)
+    {
+        switch (effect)
+        {
+            case MoveEffect move:
+                translation += EvaluateMove(move, elapsed, duration, baseAnchor);
+                break;
+            case FadeEffect fade:
+                alpha *= EvaluateFade(fade, elapsed, duration);
+                break;
+            case ShakeEffect shake when IsActive(elapsed, shake.StartTime, shake.EndTime, duration):
+                translation += DeterministicShake(cue.Id, frameIndex, shake.RadiusX, shake.RadiusY);
+                break;
+            case ChromaEffect chroma:
+                chromaAmount = Math.Max(chromaAmount, EvaluateChroma(chroma, elapsed, duration));
+                chromaEffect = chroma;
+                break;
+            case AnimateEffect animate:
+                ApplyAnimation(animate, elapsed, ref scale, ref foreground, ref edge);
+                break;
+            default:
+                // 비활성이거나 시각 효과가 아닌 항목은 이 프레임에 기여하지 않는다.
+                break;
+        }
+    }
+
+    private static SKPoint EvaluateMove(
+        MoveEffect move,
+        TimeSpan elapsed,
+        TimeSpan duration,
+        SKPoint baseAnchor)
+    {
+        double progress = Progress(elapsed, move.StartTime ?? TimeSpan.Zero, move.EndTime ?? duration);
+        return new SKPoint(
+            (float)(Lerp(move.FromX, move.ToX, progress) - baseAnchor.X),
+            (float)(Lerp(move.FromY, move.ToY, progress) - baseAnchor.Y));
+    }
+
+    private static void ApplyAnimation(
+        AnimateEffect animate,
+        TimeSpan elapsed,
+        ref float scale,
+        ref RgbaColor? foreground,
+        ref RgbaColor? edge)
+    {
+        double raw = Progress(elapsed, animate.Start, animate.End);
+        double eased = Math.Pow(raw, Math.Max(0, animate.Accel));
+        if (animate.ToSizePercent is int targetSize)
+        {
+            scale *= (float)Lerp(1, targetSize / 100.0, eased);
+        }
+
+        if (animate.ToForeground is RgbaColor targetForeground)
+        {
+            foreground = Interpolate(RgbaColor.White, targetForeground, eased);
+        }
+
+        if (animate.ToEdgeColor is RgbaColor targetEdge)
+        {
+            edge = Interpolate(RgbaColor.EdgeDefault, targetEdge, eased);
+        }
     }
 
     public static SKPoint DeterministicShake(Guid cueId, long frameIndex, double radiusX, double radiusY)

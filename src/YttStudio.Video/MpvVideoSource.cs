@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.Numerics;
 using System.Runtime.InteropServices;
 
 namespace YttStudio.Video;
@@ -17,6 +19,13 @@ public sealed class MpvVideoSource : IVideoSource
     private const ulong RenderUpdateFrame = 1;
     private readonly object controlGate = new();
     private readonly MpvNativeLibrary native;
+    private int playbackScaleDivisor = 1;
+    private long seekCount;
+    private long renderedFrameCount;
+    private long skippedFrameCount;
+    private long renderTicks;
+    private long alphaTicks;
+    private long pixelBytes;
     private readonly nint mpvHandle;
     private readonly LatestFrameBuffer frames = new();
     private readonly AutoResetEvent renderSignal = new(false);
@@ -54,7 +63,10 @@ public sealed class MpvVideoSource : IVideoSource
             SetOption("audio-display", "no");
             SetOption("keep-open", "yes");
             SetOption("pause", "yes");
-            SetOption("hwdec", "no");
+            // 디코딩을 GPU 로 넘긴다. 화면 합성은 여전히 소프트웨어 렌더 API 로 받으므로
+            // 프레임을 시스템 메모리로 되돌리는 copy-back 방식이어야 한다. 쓸 수 있는
+            // 하드웨어 디코더가 없으면 mpv 가 소프트웨어 디코딩으로 되돌아간다.
+            SetOption("hwdec", "auto-copy");
             Check(native.Initialize(mpvHandle), "mpv_initialize");
             LibraryVersion = ReadStringProperty("mpv-version") ?? GetApiVersionText(native.ClientApiVersion());
 
@@ -75,17 +87,22 @@ public sealed class MpvVideoSource : IVideoSource
         }
         catch
         {
-            if (renderThread?.IsAlive == true)
-            {
-                Volatile.Write(ref stopping, true);
-                renderSignal.Set();
-                renderThread.Join();
-            }
-
-            native.TerminateDestroy(mpvHandle);
-            native.Dispose();
+            CleanupAfterInitializationFailure();
             throw;
         }
+    }
+
+    private void CleanupAfterInitializationFailure()
+    {
+        if (renderThread?.IsAlive == true)
+        {
+            Volatile.Write(ref stopping, true);
+            renderSignal.Set();
+            renderThread.Join();
+        }
+
+        native.TerminateDestroy(mpvHandle);
+        native.Dispose();
     }
 
     public event Action? FrameReady;
@@ -201,6 +218,7 @@ public sealed class MpvVideoSource : IVideoSource
         {
             ThrowIfStoppingLocked();
             frames.BeginSeek();
+            Interlocked.Increment(ref seekCount);
             InvokeCommand("seek", targetSeconds.ToString("R", CultureInfo.InvariantCulture), mode);
             Volatile.Write(ref positionSeconds, targetSeconds);
         }
@@ -342,37 +360,42 @@ public sealed class MpvVideoSource : IVideoSource
         }
         finally
         {
-            Exception? cleanupFailure = null;
-            nint context = renderContext;
-            if (context != 0)
-            {
-                try
-                {
-                    native.RenderContextSetUpdateCallback(context, 0, 0);
-                }
-                catch (Exception exception)
-                {
-                    cleanupFailure = exception;
-                }
+            CleanupRenderContext();
+        }
+    }
 
-                try
-                {
-                    native.RenderContextFree(context);
-                }
-                catch (Exception exception)
-                {
-                    cleanupFailure ??= exception;
-                }
-                finally
-                {
-                    renderContext = 0;
-                }
+    private void CleanupRenderContext()
+    {
+        Exception? cleanupFailure = null;
+        nint context = renderContext;
+        if (context != 0)
+        {
+            try
+            {
+                native.RenderContextSetUpdateCallback(context, 0, 0);
+            }
+            catch (Exception exception)
+            {
+                cleanupFailure = exception;
             }
 
-            // 정리 과정도 실패하면 원래의 렌더 루프 실패를 보존한다.
-            renderFailure ??= cleanupFailure;
-            renderReady.Set();
+            try
+            {
+                native.RenderContextFree(context);
+            }
+            catch (Exception exception)
+            {
+                cleanupFailure ??= exception;
+            }
+            finally
+            {
+                renderContext = 0;
+            }
         }
+
+        // 정리 과정도 실패하면 원래의 렌더 루프 실패를 보존한다.
+        renderFailure ??= cleanupFailure;
+        renderReady.Set();
     }
 
     private unsafe void CreateSoftwareRenderContext()
@@ -396,44 +419,21 @@ public sealed class MpvVideoSource : IVideoSource
         }
 
         VideoInfo current = Info;
-        int width = current.Width > 0 ? current.Width : 1280;
-        int height = current.Height > 0 ? current.Height : 720;
+        // 배수를 나눠 더 작은 화면으로 받는다. 디코딩 뒤의 변환 · 전송 · 알파 채우기 ·
+        // 화면 합성이 전부 이 크기를 따르므로 부하가 배수의 제곱에 가깝게 줄어든다.
+        int divisor = Math.Max(1, Volatile.Read(ref playbackScaleDivisor));
+        int width = Math.Max(1, (current.Width > 0 ? current.Width : 1280) / divisor);
+        int height = Math.Max(1, (current.Height > 0 ? current.Height : 720) / divisor);
         long epoch = frames.SeekEpoch;
         if (!frames.TryBeginWrite(width, height, out int index, out byte[] pixels, out int stride))
         {
-            int skip = 1;
-            MpvRenderParam* skipParameters = stackalloc MpvRenderParam[2];
-            skipParameters[0] = new MpvRenderParam(13, (nint)(&skip));
-            skipParameters[1] = default;
-            Check(native.RenderContextRender(renderContext, (nint)skipParameters), "mpv_render_context_render(skip)");
+            RenderSkippedFrame();
             return;
         }
 
         try
         {
-            fixed (byte* pixelPointer = pixels)
-            {
-                int* size = stackalloc int[2] { width, height };
-                nuint nativeStride = (nuint)stride;
-                byte* format = stackalloc byte[] { (byte)'b', (byte)'g', (byte)'r', (byte)'0', 0 };
-                MpvRenderParam* parameters = stackalloc MpvRenderParam[5];
-                parameters[0] = new MpvRenderParam(RenderParamSoftwareSize, (nint)size);
-                parameters[1] = new MpvRenderParam(RenderParamSoftwareFormat, (nint)format);
-                parameters[2] = new MpvRenderParam(RenderParamSoftwareStride, (nint)(&nativeStride));
-                parameters[3] = new MpvRenderParam(RenderParamSoftwarePointer, (nint)pixelPointer);
-                parameters[4] = default;
-                Check(native.RenderContextRender(renderContext, (nint)parameters), "mpv_render_context_render(sw)");
-
-                // mpv SW 의 "bgr0" 은 네 번째 바이트를 정의하지 않는다. Avalonia 는 불투명 BGRA 를 기대한다.
-                for (int row = 0; row < height; row++)
-                {
-                    int rowOffset = row * stride;
-                    for (int column = 0; column < width; column++)
-                    {
-                        pixels[rowOffset + (column * 4) + 3] = byte.MaxValue;
-                    }
-                }
-            }
+            RenderSoftwareFrame(width, height, stride, pixels);
 
             long sequence = Interlocked.Increment(ref sequenceNumber);
             if (frames.Publish(index, Position, sequence, epoch))
@@ -445,6 +445,47 @@ public sealed class MpvVideoSource : IVideoSource
         {
             frames.CancelWrite(index);
             throw;
+        }
+    }
+
+    private unsafe void RenderSkippedFrame()
+    {
+        Interlocked.Increment(ref skippedFrameCount);
+        int skip = 1;
+        MpvRenderParam* skipParameters = stackalloc MpvRenderParam[2];
+        skipParameters[0] = new MpvRenderParam(13, (nint)(&skip));
+        skipParameters[1] = default;
+        Check(native.RenderContextRender(renderContext, (nint)skipParameters), "mpv_render_context_render(skip)");
+    }
+
+    private unsafe void RenderSoftwareFrame(int width, int height, int stride, byte[] pixels)
+    {
+        fixed (byte* pixelPointer = pixels)
+        {
+            int* size = stackalloc int[2] { width, height };
+            nuint nativeStride = (nuint)stride;
+            byte* format = stackalloc byte[] { (byte)'b', (byte)'g', (byte)'r', (byte)'0', 0 };
+            MpvRenderParam* parameters = stackalloc MpvRenderParam[5];
+            parameters[0] = new MpvRenderParam(RenderParamSoftwareSize, (nint)size);
+            parameters[1] = new MpvRenderParam(RenderParamSoftwareFormat, (nint)format);
+            parameters[2] = new MpvRenderParam(RenderParamSoftwareStride, (nint)(&nativeStride));
+            parameters[3] = new MpvRenderParam(RenderParamSoftwarePointer, (nint)pixelPointer);
+            parameters[4] = default;
+            long startedAt = Stopwatch.GetTimestamp();
+            Check(native.RenderContextRender(renderContext, (nint)parameters), "mpv_render_context_render(sw)");
+            long renderedAt = Stopwatch.GetTimestamp();
+
+            // mpv SW 의 "bgr0" 은 네 번째 바이트를 정의하지 않는다. Avalonia 는 불투명
+            // BGRA 를 기대하므로 알파를 채워야 한다. 다만 화소마다 바이트 하나씩 쓰면
+            // 1080p 기준 프레임당 이백만 번이 넘어 재생 내내 렌더 스레드를 붙잡는다.
+            // 네 바이트를 한 낱말로 묶어 SIMD 로 알파 비트만 세운다.
+            FillOpaqueAlpha(pixelPointer, width, height, stride);
+            long filledAt = Stopwatch.GetTimestamp();
+
+            Interlocked.Add(ref renderTicks, renderedAt - startedAt);
+            Interlocked.Add(ref alphaTicks, filledAt - renderedAt);
+            Interlocked.Add(ref pixelBytes, (long)height * stride);
+            Interlocked.Increment(ref renderedFrameCount);
         }
     }
 
@@ -518,6 +559,63 @@ public sealed class MpvVideoSource : IVideoSource
             catch when (!Volatile.Read(ref stopping) && !Volatile.Read(ref disposed))
             {
                 // 파일을 열거나 닫는 동안에는 메타데이터가 없을 수 있다.
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    /// <summary>렌더 경로가 지금까지 한 일을 읽는다.</summary>
+    /// <remarks>
+    /// 구간의 비용을 알고 싶으면 앞뒤에서 한 번씩 읽어 <see cref="VideoRenderDiagnostics.Since"/>
+    /// 로 빼라. 각 값은 원자적으로 읽지만 서로 같은 순간의 값은 아니다. 부하의 크기를 가늠하는
+    /// 용도이지 회계 장부가 아니다.
+    /// </remarks>
+    public VideoRenderDiagnostics ReadDiagnostics()
+        => new(
+            Interlocked.Read(ref seekCount),
+            Interlocked.Read(ref renderedFrameCount),
+            Interlocked.Read(ref skippedFrameCount),
+            TicksToMilliseconds(Interlocked.Read(ref renderTicks)),
+            TicksToMilliseconds(Interlocked.Read(ref alphaTicks)),
+            Interlocked.Read(ref pixelBytes));
+
+    private static double TicksToMilliseconds(long ticks)
+        => ticks * 1000.0 / Stopwatch.Frequency;
+
+    public int PlaybackScaleDivisor
+    {
+        get => Volatile.Read(ref playbackScaleDivisor);
+        set => Volatile.Write(ref playbackScaleDivisor, Math.Clamp(value, 1, 8));
+    }
+
+    /// <summary>BGRA 버퍼의 알파 바이트를 한꺼번에 불투명으로 세운다.</summary>
+    /// <remarks>
+    /// 화소를 <c>uint</c> 한 낱말로 보고 최상위 바이트에만 비트를 세운다. 하드웨어가
+    /// 지원하면 여러 화소를 한 번에 처리하므로, 바이트 단위로 훑던 예전 방식보다 반복
+    /// 횟수가 크게 줄어든다. 색 성분은 건드리지 않는다.
+    /// </remarks>
+    private static unsafe void FillOpaqueAlpha(byte* pixels, int width, int height, int stride)
+    {
+        const uint OpaqueAlpha = 0xFF000000u;
+        Vector<uint> mask = new(OpaqueAlpha);
+        int lanes = Vector<uint>.Count;
+        for (int row = 0; row < height; row++)
+        {
+            uint* line = (uint*)(pixels + (row * stride));
+            Span<uint> span = new(line, width);
+            int index = 0;
+            if (Vector.IsHardwareAccelerated)
+            {
+                for (; index <= width - lanes; index += lanes)
+                {
+                    Span<uint> chunk = span.Slice(index, lanes);
+                    (new Vector<uint>(chunk) | mask).CopyTo(chunk);
+                }
+            }
+
+            for (; index < width; index++)
+            {
+                line[index] |= OpaqueAlpha;
             }
         }
     }

@@ -83,6 +83,17 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         autosaveEnabled = preferences.AutosaveEnabled;
         videoStatus = getVideoStatus();
 
+        InitializeSettingsOptions();
+
+        BrowseMpvCommand = new AsyncCommand(BrowseMpvAsync);
+        ApplyMpvCommand = new AsyncCommand(ApplyMpvAsync);
+        InstallMpvCommand = new AsyncCommand(InstallMpvAsync, () => CanInstallMpv);
+        OpenMpvGuideCommand = new DelegateCommand(OpenMpvGuide);
+        CloseCommand = new DelegateCommand(() => CloseRequested?.Invoke());
+    }
+
+    private void InitializeSettingsOptions()
+    {
         LanguageOptions =
         [
             new SettingsOption<AppLanguage>(AppLanguage.Korean, "LanguageKorean", Loc),
@@ -111,12 +122,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         MpvPackageInstallInstructions packageInstructions = MpvAutoInstaller.GetPackageManagerInstructions();
         PackageManagerCommands = packageInstructions.Commands;
         Loc.LanguageChanged += OnLanguageChanged;
-
-        BrowseMpvCommand = new AsyncCommand(BrowseMpvAsync);
-        ApplyMpvCommand = new AsyncCommand(ApplyMpvAsync);
-        InstallMpvCommand = new AsyncCommand(InstallMpvAsync, () => CanInstallMpv);
-        OpenMpvGuideCommand = new DelegateCommand(OpenMpvGuide);
-        CloseCommand = new DelegateCommand(() => CloseRequested?.Invoke());
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -126,11 +131,11 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
 
     public Localizer Loc { get; }
 
-    public IReadOnlyList<SettingsOption<AppLanguage>> LanguageOptions { get; }
+    public IReadOnlyList<SettingsOption<AppLanguage>> LanguageOptions { get; private set; } = [];
 
-    public IReadOnlyList<SettingsOption<AppThemeMode>> ThemeOptions { get; }
+    public IReadOnlyList<SettingsOption<AppThemeMode>> ThemeOptions { get; private set; } = [];
 
-    public IReadOnlyList<SettingsOption<int>> AutosaveIntervalOptions { get; }
+    public IReadOnlyList<SettingsOption<int>> AutosaveIntervalOptions { get; private set; } = [];
 
     public SettingsOption<AppLanguage>? SelectedLanguage
     {
@@ -275,7 +280,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref installStatus, value);
     }
 
-    public IReadOnlyList<string> PackageManagerCommands { get; }
+    public IReadOnlyList<string> PackageManagerCommands { get; private set; } = [];
 
     public bool HasPackageManagerCommands => PackageManagerCommands.Count > 0;
 

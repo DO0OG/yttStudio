@@ -120,122 +120,186 @@ public class DocumentValidator
         List<ValidationIssue> issues = [];
         TimeSpan? duration = context.VideoDuration ?? project.Video?.Duration;
 
+        AddSizeRiskIssue(issues, context, duration);
+        foreach (Cue cue in project.Cues)
+        {
+            ValidateCue(project, context, duration, cue, issues);
+        }
+
+        AddOverlapIssues(project, context, issues);
+
+        return issues;
+    }
+
+    private static void AddSizeRiskIssue(
+        List<ValidationIssue> issues,
+        ValidationContext context,
+        TimeSpan? duration)
+    {
         if (TryGetBitsPerSecond(context, duration, out double bitsPerSecond) &&
             bitsPerSecond > YttConstants.SizeRiskBitsPerSecondThreshold)
         {
             issues.Add(new(IssueSeverity.Warning, ValidationCodes.W101, W101Message, null, false));
         }
+    }
 
-        foreach (Cue cue in project.Cues)
+    private static void ValidateCue(
+        SubtitleProject project,
+        ValidationContext context,
+        TimeSpan? duration,
+        Cue cue,
+        List<ValidationIssue> issues)
+    {
+        AddCueTimingIssues(cue, duration, issues);
+        ValidationMetrics metrics = context.ForCue(cue.Id);
+        bool hasPcOnly = metrics.UsesPcOnlyFeature ?? HasPcOnlyFeature(project, cue);
+        bool androidFontIgnored = metrics.FontIgnoredOnAndroid ?? HasAndroidOnlyUnsupportedFont(project, cue);
+        bool hasShadowWarning = metrics.MultipleShadows ?? HasMultipleShadows(project, cue, metrics);
+        AddKaraokeIssues(cue, issues);
+        CueFormatFlags flags = CollectFormatFlags(project, cue);
+        AddFormatIssues(cue, flags, issues);
+        AddMetricWarningIssues(cue, metrics, flags, hasShadowWarning, issues);
+        AddMetricInfoIssues(cue, hasPcOnly, androidFontIgnored, issues);
+    }
+
+    private static void AddCueTimingIssues(
+        Cue cue,
+        TimeSpan? duration,
+        List<ValidationIssue> issues)
+    {
+        if (cue.Start < TimeSpan.FromMilliseconds(YttConstants.MinimumCueStartMilliseconds))
         {
-            if (cue.Start < TimeSpan.FromMilliseconds(YttConstants.MinimumCueStartMilliseconds))
-            {
-                issues.Add(new(IssueSeverity.Error, ValidationCodes.E001, "시작 시각은 1ms 이상이어야 합니다.", cue.Id, true));
-            }
-
-            if (cue.End <= cue.Start)
-            {
-                issues.Add(new(IssueSeverity.Error, ValidationCodes.E002, "끝 시각은 시작 시각보다 늦어야 합니다.", cue.Id, false));
-            }
-
-            if (duration is TimeSpan videoDuration && cue.End > videoDuration)
-            {
-                issues.Add(new(IssueSeverity.Error, ValidationCodes.E006, "큐 시각이 영상 길이를 초과합니다.", cue.Id, false));
-            }
-
-            ValidationMetrics metrics = context.ForCue(cue.Id);
-            bool hasPcOnly = metrics.UsesPcOnlyFeature ?? HasPcOnlyFeature(project, cue);
-            bool androidFontIgnored = metrics.FontIgnoredOnAndroid ?? HasAndroidOnlyUnsupportedFont(project, cue);
-            bool hasShadowWarning = metrics.MultipleShadows ?? HasMultipleShadows(project, cue, metrics);
-            bool hasOverlap = metrics.OverlappingZOrderNotPreserved ?? false;
-
-            for (int index = 1; index < cue.Sections.Count; index++)
-            {
-                TimeSpan? previous = cue.Sections[index - 1].KaraokeOffset;
-                TimeSpan? current = cue.Sections[index].KaraokeOffset;
-                if (previous is TimeSpan p && current is TimeSpan c && p == c)
-                {
-                    issues.Add(new(IssueSeverity.Error, ValidationCodes.E003,
-                        "인접 가라오케 섹션의 오프셋이 같습니다.", cue.Id, true));
-                    break;
-                }
-            }
-
-            bool white = false;
-            bool opacity255 = false;
-            bool lowerBound = false;
-            bool large = false;
-            bool dark = false;
-            foreach (Section section in cue.Sections)
-            {
-                ResolvedFormat format = Resolve(project, cue, section);
-                white |= IsPureWhite(format.Foreground);
-                opacity255 |= Has255Alpha(format);
-                lowerBound |= format.SizePercent <= YttConstants.MinimumFontSizePercent;
-                large |= format.SizePercent > YttConstants.RecommendedFontSizePercent;
-                dark |= Luminance(format.Foreground) < YttConstants.DarkTextLuminanceThreshold;
-            }
-
-            if (white)
-            {
-                issues.Add(new(IssueSeverity.Error, ValidationCodes.E004, "전경색 순백(#FFFFFF)은 허용되지 않습니다.", cue.Id, true));
-            }
-
-            if (opacity255)
-            {
-                issues.Add(new(IssueSeverity.Error, ValidationCodes.E005, "불투명도 255는 허용되지 않습니다.", cue.Id, true));
-            }
-
-            if (metrics.MobileEffectRisk == true)
-            {
-                issues.Add(new(IssueSeverity.Warning, ValidationCodes.W102, "효과가 많아 모바일에서 자막 선택지에 표시되지 않을 수 있습니다.", cue.Id, false));
-            }
-
-            if (metrics.IsOutsideSafeArea == true)
-            {
-                string viewportModeDisplayName = string.IsNullOrWhiteSpace(metrics.ViewportModeDisplayName)
-                    ? "극장 모드"
-                    : metrics.ViewportModeDisplayName;
-                issues.Add(new(IssueSeverity.Warning, ValidationCodes.W103,
-                    $"세이프 에어리어 밖에 있어 {viewportModeDisplayName}에서 화면 밖으로 밀릴 수 있습니다.", cue.Id, false));
-            }
-
-            if (metrics.HasDarkText ?? dark)
-            {
-                issues.Add(new(IssueSeverity.Warning, ValidationCodes.W104, "어두운 텍스트는 안드로이드 검은 배경에서 판독하기 어렵습니다.", cue.Id, false));
-            }
-
-            if (metrics.BoxWidthExceeded == true || (metrics.BoxWidth is double width && metrics.SubtitleSpaceWidth is double space && width > space))
-            {
-                issues.Add(new(IssueSeverity.Warning, ValidationCodes.W105, "박스 너비가 자막 좌표 공간 폭을 초과합니다.", cue.Id, false));
-            }
-
-            if (hasShadowWarning)
-            {
-                issues.Add(new(IssueSeverity.Warning, ValidationCodes.W106, "pen 하나에 그림자 2종 이상이 적용되어 파일 크기가 증가합니다.", cue.Id, false));
-            }
-
-            if (metrics.SizeAtLowerBound ?? lowerBound)
-            {
-                issues.Add(new(IssueSeverity.Warning, ValidationCodes.W107, "폰트 크기가 75% 하한에 걸렸습니다.", cue.Id, false));
-            }
-
-            if (large)
-            {
-                issues.Add(new(IssueSeverity.Warning, ValidationCodes.W108, "폰트 크기가 UX 권장 상한(200%)을 초과합니다.", cue.Id, false));
-            }
-
-            if (hasPcOnly)
-            {
-                issues.Add(new(IssueSeverity.Info, ValidationCodes.I201, "PC 전용 기능이 사용되었습니다.", cue.Id, false));
-            }
-
-            if (androidFontIgnored)
-            {
-                issues.Add(new(IssueSeverity.Info, ValidationCodes.I202, "이 폰트는 안드로이드에서 무시될 수 있습니다.", cue.Id, false));
-            }
+            issues.Add(new(IssueSeverity.Error, ValidationCodes.E001, "시작 시각은 1ms 이상이어야 합니다.", cue.Id, true));
         }
 
+        if (cue.End <= cue.Start)
+        {
+            issues.Add(new(IssueSeverity.Error, ValidationCodes.E002, "끝 시각은 시작 시각보다 늦어야 합니다.", cue.Id, false));
+        }
+
+        if (duration is TimeSpan videoDuration && cue.End > videoDuration)
+        {
+            issues.Add(new(IssueSeverity.Error, ValidationCodes.E006, "큐 시각이 영상 길이를 초과합니다.", cue.Id, false));
+        }
+    }
+
+    private static void AddKaraokeIssues(Cue cue, List<ValidationIssue> issues)
+    {
+        for (int index = 1; index < cue.Sections.Count; index++)
+        {
+            TimeSpan? previous = cue.Sections[index - 1].KaraokeOffset;
+            TimeSpan? current = cue.Sections[index].KaraokeOffset;
+            if (previous is TimeSpan p && current is TimeSpan c && p == c)
+            {
+                issues.Add(new(IssueSeverity.Error, ValidationCodes.E003,
+                    "인접 가라오케 섹션의 오프셋이 같습니다.", cue.Id, true));
+                break;
+            }
+        }
+    }
+
+    private static CueFormatFlags CollectFormatFlags(SubtitleProject project, Cue cue)
+    {
+        bool white = false;
+        bool opacity255 = false;
+        bool lowerBound = false;
+        bool large = false;
+        bool dark = false;
+        foreach (Section section in cue.Sections)
+        {
+            ResolvedFormat format = Resolve(project, cue, section);
+            white |= IsPureWhite(format.Foreground);
+            opacity255 |= Has255Alpha(format);
+            lowerBound |= format.SizePercent <= YttConstants.MinimumFontSizePercent;
+            large |= format.SizePercent > YttConstants.RecommendedFontSizePercent;
+            dark |= Luminance(format.Foreground) < YttConstants.DarkTextLuminanceThreshold;
+        }
+
+        return new(white, opacity255, lowerBound, large, dark);
+    }
+
+    private static void AddFormatIssues(Cue cue, CueFormatFlags flags, List<ValidationIssue> issues)
+    {
+        if (flags.White)
+        {
+            issues.Add(new(IssueSeverity.Error, ValidationCodes.E004, "전경색 순백(#FFFFFF)은 허용되지 않습니다.", cue.Id, true));
+        }
+
+        if (flags.Opacity255)
+        {
+            issues.Add(new(IssueSeverity.Error, ValidationCodes.E005, "불투명도 255는 허용되지 않습니다.", cue.Id, true));
+        }
+    }
+
+    private static void AddMetricWarningIssues(
+        Cue cue,
+        ValidationMetrics metrics,
+        CueFormatFlags flags,
+        bool hasShadowWarning,
+        List<ValidationIssue> issues)
+    {
+        if (metrics.MobileEffectRisk == true)
+        {
+            issues.Add(new(IssueSeverity.Warning, ValidationCodes.W102, "효과가 많아 모바일에서 자막 선택지에 표시되지 않을 수 있습니다.", cue.Id, false));
+        }
+
+        if (metrics.IsOutsideSafeArea == true)
+        {
+            string viewportModeDisplayName = string.IsNullOrWhiteSpace(metrics.ViewportModeDisplayName)
+                ? "극장 모드"
+                : metrics.ViewportModeDisplayName;
+            issues.Add(new(IssueSeverity.Warning, ValidationCodes.W103,
+                $"세이프 에어리어 밖에 있어 {viewportModeDisplayName}에서 화면 밖으로 밀릴 수 있습니다.", cue.Id, false));
+        }
+
+        if (metrics.HasDarkText ?? flags.Dark)
+        {
+            issues.Add(new(IssueSeverity.Warning, ValidationCodes.W104, "어두운 텍스트는 안드로이드 검은 배경에서 판독하기 어렵습니다.", cue.Id, false));
+        }
+
+        if (metrics.BoxWidthExceeded == true || (metrics.BoxWidth is double width && metrics.SubtitleSpaceWidth is double space && width > space))
+        {
+            issues.Add(new(IssueSeverity.Warning, ValidationCodes.W105, "박스 너비가 자막 좌표 공간 폭을 초과합니다.", cue.Id, false));
+        }
+
+        if (hasShadowWarning)
+        {
+            issues.Add(new(IssueSeverity.Warning, ValidationCodes.W106, "pen 하나에 그림자 2종 이상이 적용되어 파일 크기가 증가합니다.", cue.Id, false));
+        }
+
+        if (metrics.SizeAtLowerBound ?? flags.LowerBound)
+        {
+            issues.Add(new(IssueSeverity.Warning, ValidationCodes.W107, "폰트 크기가 75% 하한에 걸렸습니다.", cue.Id, false));
+        }
+
+        if (flags.Large)
+        {
+            issues.Add(new(IssueSeverity.Warning, ValidationCodes.W108, "폰트 크기가 UX 권장 상한(200%)을 초과합니다.", cue.Id, false));
+        }
+    }
+
+    private static void AddMetricInfoIssues(
+        Cue cue,
+        bool hasPcOnly,
+        bool androidFontIgnored,
+        List<ValidationIssue> issues)
+    {
+        if (hasPcOnly)
+        {
+            issues.Add(new(IssueSeverity.Info, ValidationCodes.I201, "PC 전용 기능이 사용되었습니다.", cue.Id, false));
+        }
+
+        if (androidFontIgnored)
+        {
+            issues.Add(new(IssueSeverity.Info, ValidationCodes.I202, "이 폰트는 안드로이드에서 무시될 수 있습니다.", cue.Id, false));
+        }
+    }
+
+    private static void AddOverlapIssues(
+        SubtitleProject project,
+        ValidationContext context,
+        List<ValidationIssue> issues)
+    {
         foreach (Cue left in project.Cues)
         {
             foreach (Cue right in project.Cues)
@@ -254,9 +318,14 @@ public class DocumentValidator
                 }
             }
         }
-
-        return issues;
     }
+
+    private readonly record struct CueFormatFlags(
+        bool White,
+        bool Opacity255,
+        bool LowerBound,
+        bool Large,
+        bool Dark);
 
     public IReadOnlyList<ValidationIssue> Validate(ValidationContext context)
     {

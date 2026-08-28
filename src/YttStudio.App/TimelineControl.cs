@@ -181,6 +181,17 @@ public sealed class TimelineControl : Control
         int trackCount = GetTrackCount(viewModel);
         ClampVerticalViewport(trackCount);
 
+        DrawTrackBands(context, trackCount);
+
+        DrawTimeRuler(context, maximum);
+
+        DrawCueRowsAndPlayhead(context, viewModel, maximum);
+
+        DrawHorizontalScrollBar(context, maximum);
+    }
+
+    private void DrawTrackBands(DrawingContext context, int trackCount)
+    {
         using (context.PushClip(new Rect(0, RulerHeight, Bounds.Width,
                    Math.Max(0, Bounds.Height - RulerHeight))))
         {
@@ -199,9 +210,13 @@ public sealed class TimelineControl : Control
                     new Point(7, top + 7));
             }
         }
+    }
 
-        DrawTimeRuler(context, maximum);
-
+    private void DrawCueRowsAndPlayhead(
+        DrawingContext context,
+        MainWindowViewModel viewModel,
+        double maximum)
+    {
         using (context.PushClip(new Rect(0, RulerHeight, Bounds.Width,
                    Math.Max(0, Bounds.Height - RulerHeight))))
         {
@@ -219,8 +234,6 @@ public sealed class TimelineControl : Control
             context.DrawLine(new Pen(Brushes.OrangeRed, 2), new Point(playheadX, RulerHeight),
                 new Point(playheadX, Bounds.Height));
         }
-
-        DrawHorizontalScrollBar(context, maximum);
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -312,17 +325,8 @@ public sealed class TimelineControl : Control
         double maximum = Math.Max(1, viewModel.MaximumMilliseconds);
         ClampViewport(maximum);
         ClampVerticalViewport(GetTrackCount(viewModel));
-        if (scrollBarDragging)
+        if (HandleNavigationPointerMoved(e, point, maximum))
         {
-            UpdateScrollBarDrag(point, maximum);
-            e.Handled = true;
-            return;
-        }
-
-        if (panning)
-        {
-            UpdatePan(point, maximum);
-            e.Handled = true;
             return;
         }
 
@@ -357,6 +361,25 @@ public sealed class TimelineControl : Control
 
             InvalidateVisual();
         }
+    }
+
+    private bool HandleNavigationPointerMoved(PointerEventArgs e, Point point, double maximum)
+    {
+        if (scrollBarDragging)
+        {
+            UpdateScrollBarDrag(point, maximum);
+            e.Handled = true;
+            return true;
+        }
+
+        if (panning)
+        {
+            UpdatePan(point, maximum);
+            e.Handled = true;
+            return true;
+        }
+
+        return false;
     }
 
     protected override async void OnPointerReleased(PointerReleasedEventArgs e)

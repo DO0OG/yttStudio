@@ -174,8 +174,11 @@ relative to each cue's anchor stays fixed. Hold `Shift` for precision adjustment
 context-menu `NoFreeScale` message means that arbitrary box scaling is unsupported; it does
 not prohibit font-scale adjustment.
 
-**Viewport modes (normal, theatre, fullscreen, mobile) are disabled.** They will not be
-implemented on guesswork before each mode's actual coordinate behaviour has been measured.
+**Viewport modes (normal, theatre, fullscreen, mobile) are selectable.** They were implemented
+from measurements taken on YouTube itself: caption size scales with player **width**, and the
+normal and theatre modes are self-similar. Method and raw figures are in
+[the viewport measurement record](docs/viewport-modes.md). Fullscreen and mobile portrait have
+not been measured yet and reuse the normal-mode ratio.
 
 ## Documentation
 
