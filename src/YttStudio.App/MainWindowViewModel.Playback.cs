@@ -184,6 +184,16 @@ public sealed partial class MainWindowViewModel
     /// 중간 목표는 어차피 버려질 값이므로 진행 중인 탐색이 끝나면 가장 최근 목표로만
     /// 이어서 간다. 최종 도달 지점은 같다.
     /// </remarks>
+    /// <summary>탐색 요청을 받아 최소 간격을 지키며 마지막 목표로만 이동한다.</summary>
+    /// <remarks>
+    /// 타임라인이나 슬라이더를 끄는 동안 위치는 포인터 이동마다 바뀐다. 그대로 흘려보내면
+    /// 초당 아흔 번 가까운 탐색이 나가고, 탐색마다 디코더를 비웠다 다시 채우므로 GPU 가
+    /// 포화된다. 중간 목표는 어차피 버려질 값이니 마지막 하나만 남기고, 발사 간격을
+    /// 강제한다. 최종 도달 지점은 같다.
+    ///
+    /// 간격의 기준은 직전에 실제로 내보낸 시각이다. 진행 중인 탐색이 있는지로 판단하면
+    /// 요청이 하나씩 띄엄띄엄 들어올 때 매번 곧바로 나가 버려 간격이 성립하지 않는다.
+    /// </remarks>
     private async Task SeekAsync(double milliseconds, bool exact)
     {
         if (videoSource is null || !videoLoaded)
@@ -191,46 +201,46 @@ public sealed partial class MainWindowViewModel
             return;
         }
 
+        pendingSeekMilliseconds = milliseconds;
+        pendingSeekExact = exact;
         if (seekInFlight)
         {
-            pendingSeekMilliseconds = milliseconds;
-            pendingSeekExact = exact;
             return;
         }
 
         seekInFlight = true;
         try
         {
-            double target = milliseconds;
-            bool targetExact = exact;
-            while (true)
-            {
-                long startedAt = Environment.TickCount64;
-                await SeekTargetAsync(target, targetExact);
-
-                if (!await WaitForPendingSeekAsync(startedAt))
-                {
-                    break;
-                }
-
-                // 끌고 있는 동안에는 끝나는 즉시 다음 탐색이 나가서 디코딩과 화면 전송이
-                // 쉴 틈 없이 돌아간다. 사람 눈에는 초당 열몇 장이면 충분히 이어져 보이므로
-                // 최소 간격을 두어 그 위로는 올라가지 않게 한다.
-                // 기다리는 사이에 더 새로운 목표가 들어왔을 수 있다. 지금 읽어야 마지막
-                // 목표로 간다.
-                (bool hasNext, double next, bool nextExact) = ConsumePendingSeekTarget();
-                if (!hasNext)
-                {
-                    break;
-                }
-
-                target = next;
-                targetExact = nextExact;
-            }
+            await DrainPendingSeeksAsync();
         }
         finally
         {
             seekInFlight = false;
+        }
+    }
+
+    /// <summary>대기 중인 목표를 최소 간격을 지켜 하나씩 내보낸다.</summary>
+    private async Task DrainPendingSeeksAsync()
+    {
+        while (true)
+        {
+            long waiting = MinimumScrubIntervalMilliseconds -
+                (Environment.TickCount64 - lastSeekDispatchedAt);
+            if (waiting > 0)
+            {
+                await Task.Delay((int)waiting);
+            }
+
+            // 기다리는 사이에 더 새로운 목표가 들어왔을 수 있다. 지금 읽어야 마지막
+            // 목표로 간다.
+            (bool hasNext, double next, bool nextExact) = ConsumePendingSeekTarget();
+            if (!hasNext)
+            {
+                return;
+            }
+
+            lastSeekDispatchedAt = Environment.TickCount64;
+            await SeekTargetAsync(next, nextExact);
         }
     }
 
@@ -258,22 +268,6 @@ public sealed partial class MainWindowViewModel
 
         pendingSeekMilliseconds = null;
         return (true, next, pendingSeekExact);
-    }
-
-    private async Task<bool> WaitForPendingSeekAsync(long startedAt)
-    {
-        if (pendingSeekMilliseconds is null)
-        {
-            return false;
-        }
-
-        long elapsed = Environment.TickCount64 - startedAt;
-        if (elapsed < MinimumScrubIntervalMilliseconds)
-        {
-            await Task.Delay((int)(MinimumScrubIntervalMilliseconds - elapsed));
-        }
-
-        return pendingSeekMilliseconds is not null;
     }
 
     private void OnVideoFrameReady()
@@ -327,6 +321,7 @@ public sealed partial class MainWindowViewModel
         PositionMilliseconds = videoSource.Position.TotalMilliseconds;
         updatingFromVideo = false;
         NotifyPlaybackFrameState();
+        SampleRenderDiagnostics();
     }
 
     /// <summary>프레임이 넘어갈 때만 달라질 수 있는 상태를 알린다.</summary>

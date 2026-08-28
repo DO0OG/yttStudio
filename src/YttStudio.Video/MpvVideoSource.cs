@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -19,6 +20,12 @@ public sealed class MpvVideoSource : IVideoSource
     private readonly object controlGate = new();
     private readonly MpvNativeLibrary native;
     private int playbackScaleDivisor = 1;
+    private long seekCount;
+    private long renderedFrameCount;
+    private long skippedFrameCount;
+    private long renderTicks;
+    private long alphaTicks;
+    private long pixelBytes;
     private readonly nint mpvHandle;
     private readonly LatestFrameBuffer frames = new();
     private readonly AutoResetEvent renderSignal = new(false);
@@ -211,6 +218,7 @@ public sealed class MpvVideoSource : IVideoSource
         {
             ThrowIfStoppingLocked();
             frames.BeginSeek();
+            Interlocked.Increment(ref seekCount);
             InvokeCommand("seek", targetSeconds.ToString("R", CultureInfo.InvariantCulture), mode);
             Volatile.Write(ref positionSeconds, targetSeconds);
         }
@@ -442,6 +450,7 @@ public sealed class MpvVideoSource : IVideoSource
 
     private unsafe void RenderSkippedFrame()
     {
+        Interlocked.Increment(ref skippedFrameCount);
         int skip = 1;
         MpvRenderParam* skipParameters = stackalloc MpvRenderParam[2];
         skipParameters[0] = new MpvRenderParam(13, (nint)(&skip));
@@ -462,13 +471,21 @@ public sealed class MpvVideoSource : IVideoSource
             parameters[2] = new MpvRenderParam(RenderParamSoftwareStride, (nint)(&nativeStride));
             parameters[3] = new MpvRenderParam(RenderParamSoftwarePointer, (nint)pixelPointer);
             parameters[4] = default;
+            long startedAt = Stopwatch.GetTimestamp();
             Check(native.RenderContextRender(renderContext, (nint)parameters), "mpv_render_context_render(sw)");
+            long renderedAt = Stopwatch.GetTimestamp();
 
             // mpv SW 의 "bgr0" 은 네 번째 바이트를 정의하지 않는다. Avalonia 는 불투명
             // BGRA 를 기대하므로 알파를 채워야 한다. 다만 화소마다 바이트 하나씩 쓰면
             // 1080p 기준 프레임당 이백만 번이 넘어 재생 내내 렌더 스레드를 붙잡는다.
             // 네 바이트를 한 낱말로 묶어 SIMD 로 알파 비트만 세운다.
             FillOpaqueAlpha(pixelPointer, width, height, stride);
+            long filledAt = Stopwatch.GetTimestamp();
+
+            Interlocked.Add(ref renderTicks, renderedAt - startedAt);
+            Interlocked.Add(ref alphaTicks, filledAt - renderedAt);
+            Interlocked.Add(ref pixelBytes, (long)height * stride);
+            Interlocked.Increment(ref renderedFrameCount);
         }
     }
 
@@ -547,6 +564,24 @@ public sealed class MpvVideoSource : IVideoSource
     }
 
     /// <inheritdoc />
+    /// <summary>렌더 경로가 지금까지 한 일을 읽는다.</summary>
+    /// <remarks>
+    /// 구간의 비용을 알고 싶으면 앞뒤에서 한 번씩 읽어 <see cref="VideoRenderDiagnostics.Since"/>
+    /// 로 빼라. 각 값은 원자적으로 읽지만 서로 같은 순간의 값은 아니다. 부하의 크기를 가늠하는
+    /// 용도이지 회계 장부가 아니다.
+    /// </remarks>
+    public VideoRenderDiagnostics ReadDiagnostics()
+        => new(
+            Interlocked.Read(ref seekCount),
+            Interlocked.Read(ref renderedFrameCount),
+            Interlocked.Read(ref skippedFrameCount),
+            TicksToMilliseconds(Interlocked.Read(ref renderTicks)),
+            TicksToMilliseconds(Interlocked.Read(ref alphaTicks)),
+            Interlocked.Read(ref pixelBytes));
+
+    private static double TicksToMilliseconds(long ticks)
+        => ticks * 1000.0 / Stopwatch.Frequency;
+
     public int PlaybackScaleDivisor
     {
         get => Volatile.Read(ref playbackScaleDivisor);

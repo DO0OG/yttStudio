@@ -72,6 +72,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     private bool seekInFlight;
     private double? pendingSeekMilliseconds;
     private bool pendingSeekExact;
+    private long lastSeekDispatchedAt;
     private Guid? lastSelectedCueId;
     private CueRowViewModel? selectedCueRow;
     private Guid? selectedStyleId;
