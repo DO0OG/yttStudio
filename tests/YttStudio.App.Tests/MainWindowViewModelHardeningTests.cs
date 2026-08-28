@@ -180,11 +180,10 @@ public sealed class MainWindowViewModelHardeningTests
         public bool IsPlaying { get; private set; }
         public int PlaybackScaleDivisor { get; set; } = 1;
         public event Action? FrameReady;
-        public event Action<Exception>? RenderFailed
-        {
-            add { }
-            remove { }
-        }
+        public event Action<Exception>? RenderFailed;
+
+        /// <summary>렌더 실패 신호를 시험에서 직접 낼 수 있게 한다.</summary>
+        public void RaiseRenderFailed(Exception exception) => RenderFailed?.Invoke(exception);
 
         public List<string> LoadedPaths { get; } = [];
 
