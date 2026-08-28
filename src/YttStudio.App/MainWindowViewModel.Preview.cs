@@ -194,6 +194,16 @@ public sealed partial class MainWindowViewModel
         SetCanvasItems([]);
     }
 
+    /// <summary>재생 위치를 프레임 격자에 맞춰 시각과 프레임 인덱스를 함께 돌려준다.</summary>
+    /// <remarks>
+    /// 시각을 재생 위치 그대로 쓰면 같은 프레임 안에서도 밀리초마다 값이 달라져 입력이
+    /// 같은지 판정할 근거가 사라진다. 프레임 인덱스로 내림한 시각을 쓰면 한 프레임 안의
+    /// 어느 위치에서 불러도 결과가 같으므로 건너뛰기 판정이 성립한다.
+    ///
+    /// 그 대가로 프리뷰가 보여주는 시각이 재생 위치보다 최대 한 프레임(30fps 기준 33ms)
+    /// 이르다. 큐 경계가 그 사이에 걸리면 이전 프레임 상태로 보인다. 영상도 같은 프레임을
+    /// 띄우고 있으므로 자막과 영상이 서로 어긋나지는 않는다.
+    /// </remarks>
     private (TimeSpan Time, long FrameIndex) GetPreviewFrame(SubtitleProject currentProject)
     {
         double framesPerSecond = currentProject.Video?.NominalFps is > 0
