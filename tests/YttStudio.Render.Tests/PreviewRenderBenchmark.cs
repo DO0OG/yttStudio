@@ -31,18 +31,25 @@ public sealed class PreviewRenderBenchmark(ITestOutputHelper output)
 
         // 첫 호출의 폰트 해석과 JIT 를 측정에서 뺀다.
         RunLegacyPath(renderer, viewport, project, 2);
-        RunCurrentPath(renderer, viewport, project, 2);
+        RunCurrentPath(renderer, viewport, project, 2, cacheLayouts: false);
+        RunCurrentPath(renderer, viewport, project, 2, cacheLayouts: true);
 
         Measurement legacy = Measure(() => RunLegacyPath(renderer, viewport, project, Frames));
-        Measurement current = Measure(() => RunCurrentPath(renderer, viewport, project, Frames));
+        Measurement uncached = Measure(() => RunCurrentPath(
+            renderer, viewport, project, Frames, cacheLayouts: false));
+        Measurement current = Measure(() => RunCurrentPath(
+            renderer, viewport, project, Frames, cacheLayouts: true));
 
         string[] report =
         [
             $"프레임 수: {Frames} ({Width}x{Height})",
             $"변경 전  {legacy}",
-            $"변경 후  {current}",
+            $"레이아웃 캐시 전  {uncached}",
+            $"레이아웃 캐시 후  {current}",
             $"시간 {legacy.Milliseconds / Math.Max(current.Milliseconds, 0.001):F1} 배, " +
                 $"할당 {legacy.AllocatedBytes / (double)Math.Max(current.AllocatedBytes, 1):F1} 배 줄었다.",
+            $"레이아웃 캐시로 시간 {uncached.Milliseconds / Math.Max(current.Milliseconds, 0.001):F1} 배, " +
+                $"할당 {uncached.AllocatedBytes / (double)Math.Max(current.AllocatedBytes, 1):F1} 배 줄었다.",
         ];
         foreach (string line in report)
         {
@@ -83,7 +90,7 @@ public sealed class PreviewRenderBenchmark(ITestOutputHelper output)
 
     /// <summary>화소 버퍼를 재사용하고 레이아웃을 한 번만 계산하는 경로다.</summary>
     private static void RunCurrentPath(SkiaSubtitleRenderer renderer, PlayerViewport viewport,
-        YttStudio.Core.SubtitleProject project, int frames)
+        YttStudio.Core.SubtitleProject project, int frames, bool cacheLayouts)
     {
         SKImageInfo info = new(Width, Height, SKColorType.Bgra8888, SKAlphaType.Premul);
         using SKBitmap reused = new(info);
@@ -94,7 +101,11 @@ public sealed class PreviewRenderBenchmark(ITestOutputHelper output)
             SKCanvas canvas = surface.Canvas;
             canvas.Clear(SKColors.Transparent);
             _ = renderer.RenderAndMeasure(canvas, viewport, project, time,
-                new RenderOptions { FrameIndex = frame });
+                new RenderOptions
+                {
+                    DocumentRevision = cacheLayouts ? 0 : null,
+                    FrameIndex = frame,
+                });
         }
     }
 

@@ -207,6 +207,7 @@ public sealed partial class MainWindowViewModel
     private SubtitleRenderOptions CreatePreviewRenderOptions(long frameIndex)
         => new()
         {
+            DocumentRevision = editor?.Revision,
             FrameIndex = frameIndex,
             ShowSafeArea = showSafeArea,
             ShowAnchorPoints = showAnchors,

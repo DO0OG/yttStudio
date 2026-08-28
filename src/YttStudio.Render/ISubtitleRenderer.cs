@@ -251,6 +251,10 @@ public sealed record CueHitBox(Cue Cue, SKRect Bounds, SKPoint AnchorScreenPoint
 /// <summary>렌더 중 선택적 편집기 오버레이를 제어한다.</summary>
 public sealed record RenderOptions
 {
+    /// <summary>레이아웃 캐시 무효화에 쓰는 문서 개정 번호를 가져온다.</summary>
+    /// <remarks>값을 제공하지 않는 호출은 변경 여부를 증명할 수 없으므로 캐시하지 않는다.</remarks>
+    public long? DocumentRevision { get; init; }
+
     /// <summary>세이프 에어리어 오버레이가 보이는지 가져온다.</summary>
     public bool ShowSafeArea { get; init; }
 
