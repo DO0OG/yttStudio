@@ -23,21 +23,12 @@ namespace YttStudio.App;
 public sealed partial class MainWindowViewModel
 {
 
-    public bool BeginCanvasResize(Guid primaryCueId, int grabbedRow, int grabbedColumn)
+    private void CaptureCanvasResizeState(SubtitleProject currentProject, int grabbedRow, int grabbedColumn)
     {
-        if (canvasResizeActive || isInlineEditing || editor is null || editor.IsTransactionActive || project is null ||
-            selectedCueIds.Count == 0 || !selectedCueIds.Contains(primaryCueId) ||
-            CanvasItems.FirstOrDefault(item => item.Id == primaryCueId) is not CanvasCueItem primary)
-        {
-            return false;
-        }
-
-        canvasResizeBaselines.Clear();
-        canvasResizeGeometry.Clear();
         (int pivotRow, int pivotColumn) = PreviewResizeGeometry.GetPivotCell(grabbedRow, grabbedColumn);
         foreach (Guid cueId in selectedCueIds)
         {
-            if (project.Cues[cueId] is not Cue cue)
+            if (currentProject.Cues[cueId] is not Cue cue)
             {
                 continue;
             }
@@ -62,6 +53,20 @@ public sealed partial class MainWindowViewModel
                     ResolveSectionFormat(cue, section).SizePercent;
             }
         }
+    }
+
+    public bool BeginCanvasResize(Guid primaryCueId, int grabbedRow, int grabbedColumn)
+    {
+        if (canvasResizeActive || isInlineEditing || editor is null || editor.IsTransactionActive || project is null ||
+            selectedCueIds.Count == 0 || !selectedCueIds.Contains(primaryCueId) ||
+            CanvasItems.FirstOrDefault(item => item.Id == primaryCueId) is not CanvasCueItem primary)
+        {
+            return false;
+        }
+
+        canvasResizeBaselines.Clear();
+        canvasResizeGeometry.Clear();
+        CaptureCanvasResizeState(project, grabbedRow, grabbedColumn);
 
         if (canvasResizeBaselines.Count == 0 ||
             !double.IsFinite(primary.Bounds.X) || !double.IsFinite(primary.Bounds.Y) ||

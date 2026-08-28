@@ -107,20 +107,13 @@ public sealed partial class MainWindowViewModel
         await dialogs.ConfirmAsync(Loc["MenuAbout"], body, Loc["Close"]);
     }
 
-    private void RunValidation()
+    private Dictionary<Guid, ValidationMetrics> BuildValidationMetrics(
+        SubtitleProject currentProject, SKRect subtitleSpace)
     {
-        ValidationIssues.Clear();
-        if (project is null)
-        {
-            return;
-        }
-
-        validationHasRun = true;
-        SKRect subtitleSpace = previewViewport.SubtitleSpace;
         double horizontalInset = subtitleSpace.Width * EditorSafeAreaInsetPercent / 100.0;
         double verticalInset = subtitleSpace.Height * EditorSafeAreaInsetPercent / 100.0;
         Dictionary<Guid, ValidationMetrics> metrics = [];
-        foreach (Cue cue in project.Cues)
+        foreach (Cue cue in currentProject.Cues)
         {
             CanvasCueItem? item = CanvasItems.FirstOrDefault(candidate => candidate.Id == cue.Id);
             bool outside = item is not null && (
@@ -137,6 +130,21 @@ public sealed partial class MainWindowViewModel
                 SubtitleSpaceWidth = subtitleSpace.Width,
             };
         }
+
+        return metrics;
+    }
+
+    private void RunValidation()
+    {
+        ValidationIssues.Clear();
+        if (project is null)
+        {
+            return;
+        }
+
+        validationHasRun = true;
+        SKRect subtitleSpace = previewViewport.SubtitleSpace;
+        Dictionary<Guid, ValidationMetrics> metrics = BuildValidationMetrics(project, subtitleSpace);
 
         byte[]? exportedXml = null;
         string temporaryPath = Path.Combine(Path.GetTempPath(), $"YttStudio-{Guid.NewGuid():N}.ytt");

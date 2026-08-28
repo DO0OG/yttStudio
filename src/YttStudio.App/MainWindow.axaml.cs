@@ -95,40 +95,13 @@ public partial class MainWindow : Window
 
         IInputElement? focused = TopLevel.GetTopLevel(this)?.FocusManager.GetFocusedElement();
         Visual? source = e.Source as Visual ?? focused as Visual;
-        if (DataContext is MainWindowViewModel viewModel && viewModel.IsInlineEditing &&
-            IsTextBoxFocused(source))
+        if (TryHandleInlineEditorKeyDown(e, source))
         {
-            if (e.Key == Key.Escape)
-            {
-                viewModel.CancelInlineEdit();
-                e.Handled = true;
-            }
-            else if (e.Key == Key.Enter && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
-            {
-                viewModel.CommitInlineEdit();
-                e.Handled = true;
-            }
-
-            if (e.Handled || e.Key == Key.Enter)
-            {
-                return;
-            }
+            return;
         }
 
-        if (DataContext is MainWindowViewModel deleteViewModel &&
-            ShouldDeleteCueFromList(
-                e.Key,
-                e.KeyModifiers,
-                IsCueListFocused(source),
-                IsTextBoxFocused(source),
-                deleteViewModel.IsInlineEditing))
+        if (TryHandleDeleteFromList(e, source))
         {
-            if (deleteViewModel.DeleteCueCommand.CanExecute(null))
-            {
-                deleteViewModel.DeleteCueCommand.Execute(null);
-            }
-
-            e.Handled = true;
             return;
         }
 
@@ -153,6 +126,50 @@ public partial class MainWindow : Window
             playbackViewModel.PlayPauseCommand.Execute(null);
             e.Handled = true;
         }
+    }
+
+    private bool TryHandleInlineEditorKeyDown(KeyEventArgs e, Visual? source)
+    {
+        if (DataContext is not MainWindowViewModel viewModel || !viewModel.IsInlineEditing ||
+            !IsTextBoxFocused(source))
+        {
+            return false;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            viewModel.CancelInlineEdit();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            viewModel.CommitInlineEdit();
+            e.Handled = true;
+        }
+
+        return e.Handled || e.Key == Key.Enter;
+    }
+
+    private bool TryHandleDeleteFromList(KeyEventArgs e, Visual? source)
+    {
+        if (DataContext is not MainWindowViewModel viewModel ||
+            !ShouldDeleteCueFromList(
+                e.Key,
+                e.KeyModifiers,
+                IsCueListFocused(source),
+                IsTextBoxFocused(source),
+                viewModel.IsInlineEditing))
+        {
+            return false;
+        }
+
+        if (viewModel.DeleteCueCommand.CanExecute(null))
+        {
+            viewModel.DeleteCueCommand.Execute(null);
+        }
+
+        e.Handled = true;
+        return true;
     }
 
     private bool TryHandleHistoryShortcut(KeyEventArgs e, Visual? source)

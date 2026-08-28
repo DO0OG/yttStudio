@@ -118,11 +118,26 @@ public static class ProjectPackage
         byte[] thumbnailBytes = ReadEntry(entries[ThumbnailEntryName], MaximumThumbnailBytes);
 
         int sourceVersion = ReadManifestVersion(manifestBytes);
+        ValidateSourceSchemaVersion(sourceVersion);
+        JsonObject projectObject = ParseProjectObject(projectBytes);
+        ValidateEmbeddedSchemaVersion(projectObject, sourceVersion);
+        JsonNode migrated = MigrateProject(projectObject, sourceVersion);
+        ProjectJsonDto dto = DeserializeProject(migrated);
+
+        SubtitleProject project = dto.ToModel();
+        return new ProjectPackageReadResult(project, thumbnailBytes, sourceVersion);
+    }
+
+    private static void ValidateSourceSchemaVersion(int sourceVersion)
+    {
         if (sourceVersion < 0 || sourceVersion > CurrentSchemaVersion)
         {
             throw new InvalidDataException($"Unsupported project schema version {sourceVersion}.");
         }
+    }
 
+    private static JsonObject ParseProjectObject(byte[] projectBytes)
+    {
         JsonNode projectJson;
         try
         {
@@ -134,11 +149,12 @@ public static class ProjectPackage
             throw new InvalidDataException("project.json is not valid JSON.", exception);
         }
 
-        if (projectJson is not JsonObject projectObject)
-        {
-            throw new InvalidDataException("project.json must contain a JSON object.");
-        }
+        return projectJson as JsonObject
+            ?? throw new InvalidDataException("project.json must contain a JSON object.");
+    }
 
+    private static void ValidateEmbeddedSchemaVersion(JsonObject projectObject, int sourceVersion)
+    {
         int? embeddedVersion = JsonNodeHelpers.TryGetInt32(projectObject, "schemaVersion");
         if (embeddedVersion is > CurrentSchemaVersion || embeddedVersion is < 0)
         {
@@ -149,27 +165,31 @@ public static class ProjectPackage
         {
             throw new InvalidDataException("manifest.json is older than project.json.");
         }
+    }
 
-        JsonNode migrated = ProjectMigrationPipeline.Default.Migrate(projectJson, sourceVersion);
+    private static JsonNode MigrateProject(JsonObject projectObject, int sourceVersion)
+    {
+        JsonNode migrated = ProjectMigrationPipeline.Default.Migrate(projectObject, sourceVersion);
         if (migrated is not JsonObject migratedObject ||
             JsonNodeHelpers.TryGetInt32(migratedObject, "schemaVersion") != CurrentSchemaVersion)
         {
             throw new InvalidDataException("Project migration did not produce the current schema.");
         }
 
-        ProjectJsonDto dto;
+        return migrated;
+    }
+
+    private static ProjectJsonDto DeserializeProject(JsonNode migrated)
+    {
         try
         {
-            dto = JsonSerializer.Deserialize<ProjectJsonDto>(migrated.ToJsonString(), JsonOptions)
+            return JsonSerializer.Deserialize<ProjectJsonDto>(migrated.ToJsonString(), JsonOptions)
                 ?? throw new InvalidDataException("project.json is empty.");
         }
         catch (JsonException exception)
         {
             throw new InvalidDataException("project.json does not match the project schema.", exception);
         }
-
-        SubtitleProject project = dto.ToModel();
-        return new ProjectPackageReadResult(project, thumbnailBytes, sourceVersion);
     }
 
     /// <summary>패키지를 불러오고 썸네일과 마이그레이션 메타데이터를 노출한다.</summary>

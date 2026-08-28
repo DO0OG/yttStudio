@@ -276,65 +276,7 @@ public sealed partial class DocumentEditor
             return false;
         }
 
-        List<IUndoableCommand> commands = [];
-        switch (issue.Code)
-        {
-            case Validation.ValidationCodes.E001:
-                TimeSpan minimumStart = TimeSpan.FromMilliseconds(YttConstants.MinimumStartTimeMilliseconds);
-                if (cue.Start < minimumStart && cue.End > minimumStart)
-                {
-                    commands.Add(new SetTimingCommand(project.Cues, cue, minimumStart, cue.End, cue.Track));
-                }
-                break;
-            case Validation.ValidationCodes.E003:
-                TimeSpan? previous = null;
-                foreach (Section section in cue.Sections)
-                {
-                    if (section.KaraokeOffset is not TimeSpan current)
-                    {
-                        continue;
-                    }
-
-                    TimeSpan repaired = previous is TimeSpan prior && current <= prior
-                        ? prior + TimeSpan.FromMilliseconds(1)
-                        : current;
-                    if (repaired != current)
-                    {
-                        commands.Add(new SetKaraokeOffsetCommand(cue.Id, section, repaired));
-                    }
-                    previous = repaired;
-                }
-                break;
-            case Validation.ValidationCodes.E004:
-            case Validation.ValidationCodes.E005:
-                foreach (Section section in cue.Sections)
-                {
-                    ResolvedFormat resolved = FormatResolver.Resolve(
-                        project.GetStyle(section.StyleIdOverride ?? cue.StyleId).BaseFormat,
-                        section.Overrides);
-                    SectionOverrides repaired = section.Overrides.Clone();
-                    bool changed = false;
-                    if (issue.Code == Validation.ValidationCodes.E004 && IsPureWhite(resolved.Foreground))
-                    {
-                        repaired.Foreground = new RgbaColor(254, 254, 254, resolved.Foreground.Alpha);
-                        changed = true;
-                    }
-                    else if (issue.Code == Validation.ValidationCodes.E005)
-                    {
-                        changed |= ClampAlpha(ref repaired, resolved);
-                    }
-
-                    if (changed)
-                    {
-                        commands.Add(new SetOverridesCommand(cue.Id, section, repaired));
-                    }
-                }
-                break;
-            default:
-                // 위에 나열한 코드만 자동 수정을 제공한다.
-                break;
-        }
-
+        List<IUndoableCommand> commands = CreateValidationFixCommands(issue.Code, cue);
         if (commands.Count == 0)
         {
             return false;
@@ -342,6 +284,85 @@ public sealed partial class DocumentEditor
 
         Execute(new CompositeCommand($"{issue.Code} 자동 수정", commands));
         return true;
+    }
+
+    private List<IUndoableCommand> CreateValidationFixCommands(string code, Cue cue)
+    {
+        List<IUndoableCommand> commands = [];
+        switch (code)
+        {
+            case Validation.ValidationCodes.E001:
+                AddStartTimeFix(commands, cue);
+                break;
+            case Validation.ValidationCodes.E003:
+                AddKaraokeOffsetFix(commands, cue);
+                break;
+            case Validation.ValidationCodes.E004:
+            case Validation.ValidationCodes.E005:
+                AddFormatFix(commands, code, cue);
+                break;
+            default:
+                // 위에 나열한 코드만 자동 수정을 제공한다.
+                break;
+        }
+
+        return commands;
+    }
+
+    private void AddStartTimeFix(List<IUndoableCommand> commands, Cue cue)
+    {
+        TimeSpan minimumStart = TimeSpan.FromMilliseconds(YttConstants.MinimumStartTimeMilliseconds);
+        if (cue.Start < minimumStart && cue.End > minimumStart)
+        {
+            commands.Add(new SetTimingCommand(project.Cues, cue, minimumStart, cue.End, cue.Track));
+        }
+    }
+
+    private static void AddKaraokeOffsetFix(List<IUndoableCommand> commands, Cue cue)
+    {
+        TimeSpan? previous = null;
+        foreach (Section section in cue.Sections)
+        {
+            if (section.KaraokeOffset is not TimeSpan current)
+            {
+                continue;
+            }
+
+            TimeSpan repaired = previous is TimeSpan prior && current <= prior
+                ? prior + TimeSpan.FromMilliseconds(1)
+                : current;
+            if (repaired != current)
+            {
+                commands.Add(new SetKaraokeOffsetCommand(cue.Id, section, repaired));
+            }
+            previous = repaired;
+        }
+    }
+
+    private void AddFormatFix(List<IUndoableCommand> commands, string code, Cue cue)
+    {
+        foreach (Section section in cue.Sections)
+        {
+            ResolvedFormat resolved = FormatResolver.Resolve(
+                project.GetStyle(section.StyleIdOverride ?? cue.StyleId).BaseFormat,
+                section.Overrides);
+            SectionOverrides repaired = section.Overrides.Clone();
+            bool changed = false;
+            if (code == Validation.ValidationCodes.E004 && IsPureWhite(resolved.Foreground))
+            {
+                repaired.Foreground = new RgbaColor(254, 254, 254, resolved.Foreground.Alpha);
+                changed = true;
+            }
+            else if (code == Validation.ValidationCodes.E005)
+            {
+                changed |= ClampAlpha(ref repaired, resolved);
+            }
+
+            if (changed)
+            {
+                commands.Add(new SetOverridesCommand(cue.Id, section, repaired));
+            }
+        }
     }
 
     /// <summary>선택한 모든 큐에서 큐 효과 하나를 켜거나 제거한다.</summary>

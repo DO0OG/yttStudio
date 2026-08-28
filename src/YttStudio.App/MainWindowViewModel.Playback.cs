@@ -206,19 +206,9 @@ public sealed partial class MainWindowViewModel
             while (true)
             {
                 long startedAt = Environment.TickCount64;
-                try
-                {
-                    await videoSource.SeekAsync(TimeSpan.FromMilliseconds(target), targetExact);
-                }
-                catch (Exception exception)
-                {
-                    if (videoLoaded)
-                    {
-                        Status = $"{Loc["SeekFailed"]}: {exception.Message}";
-                    }
-                }
+                await SeekTargetAsync(target, targetExact);
 
-                if (pendingSeekMilliseconds is null)
+                if (!await WaitForPendingSeekAsync(startedAt))
                 {
                     break;
                 }
@@ -226,28 +216,64 @@ public sealed partial class MainWindowViewModel
                 // 끌고 있는 동안에는 끝나는 즉시 다음 탐색이 나가서 디코딩과 화면 전송이
                 // 쉴 틈 없이 돌아간다. 사람 눈에는 초당 열몇 장이면 충분히 이어져 보이므로
                 // 최소 간격을 두어 그 위로는 올라가지 않게 한다.
-                long elapsed = Environment.TickCount64 - startedAt;
-                if (elapsed < MinimumScrubIntervalMilliseconds)
-                {
-                    await Task.Delay((int)(MinimumScrubIntervalMilliseconds - elapsed));
-                }
-
                 // 기다리는 사이에 더 새로운 목표가 들어왔을 수 있다. 지금 읽어야 마지막
                 // 목표로 간다.
-                if (pendingSeekMilliseconds is not double next)
+                (bool hasNext, double next, bool nextExact) = ConsumePendingSeekTarget();
+                if (!hasNext)
                 {
                     break;
                 }
 
-                pendingSeekMilliseconds = null;
                 target = next;
-                targetExact = pendingSeekExact;
+                targetExact = nextExact;
             }
         }
         finally
         {
             seekInFlight = false;
         }
+    }
+
+    private async Task SeekTargetAsync(double target, bool targetExact)
+    {
+        try
+        {
+            await videoSource!.SeekAsync(TimeSpan.FromMilliseconds(target), targetExact);
+        }
+        catch (Exception exception)
+        {
+            if (videoLoaded)
+            {
+                Status = $"{Loc["SeekFailed"]}: {exception.Message}";
+            }
+        }
+    }
+
+    private (bool HasNext, double Target, bool Exact) ConsumePendingSeekTarget()
+    {
+        if (pendingSeekMilliseconds is not double next)
+        {
+            return (false, 0, false);
+        }
+
+        pendingSeekMilliseconds = null;
+        return (true, next, pendingSeekExact);
+    }
+
+    private async Task<bool> WaitForPendingSeekAsync(long startedAt)
+    {
+        if (pendingSeekMilliseconds is null)
+        {
+            return false;
+        }
+
+        long elapsed = Environment.TickCount64 - startedAt;
+        if (elapsed < MinimumScrubIntervalMilliseconds)
+        {
+            await Task.Delay((int)(MinimumScrubIntervalMilliseconds - elapsed));
+        }
+
+        return pendingSeekMilliseconds is not null;
     }
 
     private void OnVideoFrameReady()

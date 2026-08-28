@@ -23,50 +23,50 @@ namespace YttStudio.App;
 public sealed partial class MainWindowViewModel
 {
 
-    public DelegateCommand ExitCommand { get; }
-    public AsyncCommand AboutCommand { get; }
-    public AsyncCommand OpenProjectCommand { get; }
-    public AsyncCommand SaveProjectCommand { get; }
-    public DelegateCommand ReplaceAllCommand { get; }
-    public DelegateCommand ShiftSelectedCommand { get; }
-    public DelegateCommand ShiftAllCommand { get; }
-    public AsyncCommand OpenSubtitleCommand { get; }
-    public AsyncCommand OpenVideoCommand { get; }
-    public AsyncCommand SaveCommand { get; }
-    public DelegateCommand PlayPauseCommand { get; }
-    public DelegateCommand StepBackCommand { get; }
-    public DelegateCommand StepForwardCommand { get; }
-    public DelegateCommand SelectVideoFrameViewportCommand { get; }
-    public DelegateCommand SelectYouTubeDefaultViewportCommand { get; }
-    public DelegateCommand SelectYouTubeTheaterViewportCommand { get; }
-    public DelegateCommand SelectYouTubeFullscreenViewportCommand { get; }
-    public DelegateCommand UndoCommand { get; }
-    public DelegateCommand RedoCommand { get; }
-    public DelegateCommand AddCueCommand { get; }
-    public DelegateCommand DeleteCueCommand { get; }
-    public DelegateCommand DuplicateCueCommand { get; }
-    public DelegateCommand AddStyleCommand { get; }
-    public AsyncCommand DeleteStyleCommand { get; }
-    public DelegateCommand RenameStyleCommand { get; }
-    public DelegateCommand SaveCueAsStyleCommand { get; }
-    public DelegateCommand ApplySelectedStyleCommand { get; }
-    public DelegateCommand AlignLeftCommand { get; }
-    public DelegateCommand AlignCenterCommand { get; }
-    public DelegateCommand AlignRightCommand { get; }
-    public DelegateCommand AlignTopCommand { get; }
-    public DelegateCommand AlignMiddleCommand { get; }
-    public DelegateCommand AlignBottomCommand { get; }
-    public DelegateCommand DistributeHorizontalCommand { get; }
-    public DelegateCommand DistributeVerticalCommand { get; }
-    public DelegateCommand BringToFrontCommand { get; }
-    public DelegateCommand SendToBackCommand { get; }
-    public DelegateCommand CommitInlineEditCommand { get; }
-    public DelegateCommand ValidateCommand { get; }
-    public DelegateCommand ApplyValidationFixCommand { get; }
-    public DelegateCommand GoToValidationIssueCommand { get; }
-    public DelegateCommand AutoSplitKaraokeCommand { get; }
-    public AsyncCommand SelectMpvPathCommand { get; }
-    public AsyncCommand ApplyMpvPathCommand { get; }
-    public DelegateCommand OpenMpvInstallationGuideCommand { get; }
-    public AsyncCommand OpenSettingsCommand { get; }
+    public DelegateCommand ExitCommand { get; private set; } = null!;
+    public AsyncCommand AboutCommand { get; private set; } = null!;
+    public AsyncCommand OpenProjectCommand { get; private set; } = null!;
+    public AsyncCommand SaveProjectCommand { get; private set; } = null!;
+    public DelegateCommand ReplaceAllCommand { get; private set; } = null!;
+    public DelegateCommand ShiftSelectedCommand { get; private set; } = null!;
+    public DelegateCommand ShiftAllCommand { get; private set; } = null!;
+    public AsyncCommand OpenSubtitleCommand { get; private set; } = null!;
+    public AsyncCommand OpenVideoCommand { get; private set; } = null!;
+    public AsyncCommand SaveCommand { get; private set; } = null!;
+    public DelegateCommand PlayPauseCommand { get; private set; } = null!;
+    public DelegateCommand StepBackCommand { get; private set; } = null!;
+    public DelegateCommand StepForwardCommand { get; private set; } = null!;
+    public DelegateCommand SelectVideoFrameViewportCommand { get; private set; } = null!;
+    public DelegateCommand SelectYouTubeDefaultViewportCommand { get; private set; } = null!;
+    public DelegateCommand SelectYouTubeTheaterViewportCommand { get; private set; } = null!;
+    public DelegateCommand SelectYouTubeFullscreenViewportCommand { get; private set; } = null!;
+    public DelegateCommand UndoCommand { get; private set; } = null!;
+    public DelegateCommand RedoCommand { get; private set; } = null!;
+    public DelegateCommand AddCueCommand { get; private set; } = null!;
+    public DelegateCommand DeleteCueCommand { get; private set; } = null!;
+    public DelegateCommand DuplicateCueCommand { get; private set; } = null!;
+    public DelegateCommand AddStyleCommand { get; private set; } = null!;
+    public AsyncCommand DeleteStyleCommand { get; private set; } = null!;
+    public DelegateCommand RenameStyleCommand { get; private set; } = null!;
+    public DelegateCommand SaveCueAsStyleCommand { get; private set; } = null!;
+    public DelegateCommand ApplySelectedStyleCommand { get; private set; } = null!;
+    public DelegateCommand AlignLeftCommand { get; private set; } = null!;
+    public DelegateCommand AlignCenterCommand { get; private set; } = null!;
+    public DelegateCommand AlignRightCommand { get; private set; } = null!;
+    public DelegateCommand AlignTopCommand { get; private set; } = null!;
+    public DelegateCommand AlignMiddleCommand { get; private set; } = null!;
+    public DelegateCommand AlignBottomCommand { get; private set; } = null!;
+    public DelegateCommand DistributeHorizontalCommand { get; private set; } = null!;
+    public DelegateCommand DistributeVerticalCommand { get; private set; } = null!;
+    public DelegateCommand BringToFrontCommand { get; private set; } = null!;
+    public DelegateCommand SendToBackCommand { get; private set; } = null!;
+    public DelegateCommand CommitInlineEditCommand { get; private set; } = null!;
+    public DelegateCommand ValidateCommand { get; private set; } = null!;
+    public DelegateCommand ApplyValidationFixCommand { get; private set; } = null!;
+    public DelegateCommand GoToValidationIssueCommand { get; private set; } = null!;
+    public DelegateCommand AutoSplitKaraokeCommand { get; private set; } = null!;
+    public AsyncCommand SelectMpvPathCommand { get; private set; } = null!;
+    public AsyncCommand ApplyMpvPathCommand { get; private set; } = null!;
+    public DelegateCommand OpenMpvInstallationGuideCommand { get; private set; } = null!;
+    public AsyncCommand OpenSettingsCommand { get; private set; } = null!;
 }

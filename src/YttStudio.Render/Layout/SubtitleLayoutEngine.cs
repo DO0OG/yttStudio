@@ -59,27 +59,38 @@ public sealed class SubtitleLayoutEngine
         float originY = anchor.Y - (boxHeight * anchorRow / 2f);
         SKRect box = SKRect.Create(originX, originY, boxWidth, boxHeight);
 
-        IReadOnlyList<LineLayout> lines;
-        if (vertical)
-        {
-            lines = PlaceVerticalLines(cue, measuredLines, box, horizontalPadding, verticalPadding);
-        }
-        else if (rotated)
-        {
-            SKRect unrotatedBox = SKRect.Create(
-                box.MidX - (box.Height / 2),
-                box.MidY - (box.Width / 2),
-                box.Height,
-                box.Width);
-            lines = PlaceHorizontalLines(cue, measuredLines, unrotatedBox, horizontalPadding, verticalPadding);
-        }
-        else
-        {
-            lines = PlaceHorizontalLines(cue, measuredLines, box, horizontalPadding, verticalPadding);
-        }
+        IReadOnlyList<LineLayout> lines = PlaceLines(cue, measuredLines, box,
+            horizontalPadding, verticalPadding, vertical, rotated);
         return new CueLayout(cue, box, anchor, lines, maximumFontSize,
             box.Left < viewport.SubtitleSpace.Left || box.Top < viewport.SubtitleSpace.Top ||
             box.Right > viewport.SubtitleSpace.Right || box.Bottom > viewport.SubtitleSpace.Bottom);
+    }
+
+    private static IReadOnlyList<LineLayout> PlaceLines(
+        Cue cue,
+        IReadOnlyList<MeasuredLine> measuredLines,
+        SKRect box,
+        float horizontalPadding,
+        float verticalPadding,
+        bool vertical,
+        bool rotated)
+    {
+        if (vertical)
+        {
+            return PlaceVerticalLines(cue, measuredLines, box, horizontalPadding, verticalPadding);
+        }
+
+        if (!rotated)
+        {
+            return PlaceHorizontalLines(cue, measuredLines, box, horizontalPadding, verticalPadding);
+        }
+
+        SKRect unrotatedBox = SKRect.Create(
+            box.MidX - (box.Height / 2),
+            box.MidY - (box.Width / 2),
+            box.Height,
+            box.Width);
+        return PlaceHorizontalLines(cue, measuredLines, unrotatedBox, horizontalPadding, verticalPadding);
     }
 
     private List<MeasuredLine> MeasureLines(

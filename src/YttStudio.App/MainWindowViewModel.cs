@@ -157,6 +157,15 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             message => Serilog.Log.Information("{FontResolution}", message)));
         previewViewport = CreatePlayerViewport(ReferencePlayerSize);
         RestartAutosave(preferences.AutosaveEnabled, preferences.AutosaveIntervalSeconds);
+        InitializeProjectAndPlaybackCommands();
+        InitializeEditorCommands();
+        InitializeValidationCommands();
+        InitializeVideoSource();
+        RenderFallbackFrame();
+    }
+
+    private void InitializeProjectAndPlaybackCommands()
+    {
         ExitCommand = new DelegateCommand(RequestShutdown);
         AboutCommand = new AsyncCommand(ShowAboutAsync);
         OpenProjectCommand = new AsyncCommand(OpenProjectAsync);
@@ -184,6 +193,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             () => SelectedViewportMode = PreviewViewportMode.YouTubeTheater);
         SelectYouTubeFullscreenViewportCommand = new DelegateCommand(
             () => SelectedViewportMode = PreviewViewportMode.YouTubeFullscreen);
+    }
+
+    private void InitializeEditorCommands()
+    {
         UndoCommand = new DelegateCommand(Undo, () => !isInlineEditing && editor?.CanUndo == true);
         RedoCommand = new DelegateCommand(Redo, () => !isInlineEditing && editor?.CanRedo == true);
         AddCueCommand = new DelegateCommand(AddCue, () => !isInlineEditing && project is not null);
@@ -215,6 +228,10 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         SendToBackCommand = new DelegateCommand(() => MoveSelectionToZOrder(front: false),
             () => selectedCueIds.Count > 0 && project is not null);
         CommitInlineEditCommand = new DelegateCommand(CommitInlineEdit, () => IsInlineEditing);
+    }
+
+    private void InitializeValidationCommands()
+    {
         ValidateCommand = new DelegateCommand(RunValidation, () => project is not null);
         ApplyValidationFixCommand = new DelegateCommand(ApplySelectedValidationFix);
         GoToValidationIssueCommand = new DelegateCommand(GoToSelectedValidationIssue);
@@ -225,8 +242,6 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         ApplyMpvPathCommand = new AsyncCommand(ApplyMpvPathAsync);
         OpenMpvInstallationGuideCommand = new DelegateCommand(OpenMpvInstallationGuide);
         OpenSettingsCommand = new AsyncCommand(OpenSettingsAsync);
-        InitializeVideoSource();
-        RenderFallbackFrame();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

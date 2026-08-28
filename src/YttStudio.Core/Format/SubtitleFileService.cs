@@ -153,67 +153,91 @@ public sealed partial class SubtitleFileService
         for (int lineIndex = 0; lineIndex < document.Lines.Count; lineIndex++)
         {
             Line line = document.Lines[lineIndex];
-            Cue cue = new(Guid.NewGuid())
-            {
-                Start = line.Start - SubtitleDocument.TimeBase,
-                End = line.End - SubtitleDocument.TimeBase,
-                Anchor = ToModelAnchor(line.AnchorPoint),
-                Justify = ToModelJustification(line.Justification, line.AnchorPoint),
-                Direction = ToModelDirection(line.HorizontalTextDirection, line.VerticalTextType),
-                Track = line is AssLine assLine ? assLine.Layer : 0,
-                ZOrder = line is AssLine zOrderLine ? zOrderLine.Layer : lineIndex,
-            };
-
-            PointF position = line.Position ?? document.GetDefaultPosition(line.AnchorPoint);
-            cue.PositionX = YttMath.ToYttCoordinate(position.X, document.VideoDimensions.Width);
-            cue.PositionY = YttMath.ToYttCoordinate(position.Y, document.VideoDimensions.Height);
-
-            // 루비 그룹은 네 섹션에 걸쳐 있어 인덱스가 한 칸 넘게 전진한다.
-            // while 루프로 두어야 for 카운터를 변경하지 않고 전진량이 드러난다.
-            int sectionIndex = 0;
-            while (sectionIndex < line.Sections.Count)
-            {
-                int consumed = 1;
-                ExternalSection externalSection = line.Sections[sectionIndex];
-                ResolvedFormat fullFormat = ToResolvedFormat(externalSection);
-                StylePreset? matchedStyle = importedStyles?.FirstOrDefault(style =>
-                    FormatResolver.Resolve(style.BaseFormat, new SectionOverrides()) == fullFormat);
-                if (sectionIndex == 0 && matchedStyle is not null)
-                {
-                    cue.StyleId = matchedStyle.Id == Guid.Empty ? null : matchedStyle.Id;
-                }
-
-                StylePreset cueStyle = project.GetStyle(cue.StyleId);
-                SectionFormat inheritedFormat = matchedStyle?.BaseFormat ?? cueStyle.BaseFormat;
-                ModelSection modelSection = ToModelSection(externalSection, inheritedFormat);
-                if (matchedStyle is not null && matchedStyle.Id != cueStyle.Id)
-                {
-                    modelSection.StyleIdOverride = matchedStyle.Id;
-                }
-                if (externalSection.RubyPart == RubyPart.Base && sectionIndex + 3 < line.Sections.Count &&
-                    line.Sections[sectionIndex + 1].RubyPart == RubyPart.Parenthesis &&
-                    line.Sections[sectionIndex + 3].RubyPart == RubyPart.Parenthesis &&
-                    line.Sections[sectionIndex + 2].RubyPart is RubyPart.TextBefore or RubyPart.TextAfter)
-                {
-                    ExternalSection rubySection = line.Sections[sectionIndex + 2];
-                    modelSection.Ruby = rubySection.RubyPart == RubyPart.TextAfter ? RubyRole.Below : RubyRole.Above;
-                    modelSection.RubyText = rubySection.Text;
-                    consumed = 4;
-                }
-
-                cue.AddSection(modelSection);
-                sectionIndex += consumed;
-            }
-
-            if (cue.Sections.Count == 0)
-            {
-                cue.AddSection(new ModelSection());
-            }
-
+            Cue cue = CreateCue(document, line, lineIndex);
+            AddSections(project, cue, line, importedStyles);
             project.Cues.Add(cue);
         }
 
         return project;
+    }
+
+    private static Cue CreateCue(SubtitleDocument document, Line line, int lineIndex)
+    {
+        Cue cue = new(Guid.NewGuid())
+        {
+            Start = line.Start - SubtitleDocument.TimeBase,
+            End = line.End - SubtitleDocument.TimeBase,
+            Anchor = ToModelAnchor(line.AnchorPoint),
+            Justify = ToModelJustification(line.Justification, line.AnchorPoint),
+            Direction = ToModelDirection(line.HorizontalTextDirection, line.VerticalTextType),
+            Track = line is AssLine assLine ? assLine.Layer : 0,
+            ZOrder = line is AssLine zOrderLine ? zOrderLine.Layer : lineIndex,
+        };
+
+        PointF position = line.Position ?? document.GetDefaultPosition(line.AnchorPoint);
+        cue.PositionX = YttMath.ToYttCoordinate(position.X, document.VideoDimensions.Width);
+        cue.PositionY = YttMath.ToYttCoordinate(position.Y, document.VideoDimensions.Height);
+        return cue;
+    }
+
+    private static void AddSections(
+        SubtitleProject project,
+        Cue cue,
+        Line line,
+        IReadOnlyList<StylePreset>? importedStyles)
+    {
+        // 루비 그룹은 네 섹션에 걸쳐 있어 인덱스가 한 칸 넘게 전진한다.
+        // while 루프로 두어야 for 카운터를 변경하지 않고 전진량이 드러난다.
+        int sectionIndex = 0;
+        while (sectionIndex < line.Sections.Count)
+        {
+            sectionIndex += AddSection(project, cue, line, sectionIndex, importedStyles);
+        }
+
+        if (cue.Sections.Count == 0)
+        {
+            cue.AddSection(new ModelSection());
+        }
+    }
+
+    private static int AddSection(
+        SubtitleProject project,
+        Cue cue,
+        Line line,
+        int sectionIndex,
+        IReadOnlyList<StylePreset>? importedStyles)
+    {
+        ExternalSection externalSection = line.Sections[sectionIndex];
+        ResolvedFormat fullFormat = ToResolvedFormat(externalSection);
+        StylePreset? matchedStyle = importedStyles?.FirstOrDefault(style =>
+            FormatResolver.Resolve(style.BaseFormat, new SectionOverrides()) == fullFormat);
+        if (sectionIndex == 0 && matchedStyle is not null)
+        {
+            cue.StyleId = matchedStyle.Id == Guid.Empty ? null : matchedStyle.Id;
+        }
+
+        StylePreset cueStyle = project.GetStyle(cue.StyleId);
+        SectionFormat inheritedFormat = matchedStyle?.BaseFormat ?? cueStyle.BaseFormat;
+        ModelSection modelSection = ToModelSection(externalSection, inheritedFormat);
+        if (matchedStyle is not null && matchedStyle.Id != cueStyle.Id)
+        {
+            modelSection.StyleIdOverride = matchedStyle.Id;
+        }
+
+        int consumed = 1;
+        if (externalSection.RubyPart == RubyPart.Base && sectionIndex + 3 < line.Sections.Count &&
+            line.Sections[sectionIndex + 1].RubyPart == RubyPart.Parenthesis &&
+            line.Sections[sectionIndex + 3].RubyPart == RubyPart.Parenthesis &&
+            line.Sections[sectionIndex + 2].RubyPart is RubyPart.TextBefore or RubyPart.TextAfter)
+        {
+            ExternalSection rubySection = line.Sections[sectionIndex + 2];
+            modelSection.Ruby = rubySection.RubyPart == RubyPart.TextAfter ? RubyRole.Below : RubyRole.Above;
+            modelSection.RubyText = rubySection.Text;
+            consumed = 4;
+        }
+
+        cue.AddSection(modelSection);
+        return consumed;
     }
 
     private static ModelSection ToModelSection(ExternalSection section, SectionFormat inheritedFormat)

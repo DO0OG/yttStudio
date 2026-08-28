@@ -58,32 +58,53 @@ internal sealed class MpvNativeLibrary : IDisposable
                 attempted.Add(candidate);
             }
 
-            try
+            if (TryLoadCandidate(candidate, out library, out string? error))
             {
-                if (NativeLibrary.TryLoad(candidate, out nint handle))
-                {
-                    try
-                    {
-                        library = new MpvNativeLibrary(handle, candidate);
-                        diagnostic = $"libmpv loaded from {candidate}";
-                        return true;
-                    }
-                    catch
-                    {
-                        NativeLibrary.Free(handle);
-                        throw;
-                    }
-                }
+                diagnostic = $"libmpv loaded from {candidate}";
+                return true;
             }
-            catch (Exception exception) when (exception is BadImageFormatException or DllNotFoundException)
+
+            if (error is not null)
             {
-                attempted[^1] = $"{candidate} ({exception.Message})";
+                attempted[^1] = $"{candidate} ({error})";
             }
         }
 
         library = null;
         diagnostic = "libmpv was not found. Probed: " + string.Join("; ", attempted);
         return false;
+    }
+
+    private static bool TryLoadCandidate(
+        string candidate,
+        out MpvNativeLibrary? library,
+        out string? error)
+    {
+        library = null;
+        error = null;
+        try
+        {
+            if (!NativeLibrary.TryLoad(candidate, out nint handle))
+            {
+                return false;
+            }
+
+            try
+            {
+                library = new MpvNativeLibrary(handle, candidate);
+                return true;
+            }
+            catch
+            {
+                NativeLibrary.Free(handle);
+                throw;
+            }
+        }
+        catch (Exception exception) when (exception is BadImageFormatException or DllNotFoundException)
+        {
+            error = exception.Message;
+            return false;
+        }
     }
 
     public string GetError(int code)

@@ -80,17 +80,22 @@ public sealed class MpvVideoSource : IVideoSource
         }
         catch
         {
-            if (renderThread?.IsAlive == true)
-            {
-                Volatile.Write(ref stopping, true);
-                renderSignal.Set();
-                renderThread.Join();
-            }
-
-            native.TerminateDestroy(mpvHandle);
-            native.Dispose();
+            CleanupAfterInitializationFailure();
             throw;
         }
+    }
+
+    private void CleanupAfterInitializationFailure()
+    {
+        if (renderThread?.IsAlive == true)
+        {
+            Volatile.Write(ref stopping, true);
+            renderSignal.Set();
+            renderThread.Join();
+        }
+
+        native.TerminateDestroy(mpvHandle);
+        native.Dispose();
     }
 
     public event Action? FrameReady;
@@ -347,37 +352,42 @@ public sealed class MpvVideoSource : IVideoSource
         }
         finally
         {
-            Exception? cleanupFailure = null;
-            nint context = renderContext;
-            if (context != 0)
-            {
-                try
-                {
-                    native.RenderContextSetUpdateCallback(context, 0, 0);
-                }
-                catch (Exception exception)
-                {
-                    cleanupFailure = exception;
-                }
+            CleanupRenderContext();
+        }
+    }
 
-                try
-                {
-                    native.RenderContextFree(context);
-                }
-                catch (Exception exception)
-                {
-                    cleanupFailure ??= exception;
-                }
-                finally
-                {
-                    renderContext = 0;
-                }
+    private void CleanupRenderContext()
+    {
+        Exception? cleanupFailure = null;
+        nint context = renderContext;
+        if (context != 0)
+        {
+            try
+            {
+                native.RenderContextSetUpdateCallback(context, 0, 0);
+            }
+            catch (Exception exception)
+            {
+                cleanupFailure = exception;
             }
 
-            // 정리 과정도 실패하면 원래의 렌더 루프 실패를 보존한다.
-            renderFailure ??= cleanupFailure;
-            renderReady.Set();
+            try
+            {
+                native.RenderContextFree(context);
+            }
+            catch (Exception exception)
+            {
+                cleanupFailure ??= exception;
+            }
+            finally
+            {
+                renderContext = 0;
+            }
         }
+
+        // 정리 과정도 실패하면 원래의 렌더 루프 실패를 보존한다.
+        renderFailure ??= cleanupFailure;
+        renderReady.Set();
     }
 
     private unsafe void CreateSoftwareRenderContext()
@@ -409,35 +419,13 @@ public sealed class MpvVideoSource : IVideoSource
         long epoch = frames.SeekEpoch;
         if (!frames.TryBeginWrite(width, height, out int index, out byte[] pixels, out int stride))
         {
-            int skip = 1;
-            MpvRenderParam* skipParameters = stackalloc MpvRenderParam[2];
-            skipParameters[0] = new MpvRenderParam(13, (nint)(&skip));
-            skipParameters[1] = default;
-            Check(native.RenderContextRender(renderContext, (nint)skipParameters), "mpv_render_context_render(skip)");
+            RenderSkippedFrame();
             return;
         }
 
         try
         {
-            fixed (byte* pixelPointer = pixels)
-            {
-                int* size = stackalloc int[2] { width, height };
-                nuint nativeStride = (nuint)stride;
-                byte* format = stackalloc byte[] { (byte)'b', (byte)'g', (byte)'r', (byte)'0', 0 };
-                MpvRenderParam* parameters = stackalloc MpvRenderParam[5];
-                parameters[0] = new MpvRenderParam(RenderParamSoftwareSize, (nint)size);
-                parameters[1] = new MpvRenderParam(RenderParamSoftwareFormat, (nint)format);
-                parameters[2] = new MpvRenderParam(RenderParamSoftwareStride, (nint)(&nativeStride));
-                parameters[3] = new MpvRenderParam(RenderParamSoftwarePointer, (nint)pixelPointer);
-                parameters[4] = default;
-                Check(native.RenderContextRender(renderContext, (nint)parameters), "mpv_render_context_render(sw)");
-
-                // mpv SW 의 "bgr0" 은 네 번째 바이트를 정의하지 않는다. Avalonia 는 불투명
-                // BGRA 를 기대하므로 알파를 채워야 한다. 다만 화소마다 바이트 하나씩 쓰면
-                // 1080p 기준 프레임당 이백만 번이 넘어 재생 내내 렌더 스레드를 붙잡는다.
-                // 네 바이트를 한 낱말로 묶어 SIMD 로 알파 비트만 세운다.
-                FillOpaqueAlpha(pixelPointer, width, height, stride);
-            }
+            RenderSoftwareFrame(width, height, stride, pixels);
 
             long sequence = Interlocked.Increment(ref sequenceNumber);
             if (frames.Publish(index, Position, sequence, epoch))
@@ -449,6 +437,38 @@ public sealed class MpvVideoSource : IVideoSource
         {
             frames.CancelWrite(index);
             throw;
+        }
+    }
+
+    private unsafe void RenderSkippedFrame()
+    {
+        int skip = 1;
+        MpvRenderParam* skipParameters = stackalloc MpvRenderParam[2];
+        skipParameters[0] = new MpvRenderParam(13, (nint)(&skip));
+        skipParameters[1] = default;
+        Check(native.RenderContextRender(renderContext, (nint)skipParameters), "mpv_render_context_render(skip)");
+    }
+
+    private unsafe void RenderSoftwareFrame(int width, int height, int stride, byte[] pixels)
+    {
+        fixed (byte* pixelPointer = pixels)
+        {
+            int* size = stackalloc int[2] { width, height };
+            nuint nativeStride = (nuint)stride;
+            byte* format = stackalloc byte[] { (byte)'b', (byte)'g', (byte)'r', (byte)'0', 0 };
+            MpvRenderParam* parameters = stackalloc MpvRenderParam[5];
+            parameters[0] = new MpvRenderParam(RenderParamSoftwareSize, (nint)size);
+            parameters[1] = new MpvRenderParam(RenderParamSoftwareFormat, (nint)format);
+            parameters[2] = new MpvRenderParam(RenderParamSoftwareStride, (nint)(&nativeStride));
+            parameters[3] = new MpvRenderParam(RenderParamSoftwarePointer, (nint)pixelPointer);
+            parameters[4] = default;
+            Check(native.RenderContextRender(renderContext, (nint)parameters), "mpv_render_context_render(sw)");
+
+            // mpv SW 의 "bgr0" 은 네 번째 바이트를 정의하지 않는다. Avalonia 는 불투명
+            // BGRA 를 기대하므로 알파를 채워야 한다. 다만 화소마다 바이트 하나씩 쓰면
+            // 1080p 기준 프레임당 이백만 번이 넘어 재생 내내 렌더 스레드를 붙잡는다.
+            // 네 바이트를 한 낱말로 묶어 SIMD 로 알파 비트만 세운다.
+            FillOpaqueAlpha(pixelPointer, width, height, stride);
         }
     }
 

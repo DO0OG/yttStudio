@@ -62,55 +62,76 @@ public sealed class SkiaSubtitleRenderer : ISubtitleRenderer, IDisposable
     {
         foreach (CueLayout layout in layouts)
         {
-            CueEffectState effect = CueEffectEvaluator.Evaluate(layout.Cue, time, options.FrameIndex,
-                layout.AnchorScreenPoint);
-            int saveCount = canvas.Save();
-            canvas.Translate(effect.Translation);
-            if (effect.Scale != 1)
-            {
-                canvas.Scale(effect.Scale, effect.Scale, layout.Bounds.MidX, layout.Bounds.MidY);
-            }
-            if (effect.Alpha < 1)
-            {
-                using SKPaint alphaPaint = new() { Color = SKColors.White.WithAlpha((byte)Math.Round(effect.Alpha * 255)) };
-                canvas.SaveLayer(alphaPaint);
-            }
-            if (options.EditingCueId != layout.Cue.Id)
-            {
-                DrawChroma(canvas, layout, time, options, effect);
-                DrawBackground(canvas, layout);
-                DrawEdges(canvas, layout, time, options);
-                DrawBody(canvas, layout, time, options, effect);
-                DrawUnderlines(canvas, layout);
-                DrawRuby(canvas, layout);
-            }
-            canvas.RestoreToCount(saveCount);
+            DrawLayout(canvas, layout, time, options);
         }
 
         if (options.ShowSafeArea)
         {
-            using SKPaint safeAreaPaint = new()
-            {
-                Color = new SKColor(255, 255, 255, 96),
-                Style = SKPaintStyle.Stroke,
-                StrokeWidth = 1,
-                IsAntialias = true,
-            };
-            SKRect space = viewport.SubtitleSpace;
-            canvas.DrawRect(SKRect.Create(
-                space.Left + (space.Width * EditorSafeAreaInsetRatio),
-                space.Top + (space.Height * EditorSafeAreaInsetRatio),
-                space.Width * (1 - (EditorSafeAreaInsetRatio * 2)),
-                space.Height * (1 - (EditorSafeAreaInsetRatio * 2))), safeAreaPaint);
+            DrawSafeArea(canvas, viewport);
         }
 
         if (options.ShowAnchorPoints)
         {
-            using SKPaint anchorPaint = new() { Color = SKColors.Magenta, IsAntialias = true };
-            foreach (CueLayout layout in layouts)
+            DrawAnchorPoints(canvas, layouts);
+        }
+    }
+
+    private void DrawLayout(SKCanvas canvas, CueLayout layout, TimeSpan time, RenderOptions options)
+    {
+        CueEffectState effect = CueEffectEvaluator.Evaluate(layout.Cue, time, options.FrameIndex,
+            layout.AnchorScreenPoint);
+        int saveCount = canvas.Save();
+        canvas.Translate(effect.Translation);
+        if (effect.Scale != 1)
+        {
+            canvas.Scale(effect.Scale, effect.Scale, layout.Bounds.MidX, layout.Bounds.MidY);
+        }
+
+        if (effect.Alpha < 1)
+        {
+            using SKPaint alphaPaint = new()
             {
-                canvas.DrawCircle(layout.AnchorScreenPoint, 3, anchorPaint);
-            }
+                Color = SKColors.White.WithAlpha((byte)Math.Round(effect.Alpha * 255)),
+            };
+            canvas.SaveLayer(alphaPaint);
+        }
+
+        if (options.EditingCueId != layout.Cue.Id)
+        {
+            DrawChroma(canvas, layout, time, options, effect);
+            DrawBackground(canvas, layout);
+            DrawEdges(canvas, layout, time, options);
+            DrawBody(canvas, layout, time, options, effect);
+            DrawUnderlines(canvas, layout);
+            DrawRuby(canvas, layout);
+        }
+
+        canvas.RestoreToCount(saveCount);
+    }
+
+    private static void DrawSafeArea(SKCanvas canvas, PlayerViewport viewport)
+    {
+        using SKPaint safeAreaPaint = new()
+        {
+            Color = new SKColor(255, 255, 255, 96),
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 1,
+            IsAntialias = true,
+        };
+        SKRect space = viewport.SubtitleSpace;
+        canvas.DrawRect(SKRect.Create(
+            space.Left + (space.Width * EditorSafeAreaInsetRatio),
+            space.Top + (space.Height * EditorSafeAreaInsetRatio),
+            space.Width * (1 - (EditorSafeAreaInsetRatio * 2)),
+            space.Height * (1 - (EditorSafeAreaInsetRatio * 2))), safeAreaPaint);
+    }
+
+    private static void DrawAnchorPoints(SKCanvas canvas, IReadOnlyList<CueLayout> layouts)
+    {
+        using SKPaint anchorPaint = new() { Color = SKColors.Magenta, IsAntialias = true };
+        foreach (CueLayout layout in layouts)
+        {
+            canvas.DrawCircle(layout.AnchorScreenPoint, 3, anchorPaint);
         }
     }
 

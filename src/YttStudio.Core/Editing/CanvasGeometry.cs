@@ -60,6 +60,17 @@ public static class CanvasGeometry
             return new SnapResult(point, []);
         }
 
+        List<SnapGuide> candidates = CreateSnapCandidates(canvasWidth, canvasHeight, additionalGuides);
+        SnapGuide? vertical = FindNearestGuide(candidates, true, point.X, threshold);
+        SnapGuide? horizontal = FindNearestGuide(candidates, false, point.Y, threshold);
+        return ApplySnap(point, vertical, horizontal);
+    }
+
+    private static List<SnapGuide> CreateSnapCandidates(
+        double canvasWidth,
+        double canvasHeight,
+        IReadOnlyList<SnapGuide>? additionalGuides)
+    {
         List<SnapGuide> candidates =
         [
             new(true, canvasWidth / 2, "가로 중앙"),
@@ -79,12 +90,23 @@ public static class CanvasGeometry
             candidates.AddRange(additionalGuides);
         }
 
-        SnapGuide? vertical = candidates.Where(guide => guide.Vertical)
-            .Where(guide => Math.Abs(guide.Position - point.X) <= threshold)
-            .MinBy(guide => Math.Abs(guide.Position - point.X));
-        SnapGuide? horizontal = candidates.Where(guide => !guide.Vertical)
-            .Where(guide => Math.Abs(guide.Position - point.Y) <= threshold)
-            .MinBy(guide => Math.Abs(guide.Position - point.Y));
+        return candidates;
+    }
+
+    private static SnapGuide? FindNearestGuide(
+        IEnumerable<SnapGuide> candidates,
+        bool vertical,
+        double coordinate,
+        double threshold)
+        => candidates.Where(guide => guide.Vertical == vertical)
+            .Where(guide => Math.Abs(guide.Position - coordinate) <= threshold)
+            .MinBy(guide => Math.Abs(guide.Position - coordinate));
+
+    private static SnapResult ApplySnap(
+        CanvasPoint point,
+        SnapGuide? vertical,
+        SnapGuide? horizontal)
+    {
         List<SnapGuide> applied = [];
         double x = point.X;
         double y = point.Y;

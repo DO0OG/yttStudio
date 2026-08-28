@@ -57,17 +57,7 @@ public sealed class KaraokeTimelineControl : Control
         }
 
         IReadOnlyList<KaraokeSectionViewModel> sections = viewModel.KaraokeSections;
-        Rect[] chips = GetChipRects(sections);
-        for (int index = 0; index < chips.Length; index++)
-        {
-            Rect chip = chips[index];
-            bool isMergeTarget = mergeTargetIndex == index;
-            IBrush fill = isMergeTarget ? Brushes.DarkOrange :
-                index % 2 == 0 ? Brushes.SlateBlue : Brushes.DarkSlateBlue;
-            context.DrawRectangle(fill, new Pen(Brushes.LightGray, 1), chip, 4, 4);
-            context.DrawText(CreateLabel(sections[index].Text, 13, Brushes.White),
-                new Point(chip.Left + 7, chip.Top + 11));
-        }
+        DrawChips(context, sections);
 
         double duration = GetCueDuration(viewModel);
         ClampViewport(duration);
@@ -79,6 +69,21 @@ public sealed class KaraokeTimelineControl : Control
         context.DrawRectangle(new SolidColorBrush(Color.Parse("#292929")),
             new Pen(Brushes.DimGray, 1), timeline, 3, 3);
 
+        DrawTimelineBoundaries(context, sections, duration, timeline);
+
+        context.DrawText(CreateLabel(
+                "칩을 이웃 칩 위로 드래그하면 병합 · 아래 경계를 드래그하면 ms 미세 조정",
+                10,
+                Brushes.Gray),
+            new Point(HorizontalPadding, TimelineTop + TimelineHeight + 18));
+    }
+
+    private void DrawTimelineBoundaries(
+        DrawingContext context,
+        IReadOnlyList<KaraokeSectionViewModel> sections,
+        double duration,
+        Rect timeline)
+    {
         for (int index = 0; index < sections.Count; index++)
         {
             double offset = pendingTimelineOffset.HasValue && timelineSectionIndex == index
@@ -97,12 +102,23 @@ public sealed class KaraokeTimelineControl : Control
             context.DrawText(CreateLabel($"{offset:0} ms", 9, Brushes.LightGray),
                 new Point(Math.Min(x + 3, Math.Max(timeline.Left, timeline.Right - 48)), timeline.Bottom + 2));
         }
+    }
 
-        context.DrawText(CreateLabel(
-                "칩을 이웃 칩 위로 드래그하면 병합 · 아래 경계를 드래그하면 ms 미세 조정",
-                10,
-                Brushes.Gray),
-            new Point(HorizontalPadding, TimelineTop + TimelineHeight + 18));
+    private void DrawChips(
+        DrawingContext context,
+        IReadOnlyList<KaraokeSectionViewModel> sections)
+    {
+        Rect[] chips = GetChipRects(sections);
+        for (int index = 0; index < chips.Length; index++)
+        {
+            Rect chip = chips[index];
+            bool isMergeTarget = mergeTargetIndex == index;
+            IBrush fill = isMergeTarget ? Brushes.DarkOrange :
+                index % 2 == 0 ? Brushes.SlateBlue : Brushes.DarkSlateBlue;
+            context.DrawRectangle(fill, new Pen(Brushes.LightGray, 1), chip, 4, 4);
+            context.DrawText(CreateLabel(sections[index].Text, 13, Brushes.White),
+                new Point(chip.Left + 7, chip.Top + 11));
+        }
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
