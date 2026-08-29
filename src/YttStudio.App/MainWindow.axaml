@@ -14,6 +14,52 @@
         MinHeight="700"
         Title="YttStudio"
         Icon="/Assets/app.ico">
+  <Window.Resources>
+    <ItemsPanelTemplate x:Key="SwatchPanel">
+      <UniformGrid Columns="4" />
+    </ItemsPanelTemplate>
+    <DataTemplate x:Key="ForegroundSwatchTemplate" DataType="vm:ColorSwatchOption">
+      <Button Classes="swatch" Margin="2" ToolTip.Tip="{Binding Name}"
+              AutomationProperties.Name="{Binding Name}" CommandParameter="{Binding Hex}"
+              Command="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)DataContext).PickForegroundColorCommand}">
+        <Border Classes="chip" Background="{Binding Brush}" />
+      </Button>
+    </DataTemplate>
+    <DataTemplate x:Key="BackgroundSwatchTemplate" DataType="vm:ColorSwatchOption">
+      <Button Classes="swatch" Margin="2" ToolTip.Tip="{Binding Name}"
+              AutomationProperties.Name="{Binding Name}" CommandParameter="{Binding Hex}"
+              Command="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)DataContext).PickBackgroundColorCommand}">
+        <Border Classes="chip" Background="{Binding Brush}" />
+      </Button>
+    </DataTemplate>
+    <DataTemplate x:Key="EdgeSwatchTemplate" DataType="vm:ColorSwatchOption">
+      <Button Classes="swatch" Margin="2" ToolTip.Tip="{Binding Name}"
+              AutomationProperties.Name="{Binding Name}" CommandParameter="{Binding Hex}"
+              Command="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)DataContext).PickEdgeColorCommand}">
+        <Border Classes="chip" Background="{Binding Brush}" />
+      </Button>
+    </DataTemplate>
+  </Window.Resources>
+
+  <Window.Styles>
+    <!-- 색 칸은 버튼 배경이 아니라 자식 Border 로 칠한다. Fluent 의 버튼 템플릿은
+         마우스오버 · 눌림 상태에서 Background 를 테마 색으로 덮어써, 배경에 색을
+         주면 손을 올릴 때마다 고른 색이 사라진다. -->
+    <Style Selector="Button.swatch">
+      <Setter Property="Width" Value="34" />
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="Padding" Value="3" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.chip">
+      <Setter Property="MinWidth" Value="20" />
+      <Setter Property="MinHeight" Value="16" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AppPanelBorderBrush}" />
+    </Style>
+  </Window.Styles>
+
   <Grid RowDefinitions="Auto,Auto,*,40" Margin="0" RowSpacing="0">
     <Menu Grid.Row="0" Background="{DynamicResource AppMenuBackgroundBrush}" Padding="4,2">
       <MenuItem Header="{Binding Loc[MenuFile]}">
@@ -216,7 +262,7 @@
              볼륨 열에는 여백을 두어 오른쪽 끝을 넘지 않게 한다. -->
         <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="6"
               Margin="0,6,4,0" HorizontalAlignment="Stretch" IsEnabled="{Binding HasVideo}">
-          <Button Grid.Column="0" Content="⏮" Command="{Binding StepBackCommand}"
+          <Button Grid.Column="0" Content="&#x23EE;&#xFE0E;" Command="{Binding StepBackCommand}"
                   ToolTip.Tip="{Binding Loc[PreviousFrame]}"
                   AutomationProperties.Name="{Binding Loc[PreviousFrame]}"
                   Width="36" MinHeight="32" VerticalAlignment="Center" />
@@ -224,7 +270,7 @@
                   ToolTip.Tip="{Binding PlayPauseActionText}"
                   AutomationProperties.Name="{Binding PlayPauseActionText}"
                   Width="36" MinHeight="32" VerticalAlignment="Center" />
-          <Button Grid.Column="2" Content="⏭" Command="{Binding StepForwardCommand}"
+          <Button Grid.Column="2" Content="&#x23ED;&#xFE0E;" Command="{Binding StepForwardCommand}"
                   ToolTip.Tip="{Binding Loc[NextFrame]}"
                   AutomationProperties.Name="{Binding Loc[NextFrame]}"
                   Width="36" MinHeight="32" VerticalAlignment="Center" />
@@ -364,11 +410,35 @@
                 <TextBlock Text="{Binding Loc[CharOffset]}" />
                 <ComboBox ItemsSource="{Binding ScriptOffsetOptions}" SelectedItem="{Binding SelectedScriptOffset}" />
                 <CheckBox Content="{Binding Loc[Pack]}" IsThreeState="True" IsChecked="{Binding SelectedPack}" />
-                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="4">
+                <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="4">
                   <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Loc[Foreground]}" VerticalAlignment="Center" />
                   <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding ForegroundHex}" />
+                  <Button Grid.Row="0" Grid.Column="2" Classes="swatch"
+                          ToolTip.Tip="{Binding Loc[PickColor]}"
+                          AutomationProperties.Name="{Binding Loc[PickColor]}">
+                    <Border Classes="chip" Background="{Binding ForegroundSwatchBrush}" />
+                    <Button.Flyout>
+                      <Flyout>
+                        <ItemsControl ItemsSource="{Binding ColorSwatches}"
+                                      ItemsPanel="{StaticResource SwatchPanel}"
+                                      ItemTemplate="{StaticResource ForegroundSwatchTemplate}" />
+                      </Flyout>
+                    </Button.Flyout>
+                  </Button>
                   <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding Loc[Background]}" VerticalAlignment="Center" />
                   <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding BackgroundHex}" />
+                  <Button Grid.Row="1" Grid.Column="2" Classes="swatch"
+                          ToolTip.Tip="{Binding Loc[PickColor]}"
+                          AutomationProperties.Name="{Binding Loc[PickColor]}">
+                    <Border Classes="chip" Background="{Binding BackgroundSwatchBrush}" />
+                    <Button.Flyout>
+                      <Flyout>
+                        <ItemsControl ItemsSource="{Binding ColorSwatches}"
+                                      ItemsPanel="{StaticResource SwatchPanel}"
+                                      ItemTemplate="{StaticResource BackgroundSwatchTemplate}" />
+                      </Flyout>
+                    </Button.Flyout>
+                  </Button>
                 </Grid>
                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="4">
                   <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Loc[ForegroundOpacity]}" VerticalAlignment="Center" />
@@ -382,7 +452,21 @@
             <Expander Header="{Binding Loc[EdgeShadow]}" IsExpanded="True">
               <StackPanel Spacing="6" Margin="0,6,0,0">
                 <ComboBox ItemsSource="{Binding EdgeOptions}" SelectedItem="{Binding SelectedEdge}" />
-                <TextBox Text="{Binding EdgeColorHex}" PlaceholderText="#RRGGBBAA" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                  <TextBox Grid.Column="0" Text="{Binding EdgeColorHex}" PlaceholderText="#RRGGBBAA" />
+                  <Button Grid.Column="1" Classes="swatch"
+                          ToolTip.Tip="{Binding Loc[PickColor]}"
+                          AutomationProperties.Name="{Binding Loc[PickColor]}">
+                    <Border Classes="chip" Background="{Binding EdgeSwatchBrush}" />
+                    <Button.Flyout>
+                      <Flyout>
+                        <ItemsControl ItemsSource="{Binding ColorSwatches}"
+                                      ItemsPanel="{StaticResource SwatchPanel}"
+                                      ItemTemplate="{StaticResource EdgeSwatchTemplate}" />
+                      </Flyout>
+                    </Button.Flyout>
+                  </Button>
+                </Grid>
                 <NumericUpDown Minimum="0" Maximum="255" Value="{Binding EdgeOpacity}" />
                 <TextBlock Text="{Binding Loc[CompatPcNote]}" FontSize="11" Foreground="{DynamicResource AppSubtleForegroundBrush}"
                            ToolTip.Tip="{Binding Loc[CompatSpecNote]}" />

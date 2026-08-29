@@ -21,8 +21,10 @@ namespace YttStudio.App;
 
 public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
-    private const string PlayIcon = "▶";
-    private const string PauseIcon = "⏸";
+    // U+FE0E 는 텍스트 표현 선택자다. 붙이지 않으면 Windows 가 이 글자들을 컬러
+    // 이모지로 그려, 같은 줄의 다른 버튼과 따로 논다.
+    private const string PlayIcon = "▶︎";
+    private const string PauseIcon = "⏸︎";
     // 편집 가이드용 여백이다. 유튜브를 측정해 얻은 값이 아니다. 실측에서 확인된 것은
     // 자막 컨테이너가 플레이어 영역과 같다는 사실뿐이고 안전 여백 자체는 재본 적이 없다.
     // 측정한 자막 창의 하단 2% 를 안전선으로 쓰면 최대 위치의 큐 바닥이 그 선에 정확히
@@ -198,6 +200,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         OpenVideoUrlCommand = new AsyncCommand(OpenVideoUrlAsync, () => videoSource is not null);
         SaveCommand = new AsyncCommand(SaveAsync, () => project is not null);
         PlayPauseCommand = new DelegateCommand(TogglePlayback, () => videoLoaded);
+        CreateColorPickingCommands();
         StepBackCommand = new DelegateCommand(() => StepFrame(-1), () => videoLoaded);
         StepForwardCommand = new DelegateCommand(() => StepFrame(1), () => videoLoaded);
         SelectVideoFrameViewportCommand = new DelegateCommand(
