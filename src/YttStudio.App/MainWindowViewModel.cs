@@ -118,6 +118,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     private readonly MpvAutoInstaller? mpvAutoInstaller =
         MpvAutoInstaller.IsWindowsInstallationSupported ? new MpvAutoInstaller() : null;
     private readonly Func<IVideoSource?>? videoSourceFactory;
+    private readonly Func<string, CancellationToken, Task> youtubeProbe;
 
     public MainWindowViewModel(IFileDialogService dialogs)
         : this(dialogs, null, null)
@@ -132,10 +133,13 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     internal MainWindowViewModel(
         IFileDialogService dialogs,
         PreferencesStore? preferencesStore,
-        Func<IVideoSource?>? videoSourceFactory)
+        Func<IVideoSource?>? videoSourceFactory,
+        Func<string, CancellationToken, Task>? youtubeProbe = null)
     {
         this.dialogs = dialogs;
         this.videoSourceFactory = videoSourceFactory;
+        this.youtubeProbe = youtubeProbe
+            ?? (videoSourceFactory is null ? ProbeYouTubeAsync : SkipYouTubeProbeAsync);
         this.preferencesStore = preferencesStore ?? new PreferencesStore();
         preferences = this.preferencesStore.Load();
         preferences.AutosaveIntervalSeconds = NormalizeAutosaveIntervalSeconds(
@@ -168,6 +172,12 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         RenderFallbackFrame();
     }
 
+    private static async Task ProbeYouTubeAsync(string url, CancellationToken cancellationToken)
+        => await new YtDlpPreflight().EnsurePlayableAsync(url, cancellationToken);
+
+    private static Task SkipYouTubeProbeAsync(string _, CancellationToken __)
+        => Task.CompletedTask;
+
     private void InitializeProjectAndPlaybackCommands()
     {
         ExitCommand = new DelegateCommand(RequestShutdown);
@@ -185,6 +195,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             () => editor is not null);
         OpenSubtitleCommand = new AsyncCommand(OpenSubtitleAsync);
         OpenVideoCommand = new AsyncCommand(OpenVideoAsync, () => videoSource is not null);
+        OpenVideoUrlCommand = new AsyncCommand(OpenVideoUrlAsync, () => videoSource is not null);
         SaveCommand = new AsyncCommand(SaveAsync, () => project is not null);
         PlayPauseCommand = new DelegateCommand(TogglePlayback, () => videoLoaded);
         StepBackCommand = new DelegateCommand(() => StepFrame(-1), () => videoLoaded);

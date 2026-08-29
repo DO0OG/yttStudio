@@ -13,6 +13,8 @@ public sealed class OpenPathClassifierTests
     [InlineData("clip.avi", OpenPathKind.Video)]
     [InlineData("clip.m4v", OpenPathKind.Video)]
     [InlineData("project.yttproj", OpenPathKind.Project)]
+    [InlineData("https://www.youtube.com/watch?v=dQw4w9WgXcQ", OpenPathKind.VideoUrl)]
+    [InlineData("https://youtu.be/dQw4w9WgXcQ", OpenPathKind.VideoUrl)]
     public void ClassifiesSupportedExtensions(string path, OpenPathKind expected)
     {
         Assert.Equal(expected, OpenPathClassifier.Classify(path));

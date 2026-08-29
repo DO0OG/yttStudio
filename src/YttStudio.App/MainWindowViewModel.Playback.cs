@@ -23,11 +23,16 @@ namespace YttStudio.App;
 public sealed partial class MainWindowViewModel
 {
 
-    private bool TryCreateVideoSource(out IVideoSource? source, out string diagnostic)
+    private bool TryCreateVideoSource(
+        out IVideoSource? source,
+        out string diagnostic,
+        string? ytdlpPath = null)
     {
         if (videoSourceFactory is null)
         {
-            bool created = MpvVideoSource.TryCreate(out MpvVideoSource? nativeSource, out diagnostic);
+            bool created = ytdlpPath is null
+                ? MpvVideoSource.TryCreate(out MpvVideoSource? nativeSource, out diagnostic)
+                : MpvVideoSource.TryCreate(out nativeSource, out diagnostic, ytdlpPath);
             source = nativeSource;
             return created;
         }
@@ -46,9 +51,9 @@ public sealed partial class MainWindowViewModel
         }
     }
 
-    private void InitializeVideoSource()
+    private void InitializeVideoSource(string? ytdlpPath = null)
     {
-        if (TryCreateVideoSource(out IVideoSource? source, out string diagnostic))
+        if (TryCreateVideoSource(out IVideoSource? source, out string diagnostic, ytdlpPath))
         {
             IVideoSource loadedSource = source!;
             videoSource = loadedSource;
@@ -74,10 +79,12 @@ public sealed partial class MainWindowViewModel
         }
 
         OpenVideoCommand.NotifyCanExecuteChanged();
+        OpenVideoUrlCommand.NotifyCanExecuteChanged();
     }
 
     private void DisposeVideoSource()
     {
+        CancelActiveVideoLoad();
         IVideoSource? source = videoSource;
         videoSource = null;
         videoLoaded = false;
@@ -89,6 +96,37 @@ public sealed partial class MainWindowViewModel
         }
 
         NotifyVideoState();
+    }
+
+    private async Task<bool> RefreshMpvSourceForYtDlpAsync(
+        string? ytdlpPath,
+        long generation)
+    {
+        if (!IsCurrentVideoLoad(generation))
+        {
+            return false;
+        }
+
+        IVideoSource? previous = videoSource;
+        videoSource = null;
+        videoLoaded = false;
+        if (previous is not null)
+        {
+            previous.FrameReady -= OnVideoFrameReady;
+            previous.RenderFailed -= OnVideoRenderFailed;
+            await previous.DisposeAsync();
+        }
+
+        NotifyVideoState();
+
+        if (!IsCurrentVideoLoad(generation))
+        {
+            return false;
+        }
+
+        InitializeVideoSource(ytdlpPath);
+        RenderFallbackFrame();
+        return videoSource is not null;
     }
 
     private async Task SelectMpvPathAsync()
@@ -131,17 +169,48 @@ public sealed partial class MainWindowViewModel
         InitializeVideoSource();
         RenderFallbackFrame();
 
-        if (videoToReload is not null && videoSource is not null && File.Exists(videoToReload))
+        bool reloadAttempted = await ReloadVideoAfterMpvChangeAsync(
+            videoToReload,
+            positionToRestore);
+
+        if (videoSource is null)
         {
-            await LoadVideoAsync(videoToReload);
-            if (videoLoaded)
-            {
-                await SeekAsync(positionToRestore, exact: false);
-            }
+            Status = Loc["MpvReloadFailed"];
+        }
+        else if (!reloadAttempted || videoLoaded)
+        {
+            Status = Loc["MpvReloaded"];
         }
 
-        Status = videoSource is null ? Loc["MpvReloadFailed"] : Loc["MpvReloaded"];
         return Status;
+    }
+
+    private async Task<bool> ReloadVideoAfterMpvChangeAsync(
+        string? videoToReload,
+        double positionToRestore)
+    {
+        if (videoToReload is null || videoSource is null)
+        {
+            return false;
+        }
+
+        string normalizedReloadUrl = string.Empty;
+        bool reloadUrl = TryNormalizeYouTubeUrl(videoToReload, out normalizedReloadUrl, out _);
+        if (!reloadUrl && !File.Exists(videoToReload))
+        {
+            return false;
+        }
+
+        await LoadVideoAsync(
+            videoToReload,
+            reloadUrl ? normalizedReloadUrl : null,
+            originalUrl: reloadUrl ? loadedVideoOriginalUrl : null);
+        if (videoLoaded)
+        {
+            await SeekAsync(positionToRestore, exact: false);
+        }
+
+        return true;
     }
 
     private void OpenMpvInstallationGuide()
