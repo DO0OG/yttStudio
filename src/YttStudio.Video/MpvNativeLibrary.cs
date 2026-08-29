@@ -28,6 +28,7 @@ internal sealed class MpvNativeLibrary : IDisposable
         GetPropertyString = GetExport<MpvGetPropertyString>("mpv_get_property_string");
         Free = GetExport<MpvFree>("mpv_free");
         Command = GetExport<MpvCommand>("mpv_command");
+        WaitEvent = GetExport<MpvWaitEvent>("mpv_wait_event");
         ErrorString = GetExport<MpvErrorString>("mpv_error_string");
         ClientApiVersion = GetExport<MpvClientApiVersion>("mpv_client_api_version");
         RenderContextCreate = GetExport<MpvRenderContextCreate>("mpv_render_context_create");
@@ -48,6 +49,7 @@ internal sealed class MpvNativeLibrary : IDisposable
     public MpvGetPropertyString GetPropertyString { get; }
     public MpvFree Free { get; }
     public MpvCommand Command { get; }
+    public MpvWaitEvent WaitEvent { get; }
     public MpvErrorString ErrorString { get; }
     public MpvClientApiVersion ClientApiVersion { get; }
     public MpvRenderContextCreate RenderContextCreate { get; }
@@ -151,6 +153,12 @@ internal sealed class MpvNativeLibrary : IDisposable
     public string GetError(int code)
         => Marshal.PtrToStringUTF8(ErrorString(code)) ?? $"mpv error {code}";
 
+    public MpvEvent ReadEvent(nint handle)
+    {
+        nint pointer = WaitEvent(handle, 0);
+        return pointer == 0 ? default : Marshal.PtrToStructure<MpvEvent>(pointer);
+    }
+
     public void Dispose()
     {
         if (!disposed)
@@ -236,6 +244,9 @@ internal sealed class MpvNativeLibrary : IDisposable
     internal delegate int MpvCommand(nint handle, nint arguments);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate nint MpvWaitEvent(nint handle, double timeout);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate nint MpvErrorString(int error);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -255,4 +266,22 @@ internal sealed class MpvNativeLibrary : IDisposable
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate void MpvRenderContextFree(nint context);
+}
+
+internal enum MpvEventId
+{
+    None = 0,
+    Shutdown = 1,
+    StartFile = 6,
+    EndFile = 7,
+    FileLoaded = 8,
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal readonly struct MpvEvent
+{
+    public readonly MpvEventId EventId;
+    public readonly int Error;
+    public readonly ulong ReplyUserData;
+    public readonly nint Data;
 }

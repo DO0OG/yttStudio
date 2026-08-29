@@ -69,6 +69,7 @@ public sealed class MpvNativeLibraryTests
             Add("mpv_get_property_string", (MpvNativeLibrary.MpvGetPropertyString)(static (_, _) => 0));
             Add("mpv_free", (MpvNativeLibrary.MpvFree)(static _ => { }));
             Add("mpv_command", (MpvNativeLibrary.MpvCommand)(static (_, _) => 0));
+            Add("mpv_wait_event", (MpvNativeLibrary.MpvWaitEvent)(static (_, _) => 0));
             Add("mpv_error_string", (MpvNativeLibrary.MpvErrorString)(static _ => 0));
             Add("mpv_client_api_version", (MpvNativeLibrary.MpvClientApiVersion)(static () => 0));
             Add("mpv_render_context_create", (MpvNativeLibrary.MpvRenderContextCreate)(
