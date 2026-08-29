@@ -214,13 +214,17 @@
              볼륨 열에는 여백을 두어 오른쪽 끝을 넘지 않게 한다. -->
         <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="6"
               Margin="0,6,4,0" HorizontalAlignment="Stretch" IsEnabled="{Binding HasVideo}">
-          <Button Grid.Column="0" Content="◀" Command="{Binding StepBackCommand}"
+          <Button Grid.Column="0" Content="⏮" Command="{Binding StepBackCommand}"
+                  ToolTip.Tip="{Binding Loc[PreviousFrame]}"
+                  AutomationProperties.Name="{Binding Loc[PreviousFrame]}"
                   Width="36" MinHeight="32" VerticalAlignment="Center" />
           <Button Grid.Column="1" Content="{Binding PlayPauseLabel}" Command="{Binding PlayPauseCommand}"
                   ToolTip.Tip="{Binding PlayPauseActionText}"
                   AutomationProperties.Name="{Binding PlayPauseActionText}"
                   Width="36" MinHeight="32" VerticalAlignment="Center" />
-          <Button Grid.Column="2" Content="▶" Command="{Binding StepForwardCommand}"
+          <Button Grid.Column="2" Content="⏭" Command="{Binding StepForwardCommand}"
+                  ToolTip.Tip="{Binding Loc[NextFrame]}"
+                  AutomationProperties.Name="{Binding Loc[NextFrame]}"
                   Width="36" MinHeight="32" VerticalAlignment="Center" />
           <Slider Grid.Column="3" Minimum="0" Maximum="{Binding MaximumMilliseconds}"
                   MinWidth="80" Value="{Binding PositionMilliseconds}" VerticalAlignment="Center" />
