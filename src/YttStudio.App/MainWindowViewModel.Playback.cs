@@ -459,7 +459,7 @@ public sealed partial class MainWindowViewModel
     private void NotifyPlaybackFrameState()
     {
         OnPropertyChanged(nameof(IsPlaying));
-        OnPropertyChanged(nameof(PlayPauseLabel));
+        OnPropertyChanged(nameof(PlayPauseIcon));
         OnPropertyChanged(nameof(PlayPauseActionText));
     }
 
@@ -467,7 +467,7 @@ public sealed partial class MainWindowViewModel
     {
         OnPropertyChanged(nameof(HasVideo));
         OnPropertyChanged(nameof(IsPlaying));
-        OnPropertyChanged(nameof(PlayPauseLabel));
+        OnPropertyChanged(nameof(PlayPauseIcon));
         OnPropertyChanged(nameof(PlayPauseActionText));
         NotifyCommandStates();
     }
