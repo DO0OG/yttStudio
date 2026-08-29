@@ -56,3 +56,23 @@ public sealed class DelegateCommand(Action execute, Func<bool>? canExecute = nul
     public void Execute(object? parameter) => execute();
     public void NotifyCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }
+
+/// <summary>
+/// 명령 인자를 받는 <see cref="DelegateCommand"/> 다.
+/// </summary>
+/// <remarks>
+/// 같은 동작을 대상만 바꿔 반복할 때 쓴다. 색 팔레트처럼 항목마다 값을 넘겨야
+/// 하는 자리에서 항목 수만큼 명령을 만들지 않아도 된다.
+/// </remarks>
+public sealed class DelegateCommand<T>(Action<T?> execute, Func<T?, bool>? canExecute = null) : ICommand
+{
+    public event EventHandler? CanExecuteChanged;
+
+    public bool CanExecute(object? parameter) => canExecute?.Invoke(Convert(parameter)) ?? true;
+
+    public void Execute(object? parameter) => execute(Convert(parameter));
+
+    public void NotifyCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+
+    private static T? Convert(object? parameter) => parameter is T value ? value : default;
+}

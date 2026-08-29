@@ -238,6 +238,7 @@ public sealed partial class MainWindowViewModel
         OnPropertyChanged(nameof(BackgroundOpacity));
         OnPropertyChanged(nameof(EdgeColorHex));
         OnPropertyChanged(nameof(EdgeOpacity));
+        NotifyColorSwatchesChanged();
         OnPropertyChanged(nameof(MoveEffectEnabled));
         OnPropertyChanged(nameof(FadeEffectEnabled));
         OnPropertyChanged(nameof(ShakeEffectEnabled));
