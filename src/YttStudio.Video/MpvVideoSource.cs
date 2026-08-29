@@ -8,6 +8,7 @@ namespace YttStudio.Video;
 /// <summary>네이티브 자식 창을 붙이지 않고 콜백 렌더링으로 libmpv 재생을 제공한다.</summary>
 public sealed partial class MpvVideoSource : IVideoSource
 {
+    private const string YtdlFormat = "bestvideo[vcodec!=none][vcodec!=images]+bestaudio/best[vcodec!=none][vcodec!=images]";
     private const int MpvFormatFlag = 3;
     private const int MpvFormatInt64 = 4;
     private const int MpvFormatDouble = 5;
@@ -63,6 +64,7 @@ public sealed partial class MpvVideoSource : IVideoSource
             SetOption("keep-open", "yes");
             SetOption("pause", "yes");
             SetOption("ytdl", "yes");
+            SetOption("ytdl-format", YtdlFormat);
             if (!string.IsNullOrWhiteSpace(ytdlpPath))
             {
                 SetOption("script-opts", $"ytdl_hook-ytdl_path={ytdlpPath}");

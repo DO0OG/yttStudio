@@ -356,21 +356,25 @@ libmpv client-api=2.0 path=... os=... arch=...
 
 ---
 
-## 외부 도구 (번들하지 않음)
+## 외부 도구
 
 | 도구 | 용도 | 정책 |
 |---|---|---|
 | mitmproxy | 실제 플레이어 프리뷰 | 번들 금지. 미설치 시 다운로드 안내만. 스크립트는 upstream `mitmproxy_script.py`와 동기화 |
 | Fiddler Classic | 위의 Windows 대안 | 안내만 |
 | Aegisub | `.ass` 편집 | 안내만 |
-| yt-dlp | YouTube 주소에서 스트림 정보를 해석하는 libmpv `ytdl_hook`의 외부 도구 | 번들·자동 설치·자동 업데이트 없음. 앱 디렉터리 → `PATH` 순서로 탐색 |
+| yt-dlp | YouTube 주소에서 스트림 정보를 해석하는 libmpv `ytdl_hook`의 외부 도구 | 릴리즈에는 고정·검증 바이너리를 번들. 개발 빌드는 앱 디렉터리 → `PATH` 순서로 탐색. 자동 설치·업데이트 없음 |
 
 ### yt-dlp — YouTube 주소 미리보기
 
-YouTube 주소를 열 때만 `yt-dlp`가 필요하다. 앱은 `yt-dlp`를 내려받거나 설치하지
-않는다. 실행 파일을 앱 실행 파일과 같은 디렉터리에 두거나 운영체제의 `PATH`에
-설치하면 된다. Windows에서는 `yt-dlp.exe`, 그 밖의 환경에서는 `yt-dlp`를 찾는다.
-`YTTSTUDIO_YTDLP_PATH`를 파일 또는 디렉터리 경로로 지정하면 명시한 경로를 먼저
+YouTube 주소를 열 때만 `yt-dlp`가 필요하다. 릴리즈 패키지에는 공식 `2026.08.19`
+릴리즈의 플랫폼별 바이너리를 `SHA2-256SUMS`로 검증해 번들하며, 실행 파일 이름은
+Windows에서 `yt-dlp.exe`, 그 밖의 환경에서는 `yt-dlp`다. 따라서 릴리즈에서는 앱
+디렉터리의 번들을 먼저 사용한다.
+
+개발 빌드는 `yt-dlp`를 자동으로 내려받거나 설치하지 않는다. 실행 파일을 앱 실행
+파일과 같은 디렉터리 또는 운영체제의 `PATH`에 두면 된다. 모든 빌드에서 자동 업데이트는
+없다. `YTTSTUDIO_YTDLP_PATH`를 파일 또는 디렉터리 경로로 지정하면 명시한 경로를 먼저
 사용하고, 지정하지 않으면 앱 디렉터리(일반·`tools`·`bin`)를 먼저 검사한 뒤 `PATH`를
 검사한다.
 
