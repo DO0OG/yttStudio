@@ -27,7 +27,7 @@ public interface IVideoSource : IAsyncDisposable
     /// </remarks>
     int PlaybackScaleDivisor { get; set; }
 
-    /// <summary>영상 소스를 불러온다.</summary>
+    /// <summary>로컬 영상 또는 검증된 YouTube 영상 소스를 불러온다.</summary>
     Task LoadAsync(string path, CancellationToken cancellationToken);
 
     /// <summary>재생을 시작한다.</summary>

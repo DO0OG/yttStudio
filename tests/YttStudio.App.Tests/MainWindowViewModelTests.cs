@@ -320,6 +320,8 @@ public sealed class MainWindowViewModelTests
     {
         public Task<string?> OpenSubtitleAsync() => Task.FromResult<string?>(null);
         public Task<string?> OpenVideoAsync() => Task.FromResult<string?>(null);
+        public Task<string?> OpenVideoUrlAsync(VideoUrlDialogOptions? options = null)
+            => Task.FromResult<string?>(null);
         public Task<string?> SaveYttAsync(string? suggestedName) => Task.FromResult<string?>(null);
         public Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "삭제")
             => Task.FromResult(false);

@@ -11,10 +11,22 @@ public enum UnsavedChangesChoice
     Cancel,
 }
 
+/// <summary>YouTube 주소 대화상자에서 사용할 현재 언어의 표시 문자열이다.</summary>
+public sealed record VideoUrlDialogOptions(
+    string Title,
+    string Prompt,
+    string Placeholder,
+    string OpenLabel,
+    string CancelLabel);
+
 public interface IFileDialogService
 {
     Task<string?> OpenSubtitleAsync();
     Task<string?> OpenVideoAsync();
+    Task<string?> OpenVideoUrlAsync(VideoUrlDialogOptions? options = null);
+    /// <summary>주소 입력 대화상자를 여는 일반 이름의 별칭이다.</summary>
+    Task<string?> OpenUrlAsync(VideoUrlDialogOptions? options = null)
+        => OpenVideoUrlAsync(options);
     Task<string?> SaveYttAsync(string? suggestedName);
 
     /// <summary>문서 교체 전에 저장, 버림, 취소 중 하나를 고르게 한다.</summary>
@@ -91,6 +103,55 @@ public sealed class FileDialogService : IFileDialogService
         });
         return files.Count == 0 ? null : files[0].Path.LocalPath;
     }
+
+    public Task<string?> OpenVideoUrlAsync(VideoUrlDialogOptions? options = null)
+    {
+        VideoUrlDialogOptions labels = options ?? new(
+            "주소로 열기",
+            "YouTube 주소",
+            "https://www.youtube.com/watch?v=...",
+            "열기",
+            "취소");
+        Window dialog = new()
+        {
+            Title = labels.Title,
+            Width = 560,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+        TextBox address = new()
+        {
+            MinWidth = 500,
+            PlaceholderText = labels.Placeholder,
+        };
+        Button cancel = new() { Content = labels.CancelLabel, MinWidth = 80 };
+        Button open = new() { Content = labels.OpenLabel, MinWidth = 80 };
+        cancel.Click += (_, _) => dialog.Close(null);
+        open.Click += (_, _) => dialog.Close(
+            string.IsNullOrWhiteSpace(address.Text) ? null : address.Text.Trim());
+        dialog.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(20),
+            Spacing = 16,
+            Children =
+            {
+                new TextBlock { Text = labels.Prompt, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                address,
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Spacing = 8,
+                    Children = { cancel, open },
+                },
+            },
+        };
+        return dialog.ShowDialog<string?>(owner);
+    }
+
+    public Task<string?> OpenUrlAsync(VideoUrlDialogOptions? options = null)
+        => OpenVideoUrlAsync(options);
 
     public async Task<string?> SaveYttAsync(string? suggestedName)
     {

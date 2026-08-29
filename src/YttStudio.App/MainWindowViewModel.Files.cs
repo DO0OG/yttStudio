@@ -40,7 +40,29 @@ public sealed partial class MainWindowViewModel
     /// </summary>
     public async Task<bool> OpenPathAsync(string path)
     {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return true;
+        }
+
+        if (TryNormalizeYouTubeUrl(path, out string normalizedUrl, out _))
+        {
+            if (!await ConfirmDocumentReplacementAsync())
+            {
+                return false;
+            }
+
+            await LoadVideoAsync(path.Trim(), normalizedUrl);
+            return true;
+        }
+
+        if (IsWebAddress(path))
+        {
+            Status = Loc["YouTubeUrlInvalid"];
+            return true;
+        }
+
+        if (!File.Exists(path))
         {
             return true;
         }
@@ -159,60 +181,132 @@ public sealed partial class MainWindowViewModel
         await OpenPathAsync(path);
     }
 
-    /// <summary>공유 소스에 영상을 불러온다. 열기 명령과 프로젝트 재연결이 함께 쓴다.</summary>
-    private async Task LoadVideoAsync(string path, bool undoFree = false)
+    /// <summary>공유 소스에 영상을 불러온다. 로컬과 주소 열기가 함께 쓴다.</summary>
+    private async Task LoadVideoAsync(
+        string path,
+        string? normalizedUrl = null,
+        bool undoFree = false,
+        string? originalUrl = null)
     {
-        if (videoSource is null)
+        bool isUrl = normalizedUrl is not null;
+        string loadPath = normalizedUrl ?? path;
+        CancellationTokenSource cancellation = BeginVideoLoad(out long generation);
+        bool sourceLoadStarted = false;
+        try
+        {
+            string persistedPath = isUrl ? normalizedUrl! : Path.GetFullPath(path);
+            await PrepareVideoLoadAsync(loadPath, isUrl, cancellation.Token, generation);
+            IVideoSource? source = IsCurrentVideoLoad(generation) ? videoSource : null;
+            if (source is null)
+            {
+                return;
+            }
+
+            sourceLoadStarted = true;
+            await source.LoadAsync(loadPath, cancellation.Token);
+            if (!IsCurrentVideoLoad(generation))
+            {
+                return;
+            }
+
+            ApplyLoadedVideo(source, path, persistedPath, isUrl, undoFree, originalUrl);
+            Status = "영상 로드 완료";
+            NotifyVideoState();
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception exception)
+        {
+            if (IsCurrentVideoLoad(generation))
+            {
+                HandleVideoLoadFailure(exception, isUrl, sourceLoadStarted);
+            }
+        }
+        finally
+        {
+            EndVideoLoad(cancellation, generation);
+        }
+    }
+
+    private void HandleVideoLoadFailure(Exception exception, bool isUrl, bool sourceLoadStarted)
+    {
+        Status = GetVideoLoadFailureMessage(exception, isUrl);
+        if (isUrl && !sourceLoadStarted)
         {
             return;
         }
 
-        try
+        videoLoaded = false;
+        RenderFallbackFrame();
+        NotifyVideoState();
+    }
+
+    private async Task PrepareVideoLoadAsync(
+        string loadPath,
+        bool isUrl,
+        CancellationToken cancellationToken,
+        long generation)
+    {
+        if (isUrl)
+        {
+            await EnsureYouTubePlayableAsync(loadPath, cancellationToken, generation);
+        }
+        else
         {
             Status = "영상 메타데이터 읽는 중…";
-            await videoSource.LoadAsync(path, CancellationToken.None);
-            videoLoaded = true;
-            videoSource.SetVolume(volume);
-            videoSource.SetMuted(isMuted);
-            loadedVideoPath = Path.GetFullPath(path);
-            if (project is not null && editor is not null)
-            {
-                YttStudio.Video.VideoInfo sourceInfo = videoSource.Info;
-                YttStudio.Core.VideoInfo documentInfo = new(
-                    sourceInfo.Width,
-                    sourceInfo.Height,
-                    sourceInfo.Duration,
-                    sourceInfo.NominalFps);
-                bool changed;
-                if (undoFree)
-                {
-                    using (editor.BeginUndoFreeMutation())
-                    {
-                        changed = editor.SetVideo(loadedVideoPath, documentInfo);
-                    }
-                }
-                else
-                {
-                    changed = editor.SetVideo(loadedVideoPath, documentInfo);
-                }
-
-                if (changed)
-                {
-                    AfterMutation();
-                }
-            }
-            UpdateMaximum();
-            VideoStatus = $"{Path.GetFileName(path)} · {videoSource.Info.Width}×{videoSource.Info.Height} · " +
-                $"{videoSource.Info.NominalFps:0.###} fps (표시용)";
-            Status = "영상 로드 완료";
-            NotifyVideoState();
         }
-        catch (Exception exception)
+    }
+
+    private void ApplyLoadedVideo(
+        IVideoSource source,
+        string inputPath,
+        string persistedPath,
+        bool isUrl,
+        bool undoFree,
+        string? originalUrl)
+    {
+        videoLoaded = true;
+        source.SetVolume(volume);
+        source.SetMuted(isMuted);
+        loadedVideoPath = persistedPath;
+        loadedVideoOriginalUrl = isUrl ? originalUrl ?? inputPath : null;
+        UpdateProjectVideo(source, persistedPath, undoFree);
+        UpdateMaximum();
+        VideoStatus = $"{GetVideoDisplayName(inputPath, isUrl)} · {source.Info.Width}×{source.Info.Height} · " +
+            $"{source.Info.NominalFps:0.###} fps (표시용)";
+    }
+
+    private void UpdateProjectVideo(IVideoSource source, string persistedPath, bool undoFree)
+    {
+        if (project is null || editor is null)
         {
-            videoLoaded = false;
-            Status = $"영상 열기 실패: {exception.Message}";
-            RenderFallbackFrame();
-            NotifyVideoState();
+            return;
+        }
+
+        YttStudio.Video.VideoInfo sourceInfo = source.Info;
+        YttStudio.Core.VideoInfo documentInfo = new(
+            sourceInfo.Width,
+            sourceInfo.Height,
+            sourceInfo.Duration,
+            sourceInfo.NominalFps);
+        bool changed;
+        if (undoFree)
+        {
+            using (editor.BeginUndoFreeMutation())
+            {
+                changed = editor.SetVideo(persistedPath, documentInfo);
+            }
+        }
+        else
+        {
+            changed = editor.SetVideo(persistedPath, documentInfo);
+        }
+
+        if (changed)
+        {
+            AfterMutation();
         }
     }
 
@@ -277,6 +371,8 @@ public sealed partial class MainWindowViewModel
             sourcePath = path;
             SetDirty(false);
 
+            bool recordedUrl = project.VideoPath is string recordedPath
+                && TryNormalizeYouTubeUrl(recordedPath, out _, out _);
             await RelinkVideoIfMissingAsync();
 
             UpdateMaximum();
@@ -288,7 +384,11 @@ public sealed partial class MainWindowViewModel
             string migrated = result.WasMigrated
                 ? $" (v{result.SourceSchemaVersion} → v{result.SchemaVersion})"
                 : string.Empty;
-            Status = $"{Loc["OpenProject"]}: {Path.GetFileName(path)}{migrated}";
+            if (!recordedUrl || videoSource is null || videoLoaded)
+            {
+                Status = $"{Loc["OpenProject"]}: {Path.GetFileName(path)}{migrated}";
+            }
+
             if (clearSnapshots)
             {
                 AutosaveService.ClearSnapshots();
@@ -325,6 +425,12 @@ public sealed partial class MainWindowViewModel
         string? recorded = project?.VideoPath;
         if (project is null || string.IsNullOrEmpty(recorded))
         {
+            return;
+        }
+
+        if (TryNormalizeYouTubeUrl(recorded, out string normalizedUrl, out _))
+        {
+            await LoadVideoAsync(recorded, normalizedUrl, undoFree: true);
             return;
         }
 

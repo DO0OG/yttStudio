@@ -6,6 +6,7 @@ public enum OpenPathKind
     Project,
     Subtitle,
     Video,
+    VideoUrl,
 }
 
 /// <summary>입력 경로를 기존 열기 작업으로 라우팅하기 위한 확장자 분류기.</summary>
@@ -16,6 +17,11 @@ public static class OpenPathClassifier
         if (string.IsNullOrWhiteSpace(path))
         {
             return OpenPathKind.Unsupported;
+        }
+
+        if (YttStudio.Video.YouTubeUrlValidator.IsValid(path))
+        {
+            return OpenPathKind.VideoUrl;
         }
 
         string extension;

@@ -22,6 +22,7 @@
         <Separator />
         <MenuItem Header="{Binding Loc[OpenSubtitle]}" Command="{Binding OpenSubtitleCommand}" />
         <MenuItem Header="{Binding Loc[OpenVideo]}" Command="{Binding OpenVideoCommand}" />
+        <MenuItem Header="{Binding Loc[OpenVideoUrl]}" Command="{Binding OpenVideoUrlCommand}" />
         <MenuItem Header="{Binding Loc[SaveYtt]}" Command="{Binding SaveCommand}" />
         <Separator />
         <MenuItem Header="{Binding Loc[MenuExit]}" Command="{Binding ExitCommand}" />
@@ -63,6 +64,7 @@
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
         <Button Content="{Binding Loc[OpenProject]}" Command="{Binding OpenProjectCommand}" MinWidth="96" />
         <Button Content="{Binding Loc[OpenVideo]}" Command="{Binding OpenVideoCommand}" MinWidth="88" />
+        <Button Content="{Binding Loc[OpenVideoUrl]}" Command="{Binding OpenVideoUrlCommand}" MinWidth="104" />
         <Button Content="{Binding Loc[SaveYtt]}" Command="{Binding SaveCommand}" MinWidth="88" />
         <Border Width="1" Background="{DynamicResource AppDividerBrush}" Margin="6,3" />
         <Button Content="{Binding Loc[Undo]}" Command="{Binding UndoCommand}" MinWidth="64" />

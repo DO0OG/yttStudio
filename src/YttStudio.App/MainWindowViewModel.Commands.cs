@@ -32,6 +32,7 @@ public sealed partial class MainWindowViewModel
     public DelegateCommand ShiftAllCommand { get; private set; } = null!;
     public AsyncCommand OpenSubtitleCommand { get; private set; } = null!;
     public AsyncCommand OpenVideoCommand { get; private set; } = null!;
+    public AsyncCommand OpenVideoUrlCommand { get; private set; } = null!;
     public AsyncCommand SaveCommand { get; private set; } = null!;
     public DelegateCommand PlayPauseCommand { get; private set; } = null!;
     public DelegateCommand StepBackCommand { get; private set; } = null!;

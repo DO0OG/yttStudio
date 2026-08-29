@@ -34,6 +34,36 @@ public sealed class LocalizationTests
         Assert.Equal(expected, localizer["OpenSubtitle"]);
     }
 
+    [Theory]
+    [InlineData(AppLanguage.Korean, "주소로 열기")]
+    [InlineData(AppLanguage.English, "Open by Address")]
+    [InlineData(AppLanguage.Japanese, "アドレスで開く")]
+    public void OpenVideoUrlIsLocalized(AppLanguage language, string expected)
+    {
+        Localizer localizer = new() { Language = language };
+
+        Assert.Equal(expected, localizer["OpenVideoUrl"]);
+    }
+
+    [Theory]
+    [InlineData(AppLanguage.Korean, "주소로 열기", "YouTube 주소", "열기", "취소")]
+    [InlineData(AppLanguage.English, "Open by Address", "YouTube address", "Open", "Cancel")]
+    [InlineData(AppLanguage.Japanese, "アドレスで開く", "YouTube アドレス", "開く", "キャンセル")]
+    public void OpenVideoUrlDialogLabelsAreLocalized(
+        AppLanguage language,
+        string title,
+        string prompt,
+        string openLabel,
+        string cancelLabel)
+    {
+        Localizer localizer = new() { Language = language };
+
+        Assert.Equal(title, localizer["OpenVideoUrlTitle"]);
+        Assert.Equal(prompt, localizer["OpenVideoUrlPrompt"]);
+        Assert.Equal(openLabel, localizer["OpenVideoUrlConfirm"]);
+        Assert.Equal(cancelLabel, localizer["Cancel"]);
+    }
+
     [Fact]
     public void UnknownKeyReturnsTheKeyItself()
     {

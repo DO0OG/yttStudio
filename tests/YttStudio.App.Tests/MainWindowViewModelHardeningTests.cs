@@ -167,11 +167,173 @@ public sealed class MainWindowViewModelHardeningTests
         Assert.Equal(Path.GetFullPath(files.VideoPath), source.LoadedPaths[0]);
     }
 
+    [AvaloniaFact]
+    public async Task OpenVideoUrlCommandPreflightsAndPreservesOriginalAndNormalizedAddress()
+    {
+        using TestFiles files = new();
+        TestFileDialogService dialogs = new() { OpenVideoUrlPath = " https://youtu.be/dQw4w9WgXcQ " };
+        FakeVideoSource source = new(new(1280, 720, TimeSpan.FromSeconds(5), 30));
+        string preferencesPath = Path.Combine(files.Root, "preferences.json");
+        string? probedUrl = null;
+
+        using MainWindowViewModel viewModel = CreateViewModel(
+            dialogs,
+            source,
+            preferencesPath,
+            (url, _) =>
+            {
+                probedUrl = url;
+                return Task.CompletedTask;
+            });
+        await viewModel.OpenPathAsync(files.SubtitlePath);
+        dialogs.UnsavedChoices.Enqueue(UnsavedChangesChoice.Discard);
+
+        await viewModel.OpenVideoUrlCommand.ExecuteAsync();
+
+        Assert.Equal("https://youtu.be/dQw4w9WgXcQ", probedUrl);
+        Assert.Equal("https://youtu.be/dQw4w9WgXcQ", source.LoadedPaths.Single());
+        Assert.Equal("https://youtu.be/dQw4w9WgXcQ", viewModel.LoadedVideoPath);
+        Assert.Equal("https://youtu.be/dQw4w9WgXcQ", viewModel.LoadedVideoOriginalUrl);
+        Assert.Equal(viewModel.LoadedVideoPath, viewModel.CurrentProject?.VideoPath);
+        Assert.Equal(viewModel.Loc["OpenVideoUrlTitle"], dialogs.LastVideoUrlDialogOptions?.Title);
+        Assert.Equal(viewModel.Loc["OpenVideoUrlPrompt"], dialogs.LastVideoUrlDialogOptions?.Prompt);
+        Assert.Equal(viewModel.Loc["OpenVideoUrlConfirm"], dialogs.LastVideoUrlDialogOptions?.OpenLabel);
+        Assert.Equal(viewModel.Loc["Cancel"], dialogs.LastVideoUrlDialogOptions?.CancelLabel);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(YouTubePlaybackFailureKind.InvalidUrl, "YouTubeUrlInvalid")]
+    [InlineData(YouTubePlaybackFailureKind.YtDlpMissing, "YouTubeYtDlpMissing")]
+    [InlineData(YouTubePlaybackFailureKind.NetworkFailure, "YouTubeNetworkFailure")]
+    [InlineData(YouTubePlaybackFailureKind.Timeout, "YouTubeNetworkFailure")]
+    [InlineData(YouTubePlaybackFailureKind.Unplayable, "YouTubeUnplayable")]
+    public async Task OpenVideoUrlMapsPlaybackFailuresWithoutThrowing(
+        YouTubePlaybackFailureKind failureKind,
+        string localizationKey)
+    {
+        using TestFiles files = new();
+        TestFileDialogService dialogs = new() { OpenVideoUrlPath = "https://youtu.be/dQw4w9WgXcQ" };
+        FakeVideoSource source = new(new(1280, 720, TimeSpan.FromSeconds(5), 30));
+        string preferencesPath = Path.Combine(files.Root, "preferences.json");
+        Func<string, CancellationToken, Task> probe = (_, _) =>
+            Task.FromException(new YouTubePlaybackException(failureKind, "test failure"));
+
+        using MainWindowViewModel viewModel = CreateViewModel(
+            dialogs,
+            source,
+            preferencesPath,
+            probe);
+
+        await viewModel.OpenVideoUrlCommand.ExecuteAsync();
+
+        Assert.Equal(viewModel.Loc[localizationKey], viewModel.Status);
+        Assert.Empty(source.LoadedPaths);
+        Assert.False(viewModel.HasVideo);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(YouTubePlaybackFailureKind.InvalidUrl, "YouTubeUrlInvalid")]
+    [InlineData(YouTubePlaybackFailureKind.YtDlpMissing, "YouTubeYtDlpMissing")]
+    [InlineData(YouTubePlaybackFailureKind.NetworkFailure, "YouTubeNetworkFailure")]
+    [InlineData(YouTubePlaybackFailureKind.Unplayable, "YouTubeUnplayable")]
+    public async Task UrlPreflightFailurePreservesExistingLocalVideo(
+        YouTubePlaybackFailureKind failureKind,
+        string localizationKey)
+    {
+        using TestFiles files = new();
+        TestFileDialogService dialogs = new() { OpenVideoUrlPath = "https://youtu.be/dQw4w9WgXcQ" };
+        FakeVideoSource source = new(new(1280, 720, TimeSpan.FromSeconds(5), 30));
+        string preferencesPath = Path.Combine(files.Root, "preferences.json");
+        Func<string, CancellationToken, Task> probe = (_, _) =>
+            Task.FromException(new YouTubePlaybackException(failureKind, "test failure"));
+
+        using MainWindowViewModel viewModel = CreateViewModel(dialogs, source, preferencesPath, probe);
+        await viewModel.OpenPathAsync(files.SubtitlePath);
+        dialogs.UnsavedChoices.Enqueue(UnsavedChangesChoice.Discard);
+        await viewModel.OpenPathAsync(files.VideoPath);
+        string? loadedPath = viewModel.LoadedVideoPath;
+        dialogs.UnsavedChoices.Enqueue(UnsavedChangesChoice.Discard);
+
+        await viewModel.OpenVideoUrlCommand.ExecuteAsync();
+
+        Assert.Equal(viewModel.Loc[localizationKey], viewModel.Status);
+        Assert.True(viewModel.HasVideo);
+        Assert.Equal(loadedPath, viewModel.LoadedVideoPath);
+        Assert.Equal(Path.GetFullPath(files.VideoPath), viewModel.CurrentProject?.VideoPath);
+        Assert.Single(source.LoadedPaths);
+    }
+
+    [AvaloniaFact]
+    public async Task StartingNewUrlLoadCancelsOlderProbeAndKeepsNewResult()
+    {
+        using TestFiles files = new();
+        TestFileDialogService dialogs = new() { OpenVideoUrlPath = "https://youtu.be/dQw4w9WgXcQ" };
+        FakeVideoSource source = new(new(1280, 720, TimeSpan.FromSeconds(5), 30));
+        string preferencesPath = Path.Combine(files.Root, "preferences.json");
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int calls = 0;
+        Func<string, CancellationToken, Task> probe = async (_, cancellationToken) =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                started.SetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+        };
+
+        using MainWindowViewModel viewModel = CreateViewModel(dialogs, source, preferencesPath, probe);
+        Task firstLoad = viewModel.OpenVideoUrlCommand.ExecuteAsync();
+        await started.Task;
+        dialogs.OpenVideoUrlPath = "https://youtu.be/oHg5SJYRHA0";
+        Task secondLoad = viewModel.OpenVideoUrlCommand.ExecuteAsync();
+
+        await Task.WhenAll(firstLoad, secondLoad);
+
+        Assert.Equal("https://youtu.be/oHg5SJYRHA0", source.LoadedPaths.Single());
+        Assert.Equal("영상 로드 완료", viewModel.Status);
+        Assert.True(viewModel.HasVideo);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(null, "yt-dlp.exe", true)]
+    [InlineData("yt-dlp.exe", "yt-dlp.exe", false)]
+    [InlineData("YT-DLP.EXE", "yt-dlp.exe", false)]
+    public void DetectsWhenDiscoveredYtDlpPathDiffers(
+        string? currentPath,
+        string? discoveredPath,
+        bool expected)
+        => Assert.Equal(
+            expected,
+            MainWindowViewModel.ShouldRefreshYtDlpPath(currentPath, discoveredPath));
+
+    [AvaloniaFact]
+    public async Task ApplyingMpvPathReloadsTheNormalizedYouTubeAddress()
+    {
+        using TestFiles files = new();
+        TestFileDialogService dialogs = new() { OpenVideoUrlPath = "https://youtu.be/dQw4w9WgXcQ" };
+        FakeVideoSource source = new(new(1280, 720, TimeSpan.FromSeconds(5), 30));
+        string preferencesPath = Path.Combine(files.Root, "preferences.json");
+
+        using MainWindowViewModel viewModel = CreateViewModel(
+            dialogs,
+            source,
+            preferencesPath,
+            static (_, _) => Task.CompletedTask);
+        await viewModel.OpenVideoUrlCommand.ExecuteAsync();
+        Assert.Single(source.LoadedPaths);
+
+        await viewModel.ApplyMpvPathFromSettingsAsync(files.Root);
+
+        Assert.Equal(2, source.LoadedPaths.Count);
+        Assert.Equal("https://youtu.be/dQw4w9WgXcQ", source.LoadedPaths[1]);
+    }
+
     private static MainWindowViewModel CreateViewModel(
         TestFileDialogService dialogs,
         FakeVideoSource source,
-        string preferencesPath)
-        => new(dialogs, new PreferencesStore(preferencesPath), () => source);
+        string preferencesPath,
+        Func<string, CancellationToken, Task>? youtubeProbe = null)
+        => new(dialogs, new PreferencesStore(preferencesPath), () => source, youtubeProbe);
 
     private sealed class FakeVideoSource(SourceVideoInfo info) : IVideoSource
     {
@@ -190,7 +352,10 @@ public sealed class MainWindowViewModelHardeningTests
         public Task LoadAsync(string path, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            LoadedPaths.Add(Path.GetFullPath(path));
+            LoadedPaths.Add(path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                ? path
+                : Path.GetFullPath(path));
             Position = TimeSpan.Zero;
             IsPlaying = false;
             FrameReady?.Invoke();
@@ -235,6 +400,8 @@ public sealed class MainWindowViewModelHardeningTests
     {
         public string? OpenSubtitlePath { get; set; }
         public string? OpenVideoPath { get; set; }
+        public string? OpenVideoUrlPath { get; set; }
+        public VideoUrlDialogOptions? LastVideoUrlDialogOptions { get; private set; }
         public string? OpenProjectPath { get; set; }
         public string? RelinkVideoPath { get; set; }
         public Queue<UnsavedChangesChoice> UnsavedChoices { get; } = [];
@@ -244,6 +411,11 @@ public sealed class MainWindowViewModelHardeningTests
 
         public Task<string?> OpenSubtitleAsync() => Task.FromResult(OpenSubtitlePath);
         public Task<string?> OpenVideoAsync() => Task.FromResult(OpenVideoPath);
+        public Task<string?> OpenVideoUrlAsync(VideoUrlDialogOptions? options = null)
+        {
+            LastVideoUrlDialogOptions = options;
+            return Task.FromResult(OpenVideoUrlPath);
+        }
         public Task<string?> SaveYttAsync(string? suggestedName) => Task.FromResult<string?>(null);
 
         public Task<UnsavedChangesChoice> ConfirmUnsavedChangesAsync(

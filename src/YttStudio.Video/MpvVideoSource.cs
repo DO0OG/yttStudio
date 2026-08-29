@@ -22,11 +22,13 @@ public sealed partial class MpvVideoSource : IVideoSource
     private int playbackScaleDivisor = 1;
     private readonly nint mpvHandle;
     private readonly LatestFrameBuffer frames = new();
+    private readonly MpvLoadGate loadGate = new();
     private readonly AutoResetEvent renderSignal = new(false);
     private readonly ManualResetEventSlim renderReady = new(false);
     private readonly Thread renderThread;
     private readonly Timer stateTimer;
     private readonly MpvRenderUpdateCallback renderUpdateCallback;
+    private readonly string? ytdlpPath;
     private nint renderContext;
     private Exception? renderFailure;
     private bool renderStopped;
@@ -34,6 +36,7 @@ public sealed partial class MpvVideoSource : IVideoSource
     private VideoInfo info = new(0, 0, TimeSpan.Zero, 0);
     private double positionSeconds;
     private string? requestedPath;
+    private int requestedSourceKind = (int)VideoSourceKind.LocalFile;
     private long sequenceNumber;
     private bool playing;
     private bool stopping;
@@ -41,9 +44,10 @@ public sealed partial class MpvVideoSource : IVideoSource
 
     // TryCreate 를 통해 생성해 탐색과 초기화 실패를 보고할 수 있게 한다.
     // 생성자에서 던지지 않는다. internal 이라 공개 API 에는 드러나지 않는다.
-    internal MpvVideoSource(MpvNativeLibrary native)
+    internal MpvVideoSource(MpvNativeLibrary native, string? ytdlpPath = null)
     {
         this.native = native;
+        this.ytdlpPath = ytdlpPath;
         mpvHandle = native.Create();
         if (mpvHandle == 0)
         {
@@ -58,6 +62,11 @@ public sealed partial class MpvVideoSource : IVideoSource
             SetOption("audio-display", "no");
             SetOption("keep-open", "yes");
             SetOption("pause", "yes");
+            SetOption("ytdl", "yes");
+            if (!string.IsNullOrWhiteSpace(ytdlpPath))
+            {
+                SetOption("script-opts", $"ytdl_hook-ytdl_path={ytdlpPath}");
+            }
             // 디코딩을 GPU 로 넘긴다. 화면 합성은 여전히 소프트웨어 렌더 API 로 받으므로
             // 프레임을 시스템 메모리로 되돌리는 copy-back 방식이어야 한다. 쓸 수 있는
             // 하드웨어 디코더가 없으면 mpv 가 소프트웨어 디코딩으로 되돌아간다.
@@ -115,6 +124,9 @@ public sealed partial class MpvVideoSource : IVideoSource
     public string LibraryVersion { get; }
     public string LibraryPath => native.LoadedPath;
 
+    /// <summary>libmpv ytdl 훅에 전달한 yt-dlp 경로를 가져온다.</summary>
+    public string? YtDlpPath => ytdlpPath;
+
     /// <summary>
     /// 크래시 보고서에 쓸 네이티브 라이브러리 설명 한 줄을 가져온다.
     /// </summary>
@@ -122,6 +134,13 @@ public sealed partial class MpvVideoSource : IVideoSource
 
     /// <summary>탐색으로 호환되는 네이티브 라이브러리를 찾으면 libmpv 소스를 만든다.</summary>
     public static bool TryCreate(out MpvVideoSource? source, out string diagnostic)
+        => TryCreate(out source, out diagnostic, YtDlpLocator.Find());
+
+    /// <summary>지정한 yt-dlp 경로를 사용해 libmpv 소스를 만든다.</summary>
+    public static bool TryCreate(
+        out MpvVideoSource? source,
+        out string diagnostic,
+        string? ytdlpPath)
     {
         if (!MpvNativeLibrary.TryLoad(out MpvNativeLibrary? library, out diagnostic))
         {
@@ -142,7 +161,7 @@ public sealed partial class MpvVideoSource : IVideoSource
                 return false;
             }
 
-            source = new MpvVideoSource(library);
+            source = new MpvVideoSource(library, ytdlpPath);
             // 크래시 보고서에서 libmpv 빌드를 되짚을 수 있어야 한다.
             source.CrashMetadata = MpvCompatibility.DescribeForCrashLog(apiVersion, library.LoadedPath);
             diagnostic = $"{diagnostic}; version {source.LibraryVersion}";
@@ -161,21 +180,20 @@ public sealed partial class MpvVideoSource : IVideoSource
     {
         ThrowIfStopping();
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        if (!File.Exists(path))
-        {
-            throw new FileNotFoundException("Video file was not found.", path);
-        }
-
-        string fullPath = Path.GetFullPath(path);
+        (VideoSourceKind sourceKind, string sourceAddress) = CreateSourceRequest(path);
+        long requestedGeneration;
         lock (controlGate)
         {
             ThrowIfStoppingLocked();
-            Volatile.Write(ref requestedPath, fullPath);
+            DrainMpvEventsLocked();
+            requestedGeneration = loadGate.BeginLoad();
+            Volatile.Write(ref requestedSourceKind, (int)sourceKind);
+            Volatile.Write(ref requestedPath, sourceAddress);
             Volatile.Write(ref info, new VideoInfo(0, 0, TimeSpan.Zero, 0));
             Volatile.Write(ref positionSeconds, 0);
             Volatile.Write(ref playing, false);
             frames.BeginSeek();
-            InvokeCommand("loadfile", fullPath, "replace");
+            InvokeCommand("loadfile", sourceAddress, "replace");
         }
 
         DateTime deadline = DateTime.UtcNow.AddSeconds(15);
@@ -184,10 +202,8 @@ public sealed partial class MpvVideoSource : IVideoSource
             cancellationToken.ThrowIfCancellationRequested();
             ThrowIfStopping();
             PollState(null);
-            VideoInfo current = Info;
-            if (current.Width > 0 && current.Height > 0 && current.Duration > TimeSpan.Zero)
+            if (TryCompleteLoad(requestedGeneration))
             {
-                Pause();
                 return;
             }
 
@@ -196,6 +212,49 @@ public sealed partial class MpvVideoSource : IVideoSource
         while (DateTime.UtcNow < deadline);
 
         throw new TimeoutException("libmpv did not expose video metadata within 15 seconds.");
+    }
+
+    private bool TryCompleteLoad(long requestedGeneration)
+    {
+        lock (controlGate)
+        {
+            if (Volatile.Read(ref stopping) || Volatile.Read(ref disposed) ||
+                !loadGate.IsLoaded(requestedGeneration))
+            {
+                return false;
+            }
+
+            VideoInfo current = Info;
+            if (current.Width <= 0 || current.Height <= 0 || current.Duration <= TimeSpan.Zero)
+            {
+                return false;
+            }
+
+            Pause();
+            return true;
+        }
+    }
+
+    private static (VideoSourceKind Kind, string Address) CreateSourceRequest(string path)
+    {
+        bool hasHttpScheme = path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+        if (hasHttpScheme)
+        {
+            if (!YouTubeUrlValidator.TryValidate(path, out Uri? uri, out string? error))
+            {
+                throw YouTubePlaybackException.InvalidUrl(error ?? "YouTube 주소가 올바르지 않습니다.");
+            }
+
+            return (VideoSourceKind.YouTubeUrl, uri!.AbsoluteUri);
+        }
+
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException("Video file was not found.", path);
+        }
+
+        return (VideoSourceKind.LocalFile, Path.GetFullPath(path));
     }
 
     public void Play()
@@ -413,9 +472,15 @@ public sealed partial class MpvVideoSource : IVideoSource
 
         try
         {
+            ProcessMpvEventsLocked();
+            if (!loadGate.IsLoaded(loadGate.Generation))
+            {
+                return;
+            }
+
             string? expectedPath = Volatile.Read(ref requestedPath);
             string? loadedPath = ReadStringProperty("path");
-            if (expectedPath is not null && !PathsEqual(expectedPath, loadedPath))
+            if (IsLocalPathRequest() && expectedPath is not null && !PathsEqual(expectedPath, loadedPath))
             {
                 return;
             }
@@ -446,6 +511,30 @@ public sealed partial class MpvVideoSource : IVideoSource
             {
                 // 파일을 열거나 닫는 동안에는 메타데이터가 없을 수 있다.
             }
+        }
+    }
+
+    private bool IsLocalPathRequest()
+        => (VideoSourceKind)Volatile.Read(ref requestedSourceKind) == VideoSourceKind.LocalFile;
+
+    private void DrainMpvEventsLocked()
+    {
+        while (native.ReadEventId(mpvHandle) is not MpvEventId.None)
+        {
+        }
+    }
+
+    private void ProcessMpvEventsLocked()
+    {
+        while (true)
+        {
+            MpvEventId current = native.ReadEventId(mpvHandle);
+            if (current == MpvEventId.None)
+            {
+                return;
+            }
+
+            loadGate.Observe(current);
         }
     }
 

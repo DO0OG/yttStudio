@@ -363,7 +363,27 @@ libmpv client-api=2.0 path=... os=... arch=...
 | mitmproxy | 실제 플레이어 프리뷰 | 번들 금지. 미설치 시 다운로드 안내만. 스크립트는 upstream `mitmproxy_script.py`와 동기화 |
 | Fiddler Classic | 위의 Windows 대안 | 안내만 |
 | Aegisub | `.ass` 편집 | 안내만 |
-| yt-dlp | 기존 `.ytt` 수집 (`--write-subs --sub-format=srv3`) | 안내만 |
+| yt-dlp | YouTube 주소에서 스트림 정보를 해석하는 libmpv `ytdl_hook`의 외부 도구 | 번들·자동 설치·자동 업데이트 없음. 앱 디렉터리 → `PATH` 순서로 탐색 |
+
+### yt-dlp — YouTube 주소 미리보기
+
+YouTube 주소를 열 때만 `yt-dlp`가 필요하다. 앱은 `yt-dlp`를 내려받거나 설치하지
+않는다. 실행 파일을 앱 실행 파일과 같은 디렉터리에 두거나 운영체제의 `PATH`에
+설치하면 된다. Windows에서는 `yt-dlp.exe`, 그 밖의 환경에서는 `yt-dlp`를 찾는다.
+`YTTSTUDIO_YTDLP_PATH`를 파일 또는 디렉터리 경로로 지정하면 명시한 경로를 먼저
+사용하고, 지정하지 않으면 앱 디렉터리(일반·`tools`·`bin`)를 먼저 검사한 뒤 `PATH`를
+검사한다.
+
+찾은 실행 파일의 경로는 libmpv의 `ytdl_hook`에 전달한다
+(`script-opts=ytdl_hook-ytdl_path=...`). `yt-dlp`는 영상 파일을 내려받는 용도로
+호출되지 않으며, libmpv가 VOD 스트림을 재생할 수 있도록 필요한 정보와 스트림
+주소를 해석하는 데만 쓴다. 따라서 주소로 연 영상은 디스크에 저장하지 않는다.
+
+이 경로의 지원·QA 대상은 공개 YouTube VOD다. 생방송, 연령 제한, 비공개 영상,
+지역 차단 영상은 형식이 맞는 주소라도 재생할 수 없는 영상으로 안내될 수 있다.
+`yt-dlp`가 없을 때, 네트워크에 연결하지 못했을 때, 영상 자체를 재생할 수 없을 때는
+서로 다른 오류 사유로 사용자에게 알리고 앱을 계속 사용할 수 있어야 한다. 자세한
+확인 절차는 [`MANUAL_QA.md`](MANUAL_QA.md)의 YouTube 주소 항목을 따른다.
 
 ---
 
