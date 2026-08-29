@@ -6,7 +6,7 @@ public sealed class YouTubeUrlValidatorTests
 {
     [Theory]
     [InlineData("https://www.youtube.com/watch?v=dQw4w9WgXcQ")]
-    [InlineData("http://youtu.be/dQw4w9WgXcQ?t=12")]
+    [InlineData("https://youtu.be/dQw4w9WgXcQ?t=12")]
     [InlineData("https://www.youtube.com/shorts/dQw4w9WgXcQ")]
     [InlineData("https://www.youtube.com/embed/dQw4w9WgXcQ")]
     [InlineData("https://www.youtube.com/live/dQw4w9WgXcQ")]

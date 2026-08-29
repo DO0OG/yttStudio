@@ -54,6 +54,10 @@ internal sealed class MpvLoadGate
                 case MpvLoadPhase.Ended when eventId == MpvEventId.StartFile:
                     phase = MpvLoadPhase.AwaitingFileLoaded;
                     break;
+                default:
+                    // 그 밖의 조합은 단계를 바꾸지 않는다. libmpv 는 우리가 기다리지
+                    // 않는 이벤트도 보내므로 조용히 흘려보내는 것이 정상 동작이다.
+                    break;
             }
 
             return false;

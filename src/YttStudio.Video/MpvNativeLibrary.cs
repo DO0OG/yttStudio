@@ -277,11 +277,27 @@ internal enum MpvEventId
     FileLoaded = 8,
 }
 
+// libmpv 가 넘겨주는 이벤트를 그대로 받는 구조체다. 필드 순서와 배치가 네이티브
+// 정의와 같아야 하므로 필드로 둔다.
 [StructLayout(LayoutKind.Sequential)]
-internal readonly struct MpvEvent
+internal readonly struct MpvEvent : IEquatable<MpvEvent>
 {
     public readonly MpvEventId EventId;
     public readonly int Error;
     public readonly ulong ReplyUserData;
     public readonly nint Data;
+
+    public bool Equals(MpvEvent other)
+        => EventId == other.EventId && Error == other.Error &&
+            ReplyUserData == other.ReplyUserData && Data == other.Data;
+
+    public override bool Equals(object? obj)
+        => obj is MpvEvent other && Equals(other);
+
+    public override int GetHashCode()
+        => HashCode.Combine(EventId, Error, ReplyUserData, Data);
+
+    public static bool operator ==(MpvEvent left, MpvEvent right) => left.Equals(right);
+
+    public static bool operator !=(MpvEvent left, MpvEvent right) => !left.Equals(right);
 }

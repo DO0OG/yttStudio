@@ -31,10 +31,12 @@ public static class YouTubeUrlValidator
         }
 
         string trimmed = value.Trim();
+        // YouTube 는 평문으로 서비스하지 않는다. 평문 주소를 그대로 외부 도구에
+        // 넘기지 않도록 https 만 받는다.
         if (!Uri.TryCreate(trimmed, UriKind.Absolute, out Uri? candidate) ||
-            candidate.Scheme is not ("http" or "https"))
+            !candidate.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.Ordinal))
         {
-            error = "http 또는 https YouTube 주소가 필요합니다.";
+            error = "https YouTube 주소가 필요합니다.";
             return false;
         }
 
@@ -81,7 +83,7 @@ public static class YouTubeUrlValidator
     {
         ArgumentNullException.ThrowIfNull(uri);
         videoId = null;
-        if (uri.Scheme is not ("http" or "https") || !uri.IsDefaultPort ||
+        if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.Ordinal) || !uri.IsDefaultPort ||
             !string.IsNullOrEmpty(uri.UserInfo))
         {
             return false;
