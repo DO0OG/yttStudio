@@ -79,7 +79,7 @@ public partial class MainWindow
             return;
         }
 
-        TryHandleHistoryShortcut(e, source);
+        HandleHistoryShortcut(e, source);
     }
 
     private bool TryHandleInlineEditorKeyDown(KeyEventArgs e, Visual? source)
@@ -126,14 +126,16 @@ public partial class MainWindow
         return true;
     }
 
-    private bool TryHandleHistoryShortcut(KeyEventArgs e, Visual? source)
+    // 되돌리기 · 다시하기는 이 창에서 마지막으로 보는 단축키다. 뒤에 이어질 처리가
+    // 없으므로 처리 여부를 돌려주지 않는다.
+    private void HandleHistoryShortcut(KeyEventArgs e, Visual? source)
     {
         if (DataContext is not MainWindowViewModel viewModel ||
             !e.KeyModifiers.HasFlag(KeyModifiers.Control) ||
             e.KeyModifiers.HasFlag(KeyModifiers.Alt) ||
             IsTextBoxFocused(source))
         {
-            return false;
+            return;
         }
 
         DelegateCommand command;
@@ -151,17 +153,16 @@ public partial class MainWindow
         }
         else
         {
-            return false;
+            return;
         }
 
         if (!command.CanExecute(null))
         {
-            return false;
+            return;
         }
 
         command.Execute(null);
         e.Handled = true;
-        return true;
     }
 
     /// <summary>스페이스바를 재생 · 정지로 돌릴지 판단한다.</summary>
