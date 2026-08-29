@@ -153,10 +153,15 @@ internal sealed class MpvNativeLibrary : IDisposable
     public string GetError(int code)
         => Marshal.PtrToStringUTF8(ErrorString(code)) ?? $"mpv error {code}";
 
-    public MpvEvent ReadEvent(nint handle)
+    /// <summary>대기 없이 다음 이벤트의 종류를 읽는다. 없으면 <see cref="MpvEventId.None"/> 이다.</summary>
+    /// <remarks>
+    /// mpv_event 의 첫 필드가 event_id 다. 우리는 종류만 쓰므로 구조체를 통째로
+    /// 옮기지 않고 첫 4 바이트만 읽는다.
+    /// </remarks>
+    public MpvEventId ReadEventId(nint handle)
     {
         nint pointer = WaitEvent(handle, 0);
-        return pointer == 0 ? default : Marshal.PtrToStructure<MpvEvent>(pointer);
+        return pointer == 0 ? MpvEventId.None : (MpvEventId)Marshal.ReadInt32(pointer);
     }
 
     public void Dispose()
@@ -275,29 +280,4 @@ internal enum MpvEventId
     StartFile = 6,
     EndFile = 7,
     FileLoaded = 8,
-}
-
-// libmpv 가 넘겨주는 이벤트를 그대로 받는 구조체다. 필드 순서와 배치가 네이티브
-// 정의와 같아야 하므로 필드로 둔다.
-[StructLayout(LayoutKind.Sequential)]
-internal readonly struct MpvEvent : IEquatable<MpvEvent>
-{
-    public readonly MpvEventId EventId;
-    public readonly int Error;
-    public readonly ulong ReplyUserData;
-    public readonly nint Data;
-
-    public bool Equals(MpvEvent other)
-        => EventId == other.EventId && Error == other.Error &&
-            ReplyUserData == other.ReplyUserData && Data == other.Data;
-
-    public override bool Equals(object? obj)
-        => obj is MpvEvent other && Equals(other);
-
-    public override int GetHashCode()
-        => HashCode.Combine(EventId, Error, ReplyUserData, Data);
-
-    public static bool operator ==(MpvEvent left, MpvEvent right) => left.Equals(right);
-
-    public static bool operator !=(MpvEvent left, MpvEvent right) => !left.Equals(right);
 }

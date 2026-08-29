@@ -519,7 +519,7 @@ public sealed partial class MpvVideoSource : IVideoSource
 
     private void DrainMpvEventsLocked()
     {
-        while (native.ReadEvent(mpvHandle).EventId is not MpvEventId.None)
+        while (native.ReadEventId(mpvHandle) is not MpvEventId.None)
         {
         }
     }
@@ -528,13 +528,13 @@ public sealed partial class MpvVideoSource : IVideoSource
     {
         while (true)
         {
-            MpvEvent current = native.ReadEvent(mpvHandle);
-            if (current.EventId == MpvEventId.None)
+            MpvEventId current = native.ReadEventId(mpvHandle);
+            if (current == MpvEventId.None)
             {
                 return;
             }
 
-            loadGate.Observe(current.EventId);
+            loadGate.Observe(current);
         }
     }
 
