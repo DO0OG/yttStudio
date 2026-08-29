@@ -119,6 +119,8 @@ public sealed class Localizer : System.ComponentModel.INotifyPropertyChanged
         ["Unmute"] = new("음소거 해제", "Unmute", "ミュート解除"),
         ["Play"] = new("재생", "Play", "再生"),
         ["Pause"] = new("일시정지", "Pause", "一時停止"),
+        ["PreviousFrame"] = new("이전 프레임", "Previous Frame", "前のフレーム"),
+        ["NextFrame"] = new("다음 프레임", "Next Frame", "次のフレーム"),
         ["Track"] = new("Track", "Track", "トラック"),
         ["StartMs"] = new("시작(ms)", "Start (ms)", "開始 (ms)"),
         ["EndMs"] = new("끝(ms)", "End (ms)", "終了 (ms)"),
