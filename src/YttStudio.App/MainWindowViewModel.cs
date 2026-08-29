@@ -21,10 +21,15 @@ namespace YttStudio.App;
 
 public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
-    // U+FE0E 는 텍스트 표현 선택자다. 붙이지 않으면 Windows 가 이 글자들을 컬러
-    // 이모지로 그려, 같은 줄의 다른 버튼과 따로 논다.
-    private const string PlayIcon = "▶︎";
-    private const string PauseIcon = "⏸︎";
+    // 재생 줄 아이콘은 글자가 아니라 도형으로 그린다. 글자로 두면 U+23EE 처럼 기본이
+    // 이모지 표현인 것들이 컬러 이모지 글꼴로 떨어져 같은 줄에서 혼자 컬러가 된다.
+    // 표현 선택자 U+FE0E 를 붙여도 글꼴 폴백이 이를 무시한다. 도형은 폰트를 타지
+    // 않으므로 어느 플랫폼에서도 같은 모양으로 그려진다.
+    // 좌표는 11x11 정사각형 안에서 잡았다.
+    private const string PlayIconData = "M 1,0 L 10,5.5 L 1,11 Z";
+    private const string PauseIconData = "M 1,0 H 4.2 V 11 H 1 Z M 6.8,0 H 10 V 11 H 6.8 Z";
+    private const string PreviousFrameIconData = "M 0,0 H 2.2 V 11 H 0 Z M 11,0 V 11 L 3.4,5.5 Z";
+    private const string NextFrameIconData = "M 0,0 L 7.6,5.5 L 0,11 Z M 8.8,0 H 11 V 11 H 8.8 Z";
     // 편집 가이드용 여백이다. 유튜브를 측정해 얻은 값이 아니다. 실측에서 확인된 것은
     // 자막 컨테이너가 플레이어 영역과 같다는 사실뿐이고 안전 여백 자체는 재본 적이 없다.
     // 측정한 자막 창의 하단 2% 를 안전선으로 쓰면 최대 위치의 큐 바닥이 그 선에 정확히

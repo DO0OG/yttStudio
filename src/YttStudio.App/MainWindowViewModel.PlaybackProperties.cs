@@ -64,7 +64,15 @@ public sealed partial class MainWindowViewModel
 
     public bool IsPlaying => videoSource?.IsPlaying == true;
 
-    public string PlayPauseLabel => IsPlaying ? PauseIcon : PlayIcon;
+    /// <summary>재생 · 정지 단추에 그릴 도형을 가져온다.</summary>
+    public Avalonia.Media.Geometry PlayPauseIcon =>
+        Avalonia.Media.Geometry.Parse(IsPlaying ? PauseIconData : PlayIconData);
+
+    /// <summary>이전 프레임 단추에 그릴 도형을 가져온다.</summary>
+    public Avalonia.Media.Geometry PreviousFrameIcon => Avalonia.Media.Geometry.Parse(PreviousFrameIconData);
+
+    /// <summary>다음 프레임 단추에 그릴 도형을 가져온다.</summary>
+    public Avalonia.Media.Geometry NextFrameIcon => Avalonia.Media.Geometry.Parse(NextFrameIconData);
 
     public string PlayPauseActionText => IsPlaying ? Loc["Pause"] : Loc["Play"];
 

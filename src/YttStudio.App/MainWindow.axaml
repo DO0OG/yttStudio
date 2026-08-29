@@ -51,6 +51,23 @@
       <Setter Property="Padding" Value="3" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
+    <!-- 재생 줄 단추는 글자가 아니라 도형으로 그린다. 셋이 같은 방식이라야
+         굵기와 색이 어긋나지 않는다. 색은 단추의 전경을 따라가므로 비활성 상태도
+         함께 흐려진다. -->
+    <Style Selector="Button.transport">
+      <Setter Property="Width" Value="36" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Path.transport">
+      <Setter Property="Width" Value="12" />
+      <Setter Property="Height" Value="12" />
+      <Setter Property="Stretch" Value="Uniform" />
+      <Setter Property="Fill" Value="{Binding $parent[Button].Foreground}" />
+    </Style>
     <Style Selector="Border.chip">
       <Setter Property="MinWidth" Value="20" />
       <Setter Property="MinHeight" Value="16" />
@@ -262,18 +279,21 @@
              볼륨 열에는 여백을 두어 오른쪽 끝을 넘지 않게 한다. -->
         <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="6"
               Margin="0,6,4,0" HorizontalAlignment="Stretch" IsEnabled="{Binding HasVideo}">
-          <Button Grid.Column="0" Content="&#x23EE;&#xFE0E;" Command="{Binding StepBackCommand}"
+          <Button Grid.Column="0" Classes="transport" Command="{Binding StepBackCommand}"
                   ToolTip.Tip="{Binding Loc[PreviousFrame]}"
-                  AutomationProperties.Name="{Binding Loc[PreviousFrame]}"
-                  Width="36" MinHeight="32" VerticalAlignment="Center" />
-          <Button Grid.Column="1" Content="{Binding PlayPauseLabel}" Command="{Binding PlayPauseCommand}"
+                  AutomationProperties.Name="{Binding Loc[PreviousFrame]}">
+            <Path Classes="transport" Data="{Binding PreviousFrameIcon}" />
+          </Button>
+          <Button Grid.Column="1" Classes="transport" Command="{Binding PlayPauseCommand}"
                   ToolTip.Tip="{Binding PlayPauseActionText}"
-                  AutomationProperties.Name="{Binding PlayPauseActionText}"
-                  Width="36" MinHeight="32" VerticalAlignment="Center" />
-          <Button Grid.Column="2" Content="&#x23ED;&#xFE0E;" Command="{Binding StepForwardCommand}"
+                  AutomationProperties.Name="{Binding PlayPauseActionText}">
+            <Path Classes="transport" Data="{Binding PlayPauseIcon}" />
+          </Button>
+          <Button Grid.Column="2" Classes="transport" Command="{Binding StepForwardCommand}"
                   ToolTip.Tip="{Binding Loc[NextFrame]}"
-                  AutomationProperties.Name="{Binding Loc[NextFrame]}"
-                  Width="36" MinHeight="32" VerticalAlignment="Center" />
+                  AutomationProperties.Name="{Binding Loc[NextFrame]}">
+            <Path Classes="transport" Data="{Binding NextFrameIcon}" />
+          </Button>
           <Slider Grid.Column="3" Minimum="0" Maximum="{Binding MaximumMilliseconds}"
                   MinWidth="80" Value="{Binding PositionMilliseconds}" VerticalAlignment="Center" />
           <TextBlock Grid.Column="4" Text="{Binding PositionDisplay}" Width="80" TextAlignment="Right"
