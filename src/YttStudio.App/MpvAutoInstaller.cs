@@ -105,6 +105,10 @@ public sealed class MpvAutoInstaller
     internal const string KMediaAssetSha256 =
         "4250b47144de085c7963f4bdbe99e995b9b2b0374e32a14ebe9d27fd38a67bef";
     internal const long KMediaAssetLength = 25_946_200;
+    internal const string KMediaMacArchivePrefix = "META-INF/kmediampv/native/macos-aarch64/";
+    internal const string KMediaLinuxArchivePrefix = "META-INF/kmediampv/native/linux-x86_64/";
+    internal const string KMediaMacLibraryFileName = "libkmediampv_mpv.dylib";
+    internal const string KMediaLinuxLibraryFileName = "libkmediampv_mpv.so";
 
     private const int BufferSize = 128 * 1024;
     private const long MaximumArchiveBytes = 512L * 1024 * 1024;
@@ -555,16 +559,16 @@ public sealed class MpvAutoInstaller
         {
             return CreateKMediaPackage(
                 "macos-arm64",
-                "META-INF/kmediampv/native/macos-aarch64/",
-                ["libmpv.2.dylib", "libmpv.dylib"]);
+                KMediaMacArchivePrefix,
+                [KMediaMacLibraryFileName]);
         }
 
         if (OperatingSystem.IsLinux() && RuntimeInformation.OSArchitecture == Architecture.X64)
         {
             return CreateKMediaPackage(
                 "linux-x64",
-                "META-INF/kmediampv/native/linux-x86_64/",
-                ["libmpv.so.2", "libmpv.so"]);
+                KMediaLinuxArchivePrefix,
+                [KMediaLinuxLibraryFileName]);
         }
 
         return null;

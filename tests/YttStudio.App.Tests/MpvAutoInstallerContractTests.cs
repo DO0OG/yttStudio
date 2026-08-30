@@ -18,25 +18,17 @@ public sealed class MpvAutoInstallerContractTests
         Assert.Equal(27_984_604, MpvAutoInstaller.PinnedAssetLength);
     }
 
-    [Theory]
-    [InlineData(
-        MpvPackagePlatform.MacOS,
-        "META-INF/kmediampv/native/macos-aarch64/",
-        "libkmediampv_mpv.dylib")]
-    [InlineData(
-        MpvPackagePlatform.Linux,
-        "META-INF/kmediampv/native/linux-x86_64/",
-        "libkmediampv_mpv.so")]
-    public void KMediaPackageMatchesPinnedArchiveLayout(
-        MpvPackagePlatform platform,
-        string archivePrefix,
-        string libraryFileName)
+    [Fact]
+    public void KMediaPackageMatchesPinnedArchiveLayout()
     {
-        MpvPackageDefinition? package = MpvPackageCatalog.Get(platform);
-
-        Assert.NotNull(package);
-        Assert.Equal(archivePrefix, package!.ArchivePrefix);
-        Assert.Equal(libraryFileName, package.LibraryFileName);
+        Assert.Equal(
+            "META-INF/kmediampv/native/macos-aarch64/",
+            MpvAutoInstaller.KMediaMacArchivePrefix);
+        Assert.Equal(
+            "META-INF/kmediampv/native/linux-x86_64/",
+            MpvAutoInstaller.KMediaLinuxArchivePrefix);
+        Assert.Equal("libkmediampv_mpv.dylib", MpvAutoInstaller.KMediaMacLibraryFileName);
+        Assert.Equal("libkmediampv_mpv.so", MpvAutoInstaller.KMediaLinuxLibraryFileName);
     }
 
     [Theory]
