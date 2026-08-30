@@ -67,8 +67,6 @@ The full set of controls is in the [user guide](docs/USER_GUIDE.md).
 | **v0.2.3 video runtime by default** | If libmpv is missing, the app installs a verified LGPL runtime on the first video open. If yt-dlp is missing on the first YouTube URL open, the app verifies and installs an official upstream asset |
 | **Playback shortcut cleanup** | `Space` now toggles playback wherever focus sits. The frame-step buttons became `⏮` and `⏭` |
 | **Viewport modes** | Normal, theater, fullscreen and mobile ratios reproduced from measured YouTube players |
-| **Installer packaging** | A Windows installer, a macOS `.dmg` and a Linux AppImage |
-| **Preferences window and themes** | Light, dark and system default, switched without a restart |
 
 ## Getting started
 
@@ -93,7 +91,7 @@ Video playback is a core feature. On supported platforms no manual prerequisite 
 | Item | v0.2.5 behaviour |
 |---|---|
 | libmpv 2.0+ | Required for local and YouTube playback. yttStudio first prefers a user-selected or discoverable compatible library; if none exists, the first video open installs a **verified LGPL runtime** into the user data area on supported platforms |
-| yt-dlp | Required to resolve YouTube addresses. yttStudio first prefers an existing installation; if none exists, the first YouTube URL open downloads the pinned official `yt-dlp/yt-dlp 2026.08.19` release asset and verifies its SHA-256 before installing it into the user data area |
+| yt-dlp | Required to resolve YouTube addresses. yttStudio first prefers an existing installation that supports `--js-runtimes`; if none is found or it lacks that option, the pinned official `yt-dlp/yt-dlp 2026.08.19` release asset is downloaded, SHA-256 verified and installed into the user data area |
 | Deno 2.3+ | Required by current yt-dlp for YouTube JavaScript challenges. If no compatible installation is found, yttStudio downloads the official `denoland/deno v2.9.6` asset, verifies its size and SHA-256, and installs it into the user data area |
 
 The current in-app libmpv sources are the explicit LGPL build from `zhongfly/mpv-winbuild` on Windows x64 and the verified `Shusek/KMediaMpv` runtime on macOS arm64/Linux x64. yt-dlp and Deno are also obtained only from their official upstream release assets. These external runtimes are not embedded in yttStudio release ZIPs, installers, DMGs or AppImages. You can also reinstall libmpv or choose a custom path under **Tools → Settings → Video**. See [dependencies](docs/DEPENDENCIES.md) and [third-party notices](docs/THIRD-PARTY-NOTICES.md) for exact pins, hashes and licence boundaries.
@@ -150,6 +148,11 @@ Subtitle format I/O uses [YTSubConverter](https://github.com/arcusmaximus/YTSubC
 
 See [LICENSE](LICENSE). Notices for bundled fonts and external libraries are in
 [third-party notices](docs/THIRD-PARTY-NOTICES.md).
+
+## Trademark and non-affiliation notice
+
+yttStudio is an independent open-source project. It is not affiliated with,
+endorsed by or sponsored by YouTube or Google LLC. YouTube is a trademark of Google LLC.
 
 ## Contributors
 

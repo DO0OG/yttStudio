@@ -131,6 +131,8 @@ kmedia.jar / kmedia-mpv-*-runtime-desktop.jar
 
 사전검증 과정에서 실수로 저장소에 들어간 `kmedia.jar`는 제거했으며, 최종 릴리스 워크플로에도 yt-dlp, Deno와 libmpv/KMediaMpv 런타임 비번들 검사를 넣었다.
 
+2026-08-30 v0.2.5는 자동 설치 대상 자산·pin·해시·라이선스 경계를 바꾸지 않는다. 변경은 다운로드 파일 핸들 처리와 기존 yt-dlp 재사용 조건뿐이며, 비번들 정책과 제3자 고지 범위는 v0.2.4와 동일하다. Windows x64에서 고정 Deno·yt-dlp 자산의 실제 다운로드와 SHA-256 검증, 공개 YouTube VOD 메타데이터 추출을 다시 확인했다.
+
 ## 브랜드 / 이름
 
 `yttStudio` 이름은 현재 강제 변경하지 않는다.

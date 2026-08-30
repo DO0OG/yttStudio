@@ -67,8 +67,6 @@ yttStudio はその空白を埋めます。
 | **v0.2.3 映像ランタイムを標準化** | libmpv がない場合は最初に映像を開くときに検証済み LGPL ランタイムをアプリ内で導入します。YouTube URL を初めて開く際に yt-dlp がなければ、公式配布物を検証して導入します |
 | **再生ショートカットの整理** | ウィンドウのどこにフォーカスがあっても `Space` が再生・一時停止として働きます。コマ送りボタンは `⏮` `⏭` に変えました |
 | **ビューポートモード** | YouTube プレイヤーを実測し、通常・シアター・全画面・モバイルの比率を再現します |
-| **インストーラの配布** | Windows インストーラ、macOS `.dmg`、Linux AppImage |
-| **環境設定ウィンドウとテーマ** | ライト・ダーク・システム既定を再起動なしで切り替えます |
 
 ## はじめに
 
@@ -93,7 +91,7 @@ yttStudio はその空白を埋めます。
 | 項目 | v0.2.5 の動作 |
 |---|---|
 | libmpv 2.0 以上 | ローカル映像と YouTube 再生に必要です。指定済み・検出可能な互換ライブラリを優先し、見つからない場合は最初に映像を開くとき、対応プラットフォーム向けの**検証済み LGPL ランタイム**をユーザー領域へ自動導入します |
-| yt-dlp | YouTube URL の解析に必要です。既存のインストールを優先し、見つからない場合は最初の YouTube URL オープン時に公式 `yt-dlp/yt-dlp 2026.08.19` 資産を取得して SHA-256 を検証後、ユーザー領域へ導入します |
+| yt-dlp | YouTube URL の解析に必要です。`--js-runtimes` に対応する既存のインストールを優先し、見つからないか非対応の場合は公式 `yt-dlp/yt-dlp 2026.08.19` 資産を取得して SHA-256 を検証後、ユーザー領域へ導入します |
 | Deno 2.3 以上 | 現在の yt-dlp が YouTube の JavaScript challenge を解決するために必要です。互換インストールが見つからない場合は公式 `denoland/deno v2.9.6` 資産を取得し、サイズと SHA-256 を検証してユーザー領域へ導入します |
 
 アプリ内 libmpv の現在の取得元は Windows x64 では `zhongfly/mpv-winbuild` の明示的な LGPL ビルド、macOS arm64/Linux x64 では検証済みの `Shusek/KMediaMpv` ランタイムです。yt-dlp と Deno もそれぞれ公式 upstream のリリース資産だけを利用します。これらの外部ランタイムは yttStudio の ZIP・インストーラ・DMG・AppImage には直接同梱しません。**ツール → 設定 → 映像**から libmpv の再インストールや任意パスの指定もできます。固定バージョン・ハッシュ・ライセンス境界は[依存関係](docs/DEPENDENCIES.md)と[サードパーティ告知](docs/THIRD-PARTY-NOTICES.md)を参照してください。
@@ -150,6 +148,11 @@ dotnet run --project src/YttStudio.App -- samples/showcase.ass
 
 [LICENSE](LICENSE) を参照してください。同梱フォントと外部ライブラリの告知は
 [サードパーティ告知](docs/THIRD-PARTY-NOTICES.md)にあります。
+
+## 商標および非提携の告知
+
+yttStudio は独立したオープンソースプロジェクトであり、YouTube または Google LLC と
+提携しておらず、その承認や後援を受けた公式製品でもありません。YouTube は Google LLC の商標です。
 
 ## 貢献者
 

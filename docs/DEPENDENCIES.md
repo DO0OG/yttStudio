@@ -193,7 +193,9 @@ YouTube URL을 열 때는 기존 `YTTSTUDIO_YTDLP_PATH`, 앱 경로, `PATH`의 �
 
 다운로드 URL·정확한 파일 길이·SHA-256을 고정하고 HTTPS GitHub release 호스트만 허용한다. ZIP에서 예상 `deno`/`deno.exe` 한 파일만 추출하며 설치 후 `--version`으로 실제 런타임이 2.3.0 이상인지 확인한다. 설치 경로를 `YTTSTUDIO_DENO_PATH`에 기록하고 현재 프로세스 `PATH` 앞에 추가해, 직접 yt-dlp 사전 확인과 libmpv `ytdl_hook`이 실행하는 yt-dlp가 동일한 Deno를 사용하게 한다.
 
-직접 사전 확인은 `--js-runtimes deno:<path>`를 명시한다. v0.2.5 사전검증에서는 Windows/macOS/Linux 모두 고정 Deno와 yt-dlp 공식 자산을 실제 다운로드·해시 검증한 뒤 공개 YouTube VOD의 JSON 메타데이터 추출까지 성공했다.
+직접 사전 확인은 `--js-runtimes deno:<path>`를 명시한다. v0.2.4 사전검증에서는 Windows/macOS/Linux 모두 고정 Deno와 yt-dlp 공식 자산을 실제 다운로드·해시 검증한 뒤 공개 YouTube VOD의 JSON 메타데이터 추출까지 성공했다.
+
+v0.2.5 사전검증은 Windows x64에서만 실측했다. 고정 Deno 자산의 실제 다운로드·SHA-256 검증·압축 해제·`--version` 확인과, 지원 게이트에 걸린 구버전 yt-dlp를 고정 자산으로 대체한 뒤의 공개 YouTube VOD 메타데이터 추출까지 통과했다. macOS/Linux는 v0.2.4 기록을 그대로 따르며 이번 수정은 플랫폼 독립적인 파일 핸들·옵션 확인 로직만 바꾼다.
 
 Deno v2.9.6은 MIT License이며 yttStudio 릴리스 산출물에는 직접 번들하지 않는다.
 

@@ -4,7 +4,7 @@
 
 ## v0.2.5 영상 재생 첫 사용 흐름
 
-로컬 영상 또는 YouTube 주소 열기는 libmpv가 아직 없는 첫 실행에서도 사용할 수 있다. 기존 호환 libmpv를 찾지 못하면 지원 플랫폼에서 프로그램이 검증된 LGPL 런타임을 사용자 영역에 설치하고, 완료 후 사용자가 처음 요청한 영상을 그대로 연다. YouTube 주소에서는 yt-dlp와 현재 YouTube JavaScript challenge 처리에 필요한 Deno 2.3+도 확인하며, 없으면 각각 공식 고정 자산을 검증 설치한다. 설정의 **영상** 페이지에서는 libmpv 재설치와 수동 경로 지정도 가능하다.
+로컬 영상 또는 YouTube 주소 열기는 libmpv가 아직 없는 첫 실행에서도 사용할 수 있다. 기존 호환 libmpv를 찾지 못하면 지원 플랫폼에서 프로그램이 검증된 LGPL 런타임을 사용자 영역에 설치하고, 완료 후 사용자가 처음 요청한 영상을 그대로 연다. YouTube 주소에서는 yt-dlp와 현재 YouTube JavaScript challenge 처리에 필요한 Deno 2.3+도 확인하며, 없거나 호환되지 않으면 각각 공식 고정 자산을 검증 설치한다. 설정의 **영상** 페이지에서는 libmpv 재설치와 수동 경로 지정도 가능하다.
 
 YouTube YTT(SRV3) 자막 전용 WYSIWYG 에디터. 영상 위에서 직접 배치·스타일링하고 `.ytt`를 뽑습니다.
 
@@ -21,7 +21,7 @@ YouTube YTT(SRV3) 자막 전용 WYSIWYG 에디터. 영상 위에서 직접 배�
 |---|---|
 | .NET 10 런타임 | self-contained 빌드를 쓰면 불필요 |
 | libmpv | **영상 재생에 필요.** 없어도 자막 편집·저장은 정상 동작 |
-| yt-dlp | **YouTube 주소 미리보기에 필요.** 없으면 공식 2026.08.19 자산을 사용자 영역에 검증 설치 |
+| yt-dlp | **YouTube 주소 미리보기에 필요.** 없거나 `--js-runtimes` 미지원이면 공식 2026.08.19 자산을 사용자 영역에 검증 설치 |
 | Deno 2.3+ | **현재 yt-dlp의 YouTube JavaScript challenge 처리에 필요.** 없으면 공식 v2.9.6 자산을 사용자 영역에 검증 설치 |
 
 ### libmpv 없이 쓰기
@@ -49,8 +49,8 @@ libmpv 2.0 미만은 거부되며, 어떤 버전을 어디서 찾았는지 메�
 
 1. Deno 2.3 이상을 `YTTSTUDIO_DENO_PATH`와 `PATH`에서 찾습니다.
 2. 없으면 공식 `denoland/deno v2.9.6` 자산을 사용자 영역에 내려받고 크기·SHA-256·실제 버전을 검증합니다.
-3. `yt-dlp`를 `YTTSTUDIO_YTDLP_PATH`, 앱 경로와 `PATH`에서 찾습니다.
-4. 없으면 공식 `yt-dlp/yt-dlp 2026.08.19` 자산을 SHA-256 검증 후 사용자 영역에 설치합니다.
+3. `yt-dlp`를 `YTTSTUDIO_YTDLP_PATH`, 앱 경로와 `PATH`에서 찾고, 사전 확인에 필요한 `--js-runtimes` 옵션을 지원하는지 확인합니다.
+4. 찾지 못했거나 옵션을 지원하지 않으면 공식 `yt-dlp/yt-dlp 2026.08.19` 자산을 SHA-256 검증 후 사용자 영역에 설치합니다.
 5. yt-dlp 사전 확인에 관리 Deno 경로를 명시하고, libmpv `ytdl_hook`에서도 같은 Deno를 찾을 수 있도록 현재 프로세스 `PATH`에 등록합니다.
 
 이 런타임들은 yttStudio 릴리스 파일 안에 직접 포함되지 않으며 실행 시 각 공식 upstream에서 받습니다. Windows의 관리 실행 파일은 `deno.exe`와 `yt-dlp.exe`이며 macOS/Linux에서는 `deno`와 `yt-dlp`입니다.
