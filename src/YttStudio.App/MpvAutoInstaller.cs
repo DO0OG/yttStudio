@@ -1,8 +1,10 @@
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using SharpCompress.Archives;
 
 namespace YttStudio.App;
 
-/// <summary>자동 설치가 실패한 이유를 호출자가 구분할 수 있게 한다.</summary>
+/// <summary>libmpv 자동 설치가 실패한 이유를 호출자가 구분할 수 있게 한다.</summary>
 public enum MpvAutoInstallErrorKind
 {
     UnsupportedPlatform,
@@ -46,14 +48,12 @@ public sealed record MpvInstallProgress(
     long BytesTransferred,
     long? TotalBytes)
 {
-    /// <summary>전체 크기를 알 수 있을 때 0부터 1 사이의 진행률을 반환한다.</summary>
     public double? Fraction
         => TotalBytes is > 0
             ? Math.Clamp((double)BytesTransferred / TotalBytes.Value, 0, 1)
             : null;
 }
 
-/// <summary>패키지 매니저 안내를 만들 때 사용할 운영체제 구분이다.</summary>
 public enum MpvPackagePlatform
 {
     Windows,
@@ -62,52 +62,62 @@ public enum MpvPackagePlatform
     Other,
 }
 
-/// <summary>macOS 또는 Linux에서 사용자가 실행할 libmpv 설치 명령 안내다.</summary>
 public sealed record MpvPackageInstallInstructions(
     MpvPackagePlatform Platform,
     IReadOnlyList<string> Commands,
     string DocumentationUrl)
 {
-    /// <summary>현재 플랫폼에서 자동 설치 백엔드를 사용할 수 있는지 나타낸다.</summary>
-    public bool SupportsAutomaticInstallation => Platform == MpvPackagePlatform.Windows;
+    public bool SupportsAutomaticInstallation
+        => Platform is MpvPackagePlatform.Windows or MpvPackagePlatform.MacOS or MpvPackagePlatform.Linux;
 }
 
+internal sealed record MpvRuntimePackage(
+    string InstallId,
+    string AssetName,
+    Uri DownloadUri,
+    string Sha256,
+    long AssetLength,
+    string? EntryPrefix,
+    IReadOnlyList<string> LibraryNames,
+    string UpstreamUrl,
+    string CorrespondingSourceUrl);
+
 /// <summary>
-/// Windows에서 공식 mpv 빌드의 최신 libmpv 개발 아카이브를 내려받아
-/// 사용자 로컬 디렉터리에 설치한다. 저장소나 앱 배포물에는 바이너리를 넣지 않는다.
+/// 지원 데스크톱 플랫폼에서 라이선스 상태가 명확한 libmpv 런타임을 사용자 영역에 설치한다.
+/// yttStudio 배포물에는 libmpv 바이너리를 포함하지 않는다.
 /// </summary>
 public sealed class MpvAutoInstaller
 {
     public const string GitHubLatestReleaseUrl =
-        "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest";
-
+        "https://api.github.com/repos/zhongfly/mpv-winbuild/releases/latest";
     public const string GithubLatestReleaseUrl = GitHubLatestReleaseUrl;
-
     public const string WindowsLibraryFileName = "libmpv-2.dll";
+    public const string WindowsAssetPrefix = "mpv-dev-lgpl-x86_64-";
 
-    public const string WindowsAssetPrefix = "mpv-dev-x86_64-";
-    /// <summary>설치할 mpv 빌드의 릴리즈 태그다.</summary>
-    /// <remarks>
-    /// 최신 릴리즈를 따라가지 않고 특정 빌드에 못박는다. 내려받은 바이너리는 압축을 풀어
-    /// 이 프로세스에 로드된다. 무엇이 올지 모르는 채로 그 일을 할 수는 없다. HTTPS 는 전송만
-    /// 보호하고 산출물은 보증하지 않으므로 아래 해시로 확인한다.
-    ///
-    /// 버전을 올리려면 새 자산을 받아 SHA-256 을 다시 계산해 세 상수를 함께 고쳐야 한다.
-    /// 번거롭지만 검증되지 않은 네이티브 코드를 로드하는 것보다 낫다. 지우지 마라.
-    /// </remarks>
-    public const string PinnedReleaseTag = "20260828";
-
-    /// <summary>고정한 릴리즈에서 받을 자산 이름이다.</summary>
-    public const string PinnedAssetName = "mpv-dev-x86_64-20260828-git-182fa6ca49.7z";
-
-    /// <summary>고정한 자산의 SHA-256 이다. 받아서 직접 계산한 값이다.</summary>
+    public const string PinnedReleaseTag = "2026-08-29-e8673660ab";
+    public const string PinnedAssetName = "mpv-dev-lgpl-x86_64-20260829-git-e8673660ab.7z";
     public const string PinnedAssetSha256 =
-        "9efd04d351e09eca350d01da1b8b0c406537c037537111ba65ab43c91905635b";
+        "78260166265fbc09b3bee75ee3464eb0f6bbaa8ecd172786e33c22bbf8a3cb47";
+    public const long PinnedAssetLength = 27_984_604;
 
-    /// <summary>고정한 자산의 바이트 수다. 해시를 계산하기 전에 먼저 걸러낸다.</summary>
-    public const long PinnedAssetLength = 31354441;
+    internal const string KMediaVersion = "0.2.9";
+    internal const string KMediaAssetName = "kmedia-mpv-0.2.9-runtime-desktop.jar";
+    internal const string KMediaAssetSha256 =
+        "4250b47144de085c7963f4bdbe99e995b9b2b0374e32a14ebe9d27fd38a67bef";
+    internal const long KMediaAssetLength = 25_946_200;
 
-    /// <summary>다운로드를 허용하는 호스트다. 리디렉션이 이 밖으로 나가면 거부한다.</summary>
+    private const int BufferSize = 128 * 1024;
+    private const long MaximumArchiveBytes = 512L * 1024 * 1024;
+    private const long MaximumExtractedBytes = 2L * 1024 * 1024 * 1024;
+    private const int MaximumEntryCount = 20_000;
+    private const string DocumentationUrl = "https://mpv.io/installation/";
+    private const string KMediaReleaseBase = "https://github.com/Shusek/KMediaMpv/releases/download/v0.2.9";
+    private static readonly HttpClient SharedHttpClient = new(new HttpClientHandler
+    {
+        AllowAutoRedirect = true,
+    });
+    private static readonly SemaphoreSlim InstallationGate = new(1, 1);
+
     public static readonly string[] AllowedDownloadHosts =
     [
         "github.com",
@@ -115,53 +125,68 @@ public sealed class MpvAutoInstaller
         "release-assets.githubusercontent.com",
     ];
 
-    /// <summary>고정한 자산의 내려받기 주소다.</summary>
     public static Uri PinnedAssetUri { get; } = new(
-        $"https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/{PinnedReleaseTag}/{PinnedAssetName}");
-
-
-    private const string DocumentationUrl = "https://mpv.io/installation/";
-    private static readonly HttpClient SharedHttpClient = new();
-    private static readonly SemaphoreSlim InstallationGate = new(1, 1);
+        $"https://github.com/zhongfly/mpv-winbuild/releases/download/{PinnedReleaseTag}/{PinnedAssetName}");
 
     private readonly HttpClient httpClient;
 
-    /// <summary>
-    /// <paramref name="httpClient"/>를 지정하면 테스트나 호출자 소유의 전송 계층을 사용한다.
-    /// 지정하지 않으면 앱 전체에서 공유하는 HttpClient를 사용한다.
-    /// </summary>
     public MpvAutoInstaller(HttpClient? httpClient = null, string? installDirectory = null)
     {
         this.httpClient = httpClient ?? SharedHttpClient;
-        string directory = string.IsNullOrWhiteSpace(installDirectory)
-            ? MpvInstallerFileStore.GetDefaultInstallDirectory()
-            : installDirectory!;
-        InstallDirectory = Path.GetFullPath(directory);
+        MpvRuntimePackage? package = TryGetCurrentPackage();
+        string defaultDirectory = package is null
+            ? Path.Combine(GetInstallRoot(), "unsupported")
+            : Path.Combine(GetInstallRoot(), package.InstallId);
+        InstallDirectory = Path.GetFullPath(
+            string.IsNullOrWhiteSpace(installDirectory) ? defaultDirectory : installDirectory);
     }
 
-    /// <summary>압축을 풀고 설치할 사용자 로컬 디렉터리다.</summary>
     public string InstallDirectory { get; }
 
-    /// <summary>현재 프로세스가 요구하는 Windows x64 자동 설치를 지원하는지 나타낸다.</summary>
-    public static bool IsWindowsInstallationSupported
-        => OperatingSystem.IsWindows()
-            && Environment.Is64BitOperatingSystem
-            && RuntimeInformation.OSArchitecture == Architecture.X64;
+    /// <summary>현재 운영체제와 아키텍처에서 내부 자동 설치를 제공하는지 나타낸다.</summary>
+    public static bool IsAutomaticInstallationSupported => TryGetCurrentPackage() is not null;
 
     /// <summary>
-    /// 최신 Windows 빌드를 설치하고 설치된 <c>libmpv-2.dll</c>의 절대 경로를 반환한다.
-    /// 취소 시 <see cref="OperationCanceledException"/>을 그대로 전달한다.
+    /// 이전 호출부와의 호환 이름이다. 현재는 Windows뿐 아니라 지원 데스크톱 플랫폼 전체를 뜻한다.
     /// </summary>
+    public static bool IsWindowsInstallationSupported => IsAutomaticInstallationSupported;
+
     public async Task<string> InstallAsync(
         IProgress<MpvInstallProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        EnsureWindowsInstallationSupported();
+        MpvRuntimePackage package = GetCurrentPackage();
         await InstallationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        return await InstallAfterGateAsync(progress, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (TryFindInstalledLibrary(InstallDirectory, package, out string? installedPath))
+            {
+                progress?.Report(new(MpvInstallStage.Completed, package.AssetName, 1, 1));
+                return installedPath!;
+            }
+
+            return await InstallPackageAsync(package, progress, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            InstallationGate.Release();
+        }
     }
 
-    /// <summary>현재 운영체제에 맞는 수동 패키지 설치 안내를 반환한다.</summary>
+    /// <summary>이미 내려받은 검증 런타임이 있으면 네트워크 없이 경로를 돌려준다.</summary>
+    public static bool TryFindInstalledLibrary(out string? libraryPath)
+    {
+        MpvRuntimePackage? package = TryGetCurrentPackage();
+        if (package is null)
+        {
+            libraryPath = null;
+            return false;
+        }
+
+        string directory = Path.Combine(GetInstallRoot(), package.InstallId);
+        return TryFindInstalledLibrary(directory, package, out libraryPath);
+    }
+
     public static MpvPackageInstallInstructions GetPackageManagerInstructions()
     {
         MpvPackagePlatform platform = OperatingSystem.IsMacOS()
@@ -174,9 +199,7 @@ public sealed class MpvAutoInstaller
         return GetPackageManagerInstructions(platform);
     }
 
-    /// <summary>지정한 운영체제의 패키지 매니저 명령 안내를 반환한다.</summary>
-    public static MpvPackageInstallInstructions GetPackageManagerInstructions(
-        MpvPackagePlatform platform)
+    public static MpvPackageInstallInstructions GetPackageManagerInstructions(MpvPackagePlatform platform)
         => platform switch
         {
             MpvPackagePlatform.MacOS => new(platform, ["brew install mpv"], DocumentationUrl),
@@ -188,22 +211,180 @@ public sealed class MpvAutoInstaller
             _ => new(platform, [], DocumentationUrl),
         };
 
-    private async Task<string> InstallAfterGateAsync(
+    private async Task<string> InstallPackageAsync(
+        MpvRuntimePackage package,
         IProgress<MpvInstallProgress>? progress,
         CancellationToken cancellationToken)
     {
-        MpvInstallerWorkspace? workspace = null;
+        string? parent = Path.GetDirectoryName(InstallDirectory);
+        if (string.IsNullOrWhiteSpace(parent))
+        {
+            throw Failure(MpvAutoInstallErrorKind.InstallationFailed, "libmpv 설치 경로를 확인할 수 없습니다.");
+        }
+
+        Directory.CreateDirectory(parent);
+        string workspace = Path.Combine(parent, $".libmpv-install-{Guid.NewGuid():N}");
+        string archivePath = Path.Combine(workspace, package.AssetName);
+        string stagingPath = Path.Combine(workspace, "staging");
+        Directory.CreateDirectory(workspace);
         try
         {
-            workspace = MpvInstallerWorkspace.Create(InstallDirectory);
-            Report(progress, new(MpvInstallStage.FetchingRelease, null, 0, null));
-            GitHubAsset asset = await MpvInstallerTransport
-                .GetLatestAssetAsync(httpClient, cancellationToken)
-                .ConfigureAwait(false);
-            await DownloadAndExtractAsync(workspace, asset, progress, cancellationToken)
-                .ConfigureAwait(false);
-            return await CommitAsync(workspace, asset, progress, cancellationToken)
-                .ConfigureAwait(false);
+            progress?.Report(new(MpvInstallStage.FetchingRelease, package.AssetName, 0, package.AssetLength));
+            await DownloadAsync(package, archivePath, progress, cancellationToken).ConfigureAwait(false);
+            Directory.CreateDirectory(stagingPath);
+            await ExtractAsync(package, archivePath, stagingPath, progress, cancellationToken).ConfigureAwait(false);
+            string libraryPath = FindLibrary(stagingPath, package);
+            WriteProvenance(stagingPath, package);
+            progress?.Report(new(MpvInstallStage.Installing, package.AssetName, 0, null));
+            string relativeLibraryPath = Path.GetRelativePath(stagingPath, libraryPath);
+            CommitInstallation(stagingPath, InstallDirectory);
+            string installedPath = Path.GetFullPath(Path.Combine(InstallDirectory, relativeLibraryPath));
+            progress?.Report(new(MpvInstallStage.Completed, package.AssetName, 1, 1));
+            return installedPath;
+        }
+        finally
+        {
+            TryDeleteDirectory(workspace);
+        }
+    }
+
+    private async Task DownloadAsync(
+        MpvRuntimePackage package,
+        string destinationPath,
+        IProgress<MpvInstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        using HttpRequestMessage request = new(HttpMethod.Get, package.DownloadUri);
+        request.Headers.UserAgent.ParseAdd("yttStudio/0.2.3");
+        using HttpResponseMessage response = await httpClient
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            .ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw Failure(MpvAutoInstallErrorKind.DownloadFailed,
+                $"libmpv 런타임 다운로드에 실패했습니다: HTTP {(int)response.StatusCode}");
+        }
+
+        Uri finalUri = response.RequestMessage?.RequestUri ?? package.DownloadUri;
+        if (finalUri.Scheme != Uri.UriSchemeHttps ||
+            !AllowedDownloadHosts.Contains(finalUri.Host, StringComparer.OrdinalIgnoreCase))
+        {
+            throw Failure(MpvAutoInstallErrorKind.DownloadFailed,
+                $"허용하지 않은 다운로드 호스트입니다: {finalUri.Host}");
+        }
+
+        long? contentLength = response.Content.Headers.ContentLength;
+        if (contentLength is > MaximumArchiveBytes ||
+            contentLength is long exactLength && exactLength != package.AssetLength)
+        {
+            throw Failure(MpvAutoInstallErrorKind.DownloadFailed, "libmpv 런타임 파일 크기가 예상과 다릅니다.");
+        }
+
+        await using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        await using FileStream output = new(
+            destinationPath,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            BufferSize,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        byte[] buffer = new byte[BufferSize];
+        long transferred = 0;
+        while (true)
+        {
+            int read = await input.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+            {
+                break;
+            }
+
+            transferred = checked(transferred + read);
+            if (transferred > MaximumArchiveBytes || transferred > package.AssetLength)
+            {
+                throw Failure(MpvAutoInstallErrorKind.DownloadFailed, "libmpv 런타임 파일이 예상 크기를 초과했습니다.");
+            }
+
+            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            progress?.Report(new(MpvInstallStage.DownloadingArchive, package.AssetName, transferred, package.AssetLength));
+        }
+
+        await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+        if (transferred != package.AssetLength)
+        {
+            throw Failure(MpvAutoInstallErrorKind.DownloadFailed, "libmpv 런타임 파일 크기가 예상과 다릅니다.");
+        }
+
+        await using FileStream verifyStream = new(destinationPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        byte[] hash = await SHA256.HashDataAsync(verifyStream, cancellationToken).ConfigureAwait(false);
+        string actualHash = Convert.ToHexStringLower(hash);
+        if (!string.Equals(actualHash, package.Sha256, StringComparison.OrdinalIgnoreCase))
+        {
+            throw Failure(MpvAutoInstallErrorKind.DownloadFailed, "libmpv 런타임 SHA-256 검증에 실패했습니다.");
+        }
+    }
+
+    private static async Task ExtractAsync(
+        MpvRuntimePackage package,
+        string archivePath,
+        string stagingPath,
+        IProgress<MpvInstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using IArchive archive = ArchiveFactory.OpenArchive(archivePath);
+            long extractedBytes = 0;
+            int entryCount = 0;
+            foreach (IArchiveEntry entry in archive.Entries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (++entryCount > MaximumEntryCount)
+                {
+                    throw Failure(MpvAutoInstallErrorKind.ArchiveExtractionFailed, "압축 항목 수가 제한을 초과했습니다.");
+                }
+
+                string key = (entry.Key ?? string.Empty).Replace('\\', '/');
+                if (!TryGetRelativeEntry(package, key, out string relativePath))
+                {
+                    continue;
+                }
+
+                string destinationPath = GetSafeDestinationPath(stagingPath, relativePath);
+                if (entry.IsDirectory)
+                {
+                    Directory.CreateDirectory(destinationPath);
+                    continue;
+                }
+
+                string? directory = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                await using Stream input = entry.OpenEntryStream();
+                await using FileStream output = new(destinationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                byte[] buffer = new byte[BufferSize];
+                while (true)
+                {
+                    int read = await input.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+                    if (read == 0)
+                    {
+                        break;
+                    }
+
+                    extractedBytes = checked(extractedBytes + read);
+                    if (extractedBytes > MaximumExtractedBytes)
+                    {
+                        throw Failure(MpvAutoInstallErrorKind.ArchiveExtractionFailed,
+                            "압축 해제 크기가 제한을 초과했습니다.");
+                    }
+
+                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                }
+
+                progress?.Report(new(MpvInstallStage.ExtractingArchive, package.AssetName, extractedBytes, null));
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -213,75 +394,221 @@ public sealed class MpvAutoInstaller
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            throw new MpvAutoInstallException(
-                MpvAutoInstallErrorKind.InstallationFailed,
-                "libmpv 설치에 실패했습니다.",
-                exception);
-        }
-        finally
-        {
-            workspace?.Cleanup();
-            InstallationGate.Release();
+            throw Failure(MpvAutoInstallErrorKind.ArchiveExtractionFailed, "libmpv 런타임 압축을 해제하지 못했습니다.", exception);
         }
     }
 
-    private async Task DownloadAndExtractAsync(
-        MpvInstallerWorkspace workspace,
-        GitHubAsset asset,
-        IProgress<MpvInstallProgress>? progress,
-        CancellationToken cancellationToken)
+    private static bool TryGetRelativeEntry(MpvRuntimePackage package, string key, out string relativePath)
     {
-        await MpvInstallerTransport.DownloadArchiveAsync(
-                httpClient,
-                asset,
-                workspace.ArchivePath,
-                progress,
-                cancellationToken)
-            .ConfigureAwait(false);
-        workspace.CreateStagingDirectory();
-        Report(progress, new(MpvInstallStage.ExtractingArchive, asset.Name, 0, null));
-        await MpvArchiveExtractor.ExtractAsync(
-                workspace.StagingDirectory,
-                asset.Name,
-                workspace.ArchivePath,
-                progress,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    private static Task<string> CommitAsync(
-        MpvInstallerWorkspace workspace,
-        GitHubAsset asset,
-        IProgress<MpvInstallProgress>? progress,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        Report(progress, new(MpvInstallStage.Installing, asset.Name, 0, null));
-        string relativeLibraryPath = MpvArchiveExtractor.FindLibraryRelativePath(
-            workspace.StagingDirectory);
-        string installedPath = MpvInstallerFileStore.CommitInstallation(
-            workspace.StagingDirectory,
-            relativeLibraryPath,
-            workspace.InstallDirectory);
-        workspace.MarkCommitted();
-        Report(progress, new(MpvInstallStage.Completed, asset.Name, 1, 1));
-        return Task.FromResult(installedPath);
-    }
-
-    private static void EnsureWindowsInstallationSupported()
-    {
-        if (!IsWindowsInstallationSupported)
+        relativePath = string.Empty;
+        if (string.IsNullOrWhiteSpace(key) || key.StartsWith('/', StringComparison.Ordinal))
         {
-            throw new MpvAutoInstallException(
-                MpvAutoInstallErrorKind.UnsupportedPlatform,
-                "libmpv 자동 설치는 Windows x64에서만 지원됩니다.");
+            return false;
+        }
+
+        if (package.EntryPrefix is null)
+        {
+            relativePath = key;
+            return true;
+        }
+
+        if (!key.StartsWith(package.EntryPrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        relativePath = key[package.EntryPrefix.Length..];
+        return relativePath.Length > 0;
+    }
+
+    private static string GetSafeDestinationPath(string stagingPath, string relativePath)
+    {
+        if (Path.IsPathRooted(relativePath))
+        {
+            throw Failure(MpvAutoInstallErrorKind.ArchiveExtractionFailed, "절대 경로 압축 항목을 차단했습니다.");
+        }
+
+        string root = Path.GetFullPath(stagingPath) + Path.DirectorySeparatorChar;
+        string destination = Path.GetFullPath(Path.Combine(stagingPath,
+            relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        StringComparison comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        if (!destination.StartsWith(root, comparison))
+        {
+            throw Failure(MpvAutoInstallErrorKind.ArchiveExtractionFailed, "설치 영역을 벗어나는 압축 항목을 차단했습니다.");
+        }
+
+        return destination;
+    }
+
+    private static string FindLibrary(string directory, MpvRuntimePackage package)
+    {
+        foreach (string name in package.LibraryNames)
+        {
+            string? match = Directory.EnumerateFiles(directory, name, SearchOption.AllDirectories).FirstOrDefault();
+            if (match is not null)
+            {
+                return match;
+            }
+        }
+
+        throw Failure(MpvAutoInstallErrorKind.LibraryNotFound, "설치 자산에서 호환되는 libmpv를 찾지 못했습니다.");
+    }
+
+    private static bool TryFindInstalledLibrary(
+        string directory,
+        MpvRuntimePackage package,
+        out string? libraryPath)
+    {
+        if (Directory.Exists(directory))
+        {
+            foreach (string name in package.LibraryNames)
+            {
+                libraryPath = Directory.EnumerateFiles(directory, name, SearchOption.AllDirectories).FirstOrDefault();
+                if (libraryPath is not null)
+                {
+                    return true;
+                }
+            }
+        }
+
+        libraryPath = null;
+        return false;
+    }
+
+    private static void WriteProvenance(string stagingPath, MpvRuntimePackage package)
+    {
+        string text = $"""
+            yttStudio libmpv runtime provenance
+
+            Asset: {package.AssetName}
+            SHA-256: {package.Sha256}
+            Upstream: {package.UpstreamUrl}
+            Corresponding source: {package.CorrespondingSourceUrl}
+
+            This runtime remains subject to its upstream license. yttStudio does not relicense it under MIT.
+            """;
+        File.WriteAllText(Path.Combine(stagingPath, "YTTSTUDIO-RUNTIME-SOURCE.txt"), text);
+    }
+
+    private static void CommitInstallation(string stagingPath, string installDirectory)
+    {
+        string backupDirectory = installDirectory + $".backup-{Guid.NewGuid():N}";
+        bool movedExisting = false;
+        try
+        {
+            if (Directory.Exists(installDirectory))
+            {
+                Directory.Move(installDirectory, backupDirectory);
+                movedExisting = true;
+            }
+
+            Directory.Move(stagingPath, installDirectory);
+            if (movedExisting && Directory.Exists(backupDirectory))
+            {
+                Directory.Delete(backupDirectory, recursive: true);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            if (movedExisting && !Directory.Exists(installDirectory) && Directory.Exists(backupDirectory))
+            {
+                try
+                {
+                    Directory.Move(backupDirectory, installDirectory);
+                }
+                catch (Exception restoreException) when (restoreException is IOException or UnauthorizedAccessException)
+                {
+                    Serilog.Log.Error(restoreException, "libmpv 기존 설치 복원 실패: {Path}", backupDirectory);
+                }
+            }
+
+            throw Failure(MpvAutoInstallErrorKind.InstallationFailed, "libmpv 설치 디렉터리를 교체하지 못했습니다.", exception);
         }
     }
 
-    private static void Report(
-        IProgress<MpvInstallProgress>? progress,
-        MpvInstallProgress value)
-        => progress?.Report(value);
+    private static MpvRuntimePackage GetCurrentPackage()
+        => TryGetCurrentPackage() ?? throw Failure(
+            MpvAutoInstallErrorKind.UnsupportedPlatform,
+            "이 운영체제 또는 아키텍처에서는 libmpv 자동 설치를 지원하지 않습니다.");
+
+    private static MpvRuntimePackage? TryGetCurrentPackage()
+    {
+        if (OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.X64)
+        {
+            return new(
+                $"windows-x64-{PinnedReleaseTag}",
+                PinnedAssetName,
+                PinnedAssetUri,
+                PinnedAssetSha256,
+                PinnedAssetLength,
+                null,
+                ["libmpv-2.dll", "mpv-2.dll"],
+                $"https://github.com/zhongfly/mpv-winbuild/releases/tag/{PinnedReleaseTag}",
+                "https://github.com/zhongfly/mpv-winbuild");
+        }
+
+        if (OperatingSystem.IsMacOS() && RuntimeInformation.OSArchitecture == Architecture.Arm64)
+        {
+            return CreateKMediaPackage(
+                "macos-arm64",
+                "META-INF/kmediampv/native/macos-aarch64/",
+                ["libmpv.2.dylib", "libmpv.dylib"]);
+        }
+
+        if (OperatingSystem.IsLinux() && RuntimeInformation.OSArchitecture == Architecture.X64)
+        {
+            return CreateKMediaPackage(
+                "linux-x64",
+                "META-INF/kmediampv/native/linux-x86_64/",
+                ["libmpv.so.2", "libmpv.so"]);
+        }
+
+        return null;
+    }
+
+    private static MpvRuntimePackage CreateKMediaPackage(
+        string platformId,
+        string entryPrefix,
+        IReadOnlyList<string> libraryNames)
+        => new(
+            $"{platformId}-kmediampv-{KMediaVersion}",
+            KMediaAssetName,
+            new Uri($"{KMediaReleaseBase}/{KMediaAssetName}"),
+            KMediaAssetSha256,
+            KMediaAssetLength,
+            entryPrefix,
+            libraryNames,
+            "https://github.com/Shusek/KMediaMpv/releases/tag/v0.2.9",
+            $"{KMediaReleaseBase}/kmedia-mpv-0.2.9-corresponding-source.tar.gz");
+
+    private static string GetInstallRoot()
+        => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "YttStudio",
+            "libmpv");
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Serilog.Log.Warning(exception, "libmpv 임시 설치 경로 정리 실패: {Path}", path);
+        }
+    }
+
+    private static MpvAutoInstallException Failure(
+        MpvAutoInstallErrorKind kind,
+        string message,
+        Exception? exception = null)
+        => new(kind, message, exception);
 }
