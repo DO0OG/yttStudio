@@ -33,8 +33,21 @@ public sealed partial class MainWindowViewModel
             bool created = ytdlpPath is null
                 ? MpvVideoSource.TryCreate(out MpvVideoSource? nativeSource, out diagnostic)
                 : MpvVideoSource.TryCreate(out nativeSource, out diagnostic, ytdlpPath);
-            source = nativeSource;
-            return created;
+            if (created)
+            {
+                source = nativeSource;
+                return true;
+            }
+
+            if (MpvAutoInstaller.IsAutomaticInstallationSupported)
+            {
+                source = new AutoInstallingVideoSource(mpvAutoInstaller ?? new MpvAutoInstaller());
+                diagnostic = $"{diagnostic}; 검증된 libmpv 자동 설치 대기";
+                return true;
+            }
+
+            source = null;
+            return false;
         }
 
         try
@@ -66,6 +79,10 @@ public sealed partial class MainWindowViewModel
                 VideoStatus = $"libmpv {nativeSource.LibraryVersion} · SW 콜백 렌더링";
                 Serilog.Log.Information("libmpv initialized: {Version}; {Path}", nativeSource.LibraryVersion,
                     nativeSource.LibraryPath);
+            }
+            else if (loadedSource is AutoInstallingVideoSource)
+            {
+                VideoStatus = "libmpv 자동 설치 준비";
             }
             else
             {
