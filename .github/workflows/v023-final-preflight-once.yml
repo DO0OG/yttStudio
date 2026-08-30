@@ -27,29 +27,23 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-
           path = Path('docs/DEPENDENCIES.md')
           text = path.read_text(encoding='utf-8')
           legacy = '## M5 배포 전 license gate'
           current = '## v0.2.3 릴리스 license gate'
-          replacement = '''## v0.2.3 릴리스 license gate
-
-정식 yttStudio 릴리스 ZIP/installer/DMG/AppImage에는 `yt-dlp` standalone 실행 파일과 `libmpv`/KMediaMpv 네이티브 런타임을 직접 포함하지 않는다. 릴리스 워크플로는 해당 파일들이 publish 디렉터리에 존재하면 실패한다.
-
-반드시 포함하는 것은 yttStudio의 `LICENSE`, `THIRD-PARTY-NOTICES.txt`, YTSubConverter MIT 고지, Roboto Apache-2.0 및 Liberation OFL 고지다. 자동 설치되는 libmpv/yt-dlp는 yttStudio 패키지 밖의 사용자 영역에 설치되며 각각 upstream 라이선스를 그대로 따른다.
-
-릴리스 직전에는 코드에 pin한 libmpv/yt-dlp 자산을 실제로 다시 내려받아 SHA-256, 파일 크기, 필요한 libmpv 아카이브 경로와 API 심볼을 확인한다. pin을 바꾸려면 코드 상수, 이 문서, 제3자 고지, QA 기록을 함께 갱신해야 한다.
-
-KMediaMpv v0.2.9에서 yttStudio가 사용하는 실제 라이브러리 파일명은 macOS arm64의 `libkmediampv_mpv.dylib`, Linux x64의 `libkmediampv_mpv.so`다. KMediaMpv 런타임은 corresponding-source URL을 provenance에 기록하고, Windows LGPL 빌드는 정확한 upstream 릴리스와 빌드 저장소를 provenance에 기록한다. 사용자 지정 libmpv는 해당 배포자가 제공한 라이선스와 build configuration을 별도로 따른다.
-'''
+          replacement = (
+              '## v0.2.3 릴리스 license gate\n\n'
+              '정식 yttStudio 릴리스 ZIP/installer/DMG/AppImage에는 `yt-dlp` standalone 실행 파일과 `libmpv`/KMediaMpv 네이티브 런타임을 직접 포함하지 않는다. 릴리스 워크플로는 해당 파일들이 publish 디렉터리에 존재하면 실패한다.\n\n'
+              '반드시 포함하는 것은 yttStudio의 `LICENSE`, `THIRD-PARTY-NOTICES.txt`, YTSubConverter MIT 고지, Roboto Apache-2.0 및 Liberation OFL 고지다. 자동 설치되는 libmpv/yt-dlp는 yttStudio 패키지 밖의 사용자 영역에 설치되며 각각 upstream 라이선스를 그대로 따른다.\n\n'
+              '릴리스 직전에는 코드에 pin한 libmpv/yt-dlp 자산을 실제로 다시 내려받아 SHA-256, 파일 크기, 필요한 libmpv 아카이브 경로와 API 심볼을 확인한다. pin을 바꾸려면 코드 상수, 이 문서, 제3자 고지, QA 기록을 함께 갱신해야 한다.\n\n'
+              'KMediaMpv v0.2.9에서 yttStudio가 사용하는 실제 라이브러리 파일명은 macOS arm64의 `libkmediampv_mpv.dylib`, Linux x64의 `libkmediampv_mpv.so`다. KMediaMpv 런타임은 corresponding-source URL을 provenance에 기록하고, Windows LGPL 빌드는 정확한 upstream 릴리스와 빌드 저장소를 provenance에 기록한다. 사용자 지정 libmpv는 해당 배포자가 제공한 라이선스와 build configuration을 별도로 따른다.\n'
+          )
           if legacy in text:
               text = text[:text.index(legacy)] + replacement
           elif current not in text:
               raise SystemExit('DEPENDENCIES license gate marker not found')
           path.write_text(text, encoding='utf-8')
-
-          workflow = Path('.github/workflows/v023-final-preflight-once.yml')
-          workflow.unlink()
+          Path('.github/workflows/v023-final-preflight-once.yml').unlink()
           PY
 
       - name: 문서·배포 정책 모순 검사
@@ -58,7 +52,7 @@ KMediaMpv v0.2.9에서 yttStudio가 사용하는 실제 라이브러리 파일�
           set -euo pipefail
           test ! -e kmedia.jar
           grep -q '# yttStudio v0.2.3' .github/RELEASE_NOTES.md
-          grep -q "libkmediampv_\*" .github/workflows/release.yml
+          grep -Fq "libkmediampv_*" .github/workflows/release.yml
           grep -q 'libkmediampv_mpv.dylib' src/YttStudio.App/MpvAutoInstaller.cs
           grep -q 'libkmediampv_mpv.so' src/YttStudio.App/MpvAutoInstaller.cs
           ! grep -R -n --include='*.md' 'M5 배포 전 license gate' README*.md docs .github/RELEASE_NOTES.md
@@ -74,20 +68,17 @@ KMediaMpv v0.2.9에서 yttStudio가 사용하는 실제 라이브러리 파일�
           trap 'rm -rf "$work"' EXIT
           cd "$work"
 
-          curl --fail --location --retry 3 --output mpv-win.7z \
-            'https://github.com/zhongfly/mpv-winbuild/releases/download/2026-08-29-e8673660ab/mpv-dev-lgpl-x86_64-20260829-git-e8673660ab.7z'
+          curl --fail --location --retry 3 --output mpv-win.7z 'https://github.com/zhongfly/mpv-winbuild/releases/download/2026-08-29-e8673660ab/mpv-dev-lgpl-x86_64-20260829-git-e8673660ab.7z'
           echo '78260166265fbc09b3bee75ee3464eb0f6bbaa8ecd172786e33c22bbf8a3cb47  mpv-win.7z' | sha256sum --check --strict
           test "$(stat -c%s mpv-win.7z)" = '27984604'
           7z l mpv-win.7z | grep -E '(^|[[:space:]])libmpv-2\.dll$'
 
-          curl --fail --location --retry 3 --output kmedia.jar \
-            'https://github.com/Shusek/KMediaMpv/releases/download/v0.2.9/kmedia-mpv-0.2.9-runtime-desktop.jar'
+          curl --fail --location --retry 3 --output kmedia.jar 'https://github.com/Shusek/KMediaMpv/releases/download/v0.2.9/kmedia-mpv-0.2.9-runtime-desktop.jar'
           echo '4250b47144de085c7963f4bdbe99e995b9b2b0374e32a14ebe9d27fd38a67bef  kmedia.jar' | sha256sum --check --strict
           test "$(stat -c%s kmedia.jar)" = '25946200'
           unzip -Z1 kmedia.jar | grep -Fx 'META-INF/kmediampv/native/macos-aarch64/libkmediampv_mpv.dylib'
           unzip -Z1 kmedia.jar | grep -Fx 'META-INF/kmediampv/native/linux-x86_64/libkmediampv_mpv.so'
-          curl --fail --location --retry 3 --head \
-            'https://github.com/Shusek/KMediaMpv/releases/download/v0.2.9/kmedia-mpv-0.2.9-corresponding-source.tar.gz' >/dev/null
+          curl --fail --location --retry 3 --head 'https://github.com/Shusek/KMediaMpv/releases/download/v0.2.9/kmedia-mpv-0.2.9-corresponding-source.tar.gz' >/dev/null
 
           unzip -q kmedia.jar 'META-INF/kmediampv/native/linux-x86_64/*'
           linux_lib='META-INF/kmediampv/native/linux-x86_64/libkmediampv_mpv.so'
@@ -96,16 +87,11 @@ KMediaMpv v0.2.9에서 yttStudio가 사용하는 실제 라이브러리 파일�
           done
           readelf -d "$linux_lib" | grep -F 'Library runpath: [$ORIGIN]'
 
-          curl --fail --location --retry 3 --output yt-dlp.exe \
-            'https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp.exe'
+          curl --fail --location --retry 3 --output yt-dlp.exe 'https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp.exe'
           echo '66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a  yt-dlp.exe' | sha256sum --check --strict
-
-          curl --fail --location --retry 3 --output yt-dlp_macos \
-            'https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_macos'
+          curl --fail --location --retry 3 --output yt-dlp_macos 'https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_macos'
           echo '0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202  yt-dlp_macos' | sha256sum --check --strict
-
-          curl --fail --location --retry 3 --output yt-dlp_linux \
-            'https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_linux'
+          curl --fail --location --retry 3 --output yt-dlp_linux 'https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_linux'
           echo '58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a  yt-dlp_linux' | sha256sum --check --strict
 
       - name: Release 빌드
@@ -145,8 +131,7 @@ KMediaMpv v0.2.9에서 yttStudio가 사용하는 실제 라이브러리 파일�
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 --output kmedia.jar \
-            'https://github.com/Shusek/KMediaMpv/releases/download/v0.2.9/kmedia-mpv-0.2.9-runtime-desktop.jar'
+          curl --fail --location --retry 3 --output kmedia.jar 'https://github.com/Shusek/KMediaMpv/releases/download/v0.2.9/kmedia-mpv-0.2.9-runtime-desktop.jar'
           actual="$(shasum -a 256 kmedia.jar | awk '{print $1}')"
           test "$actual" = '4250b47144de085c7963f4bdbe99e995b9b2b0374e32a14ebe9d27fd38a67bef'
           unzip -q kmedia.jar 'META-INF/kmediampv/native/macos-aarch64/*'
