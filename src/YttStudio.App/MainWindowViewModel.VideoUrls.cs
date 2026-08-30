@@ -5,6 +5,7 @@ namespace YttStudio.App;
 /// <summary>YouTube 주소 입력과 재생 실패 안내를 담당한다.</summary>
 public sealed partial class MainWindowViewModel
 {
+    private static readonly YtDlpAutoInstaller YouTubeYtDlpInstaller = new();
     private string? loadedVideoOriginalUrl;
     private readonly object videoLoadGate = new();
     private CancellationTokenSource? activeVideoLoadCancellation;
@@ -62,6 +63,16 @@ public sealed partial class MainWindowViewModel
         long generation)
     {
         Status = Loc["YouTubePreflight"];
+
+        // 릴리스 패키지에 GPL 계열 standalone yt-dlp를 재배포하지 않는다. 실제 재생
+        // 경로에서는 사용자가 설치한 yt-dlp를 우선 쓰고, 없을 때만 고정된 공식 릴리스
+        // 바이너리를 사용자 로컬 영역에 내려받아 SHA-256을 검증한 뒤 사용한다.
+        // 테스트/대체 영상 소스는 외부 네트워크에 의존하지 않도록 이 단계를 건너뛴다.
+        if (videoSourceFactory is null)
+        {
+            await YouTubeYtDlpInstaller.EnsureAvailableAsync(cancellationToken);
+        }
+
         await youtubeProbe(normalizedUrl, cancellationToken);
         if (!IsCurrentVideoLoad(generation))
         {

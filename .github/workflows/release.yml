@@ -16,10 +16,6 @@ permissions:
 jobs:
   build:
     name: ${{ matrix.rid }}
-    env:
-      # Keep the release binary pinned and verify the downloaded manifest as well.
-      YTDLP_VERSION: "2026.08.19"
-      YTDLP_SUMS_SHA256: "a63701f30755cb4d9317950d69703e9d751d490cb1b7059e1bb501a353fe7dcb"
     strategy:
       fail-fast: false
       matrix:
@@ -27,21 +23,12 @@ jobs:
           - os: windows-latest
             rid: win-x64
             archive: zip
-            yt_dlp_asset: yt-dlp.exe
-            yt_dlp_output: yt-dlp.exe
-            yt_dlp_sha256: "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a"
           - os: macos-latest
             rid: osx-arm64
             archive: mac
-            yt_dlp_asset: yt-dlp_macos
-            yt_dlp_output: yt-dlp
-            yt_dlp_sha256: "0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202"
           - os: ubuntu-latest
             rid: linux-x64
             archive: tar
-            yt_dlp_asset: yt-dlp_linux
-            yt_dlp_output: yt-dlp
-            yt_dlp_sha256: "58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a"
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -66,91 +53,37 @@ jobs:
         run: |
           dotnet publish src/YttStudio.App/YttStudio.App.csproj --configuration Release --runtime ${{ matrix.rid }} --self-contained true -p:Version=${{ steps.version.outputs.number }} -p:DebugType=none --output "publish/${{ matrix.rid }}"
 
-      - name: yt-dlp 번들 및 SHA256 검증 (Windows)
-        if: matrix.rid == 'win-x64'
-        shell: pwsh
-        env:
-          YTDLP_ASSET: ${{ matrix.yt_dlp_asset }}
-          YTDLP_OUTPUT: ${{ matrix.yt_dlp_output }}
-          YTDLP_SHA256: ${{ matrix.yt_dlp_sha256 }}
-        run: |
-          $ErrorActionPreference = "Stop"
-          $baseUrl = "https://github.com/yt-dlp/yt-dlp/releases/download/$env:YTDLP_VERSION"
-          $sumsPath = Join-Path $env:RUNNER_TEMP "SHA2-256SUMS"
-          $assetPath = Join-Path $env:RUNNER_TEMP $env:YTDLP_ASSET
-          $publishDir = Join-Path $PWD "publish\${{ matrix.rid }}"
-
-          Invoke-WebRequest -Uri "$baseUrl/SHA2-256SUMS" -OutFile $sumsPath
-          Invoke-WebRequest -Uri "$baseUrl/$env:YTDLP_ASSET" -OutFile $assetPath
-
-          $sumsHash = (Get-FileHash -LiteralPath $sumsPath -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($sumsHash -ne $env:YTDLP_SUMS_SHA256) {
-            throw "SHA2-256SUMS SHA256 mismatch: expected $env:YTDLP_SUMS_SHA256, got $sumsHash"
-          }
-
-          $sumLine = Get-Content -LiteralPath $sumsPath |
-            Where-Object { $_ -match ("\s" + [regex]::Escape($env:YTDLP_ASSET) + "$") } |
-            Select-Object -First 1
-          if (-not $sumLine) {
-            throw "The official SHA2-256SUMS has no entry for $env:YTDLP_ASSET"
-          }
-          $releaseHash = ($sumLine -split "\s+")[0].ToLowerInvariant()
-          if ($releaseHash -ne $env:YTDLP_SHA256) {
-            throw "Pinned yt-dlp SHA256 differs from SHA2-256SUMS: expected $env:YTDLP_SHA256, got $releaseHash"
-          }
-
-          $actualHash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actualHash -ne $releaseHash) {
-            throw "yt-dlp SHA256 mismatch: expected $releaseHash, got $actualHash"
-          }
-          Copy-Item -LiteralPath $assetPath -Destination (Join-Path $publishDir $env:YTDLP_OUTPUT) -Force
-
-      - name: yt-dlp 번들 및 SHA256 검증 (Unix)
-        if: matrix.rid != 'win-x64'
+      - name: 배포 라이선스 payload 준비
         shell: bash
-        env:
-          YTDLP_ASSET: ${{ matrix.yt_dlp_asset }}
-          YTDLP_OUTPUT: ${{ matrix.yt_dlp_output }}
-          YTDLP_SHA256: ${{ matrix.yt_dlp_sha256 }}
         run: |
           set -euo pipefail
-          base_url="https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}"
-          sums_path="$RUNNER_TEMP/SHA2-256SUMS"
-          asset_path="$RUNNER_TEMP/$YTDLP_ASSET"
           publish_dir="publish/${{ matrix.rid }}"
-
-          curl --fail --location --retry 3 --output "$sums_path" "$base_url/SHA2-256SUMS"
-          curl --fail --location --retry 3 --output "$asset_path" "$base_url/$YTDLP_ASSET"
-
-          if command -v sha256sum >/dev/null 2>&1; then
-            hash_file() { sha256sum "$1" | awk '{ print tolower($1) }'; }
+          mkdir -p "$publish_dir/licenses/fonts" "$publish_dir/licenses/YTSubConverter"
+          cp LICENSE "$publish_dir/LICENSE"
+          cp docs/THIRD-PARTY-NOTICES.md "$publish_dir/THIRD-PARTY-NOTICES.txt"
+          cp src/YttStudio.Render/Assets/Fonts/LICENSE-Roboto.txt "$publish_dir/licenses/fonts/LICENSE-Roboto.txt"
+          cp src/YttStudio.Render/Assets/Fonts/LICENSE-Liberation.txt "$publish_dir/licenses/fonts/LICENSE-Liberation.txt"
+          if [[ -f external/YTSubConverter/LICENSE ]]; then
+            cp external/YTSubConverter/LICENSE "$publish_dir/licenses/YTSubConverter/LICENSE.txt"
+          elif [[ -f external/YTSubConverter/LICENSE.txt ]]; then
+            cp external/YTSubConverter/LICENSE.txt "$publish_dir/licenses/YTSubConverter/LICENSE.txt"
           else
-            hash_file() { shasum -a 256 "$1" | awk '{ print tolower($1) }'; }
-          fi
-
-          sums_hash="$(hash_file "$sums_path")"
-          if [[ "$sums_hash" != "$YTDLP_SUMS_SHA256" ]]; then
-            echo "SHA2-256SUMS SHA256 mismatch: expected $YTDLP_SUMS_SHA256, got $sums_hash" >&2
+            echo "YTSubConverter license file is missing" >&2
             exit 1
           fi
 
-          release_hash="$(awk -v asset="$YTDLP_ASSET" '$2 == asset { print tolower($1); exit }' "$sums_path")"
-          if [[ -z "$release_hash" ]]; then
-            echo "The official SHA2-256SUMS has no entry for $YTDLP_ASSET" >&2
-            exit 1
-          fi
-          if [[ "$release_hash" != "$YTDLP_SHA256" ]]; then
-            echo "Pinned yt-dlp SHA256 differs from SHA2-256SUMS: expected $YTDLP_SHA256, got $release_hash" >&2
-            exit 1
-          fi
+          test -s "$publish_dir/LICENSE"
+          test -s "$publish_dir/THIRD-PARTY-NOTICES.txt"
+          test -s "$publish_dir/licenses/fonts/LICENSE-Roboto.txt"
+          test -s "$publish_dir/licenses/fonts/LICENSE-Liberation.txt"
+          test -s "$publish_dir/licenses/YTSubConverter/LICENSE.txt"
 
-          actual_hash="$(hash_file "$asset_path")"
-          if [[ "$actual_hash" != "$release_hash" ]]; then
-            echo "yt-dlp SHA256 mismatch: expected $release_hash, got $actual_hash" >&2
+          # yt-dlp는 사용자 요청 시 공식 upstream에서 내려받으므로 yttStudio 릴리스
+          # 산출물에 포함되어서는 안 된다.
+          if find "$publish_dir" -maxdepth 2 -type f \( -name 'yt-dlp' -o -name 'yt-dlp.exe' -o -name 'yt-dlp_macos' -o -name 'yt-dlp_linux' \) | grep -q .; then
+            echo "yt-dlp must not be bundled in yttStudio release artifacts" >&2
             exit 1
           fi
-          cp "$asset_path" "$publish_dir/$YTDLP_OUTPUT"
-          chmod +x "$publish_dir/$YTDLP_OUTPUT"
 
       - name: 압축 (zip)
         if: matrix.archive == 'zip'
@@ -175,7 +108,6 @@ jobs:
             "/DSourceDir=$PWD\publish\${{ matrix.rid }}",
             "/DOutputDir=$PWD\artifacts"
           )
-          # 한국어 메시지 파일은 Inno Setup 기본 배포에 없을 수 있다. 있을 때만 켠다.
           if (Test-Path "$inno\Languages\Korean.isl") { $defines += "/DHaveKorean" }
           & "$inno\ISCC.exe" $defines "packaging\windows\yttStudio.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup 컴파일 실패 ($LASTEXITCODE)" }
@@ -184,7 +116,6 @@ jobs:
         if: matrix.archive == 'mac'
         shell: bash
         env:
-          # macOS tar 가 확장 속성을 ._ 파일로 흘리지 않게 한다.
           COPYFILE_DISABLE: "1"
         run: |
           bash packaging/macos/build-macos.sh "publish/${{ matrix.rid }}" "${{ steps.version.outputs.number }}" bundle artifacts
@@ -228,8 +159,6 @@ jobs:
         run: |
           tag="${{ github.event.inputs.tag || github.ref_name }}"
           repo="${{ github.repository }}"
-          # 이미 있는 릴리즈에 다시 올릴 수 있어야 한다. 패키징을 고친 뒤 같은 태그로
-          # 자산만 교체하는 경우가 있기 때문이다.
           if gh release view "$tag" --repo "$repo" > /dev/null 2>&1; then
             gh release upload "$tag" --repo "$repo" --clobber artifacts/*
             gh release edit "$tag" --repo "$repo" --notes-file .github/RELEASE_NOTES.md

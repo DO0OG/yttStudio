@@ -88,11 +88,11 @@
 | 항목 | 언제 필요한가 |
 |---|---|
 | libmpv 2.0 이상 | **영상 재생.** 없어도 자막 편집·검증·저장은 정상 동작합니다 |
-| yt-dlp | **유튜브 주소로 열기.** 앱 디렉터리와 `PATH` 에서 찾습니다 |
+| yt-dlp | **유튜브 주소로 열기.** 사용자가 설치한 실행 파일을 앱 디렉터리 또는 `PATH` 에서 찾습니다 |
 
-libmpv 는 **도구 → 설정 → 영상** 탭에서 경로를 고르거나 Windows 에서 내려받을 수
-있습니다. 자세한 탐색 순서와 라이선스 사정은
-[의존성 문서](docs/DEPENDENCIES.md)에 있습니다.
+libmpv 는 **도구 → 설정 → 영상** 탭에서 경로를 지정할 수 있습니다. 제3자 바이너리는
+각 프로젝트의 별도 라이선스를 따르며 yttStudio의 MIT 라이선스로 재라이선스되지 않습니다.
+자세한 탐색 순서와 라이선스 사정은 [의존성 문서](docs/DEPENDENCIES.md)에 있습니다.
 
 ### 소스에서 빌드
 
@@ -144,8 +144,14 @@ dotnet run --project src/YttStudio.App -- samples/showcase.ass
 
 ## 라이선스
 
-[LICENSE](LICENSE) 를 참조하세요. 번들 폰트와 외부 라이브러리 고지는
+yttStudio 자체 소스 코드는 별도 표기가 없는 한 [MIT License](LICENSE)로 배포됩니다.
+번들 폰트와 외부 라이브러리·도구는 각각의 라이선스를 따르며, 자세한 고지는
 [제3자 고지](docs/THIRD-PARTY-NOTICES.md)에 있습니다.
+
+## 상표 및 비제휴 고지
+
+yttStudio는 독립적인 오픈소스 프로젝트이며 YouTube 또는 Google LLC와 제휴하거나,
+그들의 승인·후원으로 제공되는 공식 제품이 아닙니다. YouTube는 Google LLC의 상표입니다.
 
 ## 기여자
 
