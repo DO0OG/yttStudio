@@ -67,10 +67,7 @@ public sealed partial class MainWindowViewModel
             value => SnapThreshold = value,
             ApplyAutosaveSettings,
             () => VideoStatus,
-            // 특정 Shinchiro 빌드의 최종 GPL/LGPL 구성이 검증되기 전에는 앱에서
-            // libmpv 자동 설치를 제공하지 않는다. 사용자는 경로 지정 또는 OS 패키지
-            // 설치 안내를 통해 교체 가능한 동적 libmpv를 사용한다.
-            installMpv: null);
+            mpvAutoInstaller is null ? null : InstallMpvAndApplyAsync);
 
     private async Task ShowSettingsDialogAsync(Window owner)
     {
