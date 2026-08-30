@@ -14,9 +14,9 @@
 | yttStudio 자체 코드 | 낮은 위험 | MIT 유지, 루트 LICENSE를 릴리스에 포함 |
 | YTSubConverter.Shared | 낮은 위험 | MIT 고지 보존 및 릴리스 payload 포함 |
 | Roboto / Liberation 폰트 | 낮음~중간 | 각 라이선스를 최종 패키지에 포함 |
-| yt-dlp standalone 재배포 | 기존 높은 위험 | yttStudio 릴리스 직접 번들 제거 |
-| YouTube URL 기본 프리뷰 | 유지 | 필요 시 공식 yt-dlp 자산을 사용자 영역에 자동 설치 |
-| libmpv / FFmpeg | 검토 필요 | 검증되지 않은 Shinchiro 자동 설치 UI 비활성화, 사용자 설치/경로 지정 유지 |
+| yt-dlp standalone 재배포 | 기존 높은 위험 완화 | yttStudio 릴리스 직접 번들 제거, 필요 시 공식 upstream 고정 자산을 사용자 영역에 검증 설치 |
+| YouTube URL 기본 프리뷰 | 유지 | 공개 VOD 프리뷰를 기본 기능으로 유지하고 yt-dlp는 URL 해석/스트림 연동에만 사용 |
+| libmpv / FFmpeg | 고정 산출물 검증 | Shinchiro 기본 빌드 제거, Windows LGPL 전용 빌드와 macOS/Linux KMediaMpv 검증 런타임만 내부 설치 대상으로 pin |
 | 프로젝트 이름 `yttStudio` | 상표 검토 항목 | 현재 이름 유지, 비제휴 고지 추가 |
 
 ## yt-dlp
@@ -33,31 +33,41 @@ PyInstaller 및 포함된 제3자 구성 요소의 라이선스 조건을 함께
 
 - yttStudio GitHub Release에는 yt-dlp 실행 파일을 포함하지 않는다.
 - 사용자가 이미 설치한 yt-dlp가 있으면 이를 우선 사용한다.
-- 없으면 `YtDlpAutoInstaller`가 지원 RID에 맞는 공식 `yt-dlp/yt-dlp` release asset을
-  직접 내려받는다.
-- 버전과 SHA-256은 코드에 고정된다.
-- 검증된 파일만 사용자 LocalApplicationData 아래에 설치하고
-  `YTTSTUDIO_YTDLP_PATH`로 현재 프로세스에 전달한다.
+- 없으면 `YtDlpAutoInstaller`가 지원 RID에 맞는 공식 `yt-dlp/yt-dlp` release asset을 직접 내려받는다.
+- 버전·자산명·SHA-256은 코드에 고정한다.
+- 검증된 파일만 사용자 LocalApplicationData 아래에 설치하고 `YTTSTUDIO_YTDLP_PATH`로 현재 프로세스에 전달한다.
 - YouTube URL 프리뷰 UX는 기본 기능으로 유지한다.
 
 현재 pin:
 
 - yt-dlp: `2026.08.19`
 - Windows x64: `yt-dlp.exe`
-- macOS arm64 배포: `yt-dlp_macos`
+- macOS arm64: `yt-dlp_macos`
 - Linux x64: `yt-dlp_linux`
 
-새 버전으로 올릴 때는 release asset과 SHA-256을 함께 다시 검증해야 한다.
+새 버전으로 올릴 때는 공식 release asset과 SHA-256을 함께 다시 검증해야 한다.
 
 ## libmpv
 
-과거 Windows 자동 설치 대상으로 검토하던 Shinchiro 기본 빌드는 FFmpeg GPL/version3 구성이 확인되어 v0.2.3 자동 설치 대상에서 제거했다. 대신 **라이선스 목적이 명시되거나 검증 증빙이 제공되는 별도 런타임**만 pin한다.
+과거 Windows 자동 설치 대상으로 검토하던 Shinchiro 기본 빌드는 FFmpeg GPL/version3 구성이 확인되어 v0.2.3 자동 설치 대상에서 제거했다. 대신 **라이선스 목적이 명시되거나 검증 증빙이 제공되는 정확한 런타임 산출물**만 pin한다.
 
-현재 자동 설치 대상은 Windows x64의 `zhongfly/mpv-winbuild` LGPL 전용 개발 빌드와 macOS arm64/Linux x64의 `Shusek/KMediaMpv v0.2.9` 검증 런타임이다. 다운로드 URL·파일 길이·SHA-256을 코드에 고정하고, 허용된 HTTPS GitHub 호스트에서 받은 결과만 압축 해제한다. 설치 후 provenance 파일에 upstream과 corresponding-source 위치를 남긴다.
+현재 자동 설치 대상:
+
+- Windows x64: `zhongfly/mpv-winbuild`의 `mpv-dev-lgpl-x86_64-20260829-git-e8673660ab.7z`
+- macOS arm64 / Linux x64: `Shusek/KMediaMpv v0.2.9`의 `kmedia-mpv-0.2.9-runtime-desktop.jar` 중 해당 플랫폼 네이티브 트리
+
+다운로드 URL·파일 길이·SHA-256을 코드에 고정하고, 허용된 HTTPS GitHub 호스트에서 받은 결과만 압축 해제한다. 설치 후 provenance 파일에 upstream과 corresponding-source 위치를 남긴다.
+
+KMediaMpv v0.2.9의 실제 mpv 라이브러리 파일명은 다음과 같다.
+
+- macOS arm64: `libkmediampv_mpv.dylib`
+- Linux x64: `libkmediampv_mpv.so`
+
+Linux 고정 자산에서 yttStudio가 사용하는 mpv client/render API 심볼(`mpv_create`, `mpv_initialize`, `mpv_render_context_create`, `mpv_render_context_render` 등)을 확인했고, 런타임 의존 라이브러리는 `$ORIGIN` 기준으로 같은 추출 디렉터리에서 탐색하도록 구성되어 있다. macOS도 릴리스 전 사전 검증에서 실제 고정 자산의 dylib 및 API 심볼을 다시 확인한다.
 
 영상 열기는 libmpv 부재 상태에서도 비활성화되지 않는다. 지원 플랫폼에서는 첫 영상 열기가 내부 설치의 진입점이며, 설치가 끝나면 원래 영상 열기 요청을 계속 수행한다. 사용자가 지정한 `YTTSTUDIO_MPV_PATH` 또는 설정 경로는 계속 우선한다.
 
-yttStudio 릴리스 산출물에는 libmpv 바이너리를 직접 번들하지 않는다. 자동 설치된 런타임은 upstream 라이선스를 그대로 따르며 yttStudio의 MIT 라이선스로 재라이선스되지 않는다. 이 기록은 법률 자문이 아니라 배포 기술 경계를 추적하기 위한 감사 자료다.
+yttStudio 릴리스 산출물에는 libmpv/KMediaMpv 바이너리를 직접 번들하지 않는다. 자동 설치된 런타임은 upstream 라이선스를 그대로 따르며 yttStudio의 MIT 라이선스로 재라이선스되지 않는다.
 
 ## 릴리스 라이선스 gate
 
@@ -73,17 +83,18 @@ licenses/YTSubConverter/LICENSE.txt
 
 필수 파일 하나라도 없으면 release build를 실패시킨다.
 
-또한 publish 디렉터리에 다음 파일명이 존재하면 릴리스를 실패시킨다.
+또한 최종 publish 디렉터리에 다음 범주의 파일이 존재하면 릴리스를 실패시킨다.
 
 ```text
-yt-dlp
-yt-dlp.exe
-yt-dlp_macos
-yt-dlp_linux
+yt-dlp / yt-dlp.exe / yt-dlp_macos / yt-dlp_linux
+libmpv*.dll / mpv-2.dll
+libmpv*.dylib
+libmpv*.so*
+libkmediampv_*
+kmedia.jar / kmedia-mpv-*-runtime-desktop.jar
 ```
 
-따라서 향후 workflow가 변경되어도 yt-dlp standalone이 무심코 다시 릴리스에
-포함되는 것을 방지한다.
+따라서 향후 workflow가 변경되어도 yt-dlp standalone이나 자동 설치용 libmpv/KMediaMpv 런타임이 yttStudio 자체 릴리스에 무심코 포함되는 것을 방지한다.
 
 ## 브랜드 / 이름
 
@@ -96,8 +107,7 @@ yt-dlp_linux
 - README에 비제휴 고지 포함
 - YouTube 또는 Google LLC의 승인/후원을 암시하지 않음
 
-향후 YouTube API Services, Google OAuth/API verification을 직접 사용하거나 공식
-YouTube 제품으로 혼동되는 사례가 발생하면 이름과 브랜딩을 다시 검토한다.
+향후 YouTube API Services, Google OAuth/API verification을 직접 사용하거나 공식 YouTube 제품으로 혼동되는 사례가 발생하면 이름과 브랜딩을 다시 검토한다.
 
 ## 후속 감사 항목
 
@@ -107,8 +117,8 @@ YouTube 제품으로 혼동되는 사례가 발생하면 이름과 브랜딩을 
 2. YTSubConverter submodule pin 및 원본 MIT notice
 3. 폰트 파일 변경 여부와 OFL/Apache 조건
 4. yt-dlp pin/asset/hash 변경 여부
-5. libmpv 공식 제공 정책 변경 여부
-6. 최종 ZIP/installer/DMG/AppImage 내부의 실제 라이선스 payload
+5. libmpv/KMediaMpv pin, 실제 라이브러리 파일명, API 심볼 및 corresponding-source 변경 여부
+6. 최종 ZIP/installer/DMG/AppImage 내부의 실제 라이선스 payload와 외부 런타임 비포함 여부
 
 ## 1차 출처
 
@@ -117,5 +127,7 @@ YouTube 제품으로 혼동되는 사례가 발생하면 이름과 브랜딩을 
 - https://github.com/mpv-player/mpv/blob/master/Copyright
 - https://ffmpeg.org/legal.html
 - https://github.com/shinchiro/mpv-winbuild-cmake
+- https://github.com/zhongfly/mpv-winbuild
+- https://github.com/Shusek/KMediaMpv
 - https://developers.google.com/youtube/terms/branding-guidelines
 - https://about.google/brand-resource-center/
