@@ -1,0 +1,131 @@
+name: v0.2.3 릴리스 사전 검증
+
+on:
+  push:
+    branches:
+      - release/v0.2.3-prep
+
+permissions:
+  contents: write
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: 문서와 릴리스 게이트 정리
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+
+          def replace_once(path, old, new):
+              text = read(path)
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected one anchor, found {text.count(old)}')
+              write(path, text.replace(old, new, 1))
+
+          # DEPENDENCIES 끝의 과거 "번들 libmpv" gate를 현재 비번들 정책으로 교체한다.
+          path = 'docs/DEPENDENCIES.md'
+          text = read(path)
+          marker = '## M5 배포 전 license gate'
+          index = text.find(marker)
+          if index < 0:
+              raise SystemExit('DEPENDENCIES legacy gate not found')
+          text = text[:index] + '''## v0.2.3 릴리스 license gate\n\n정식 yttStudio 릴리스 ZIP/installer/DMG/AppImage에는 `yt-dlp` standalone 실행 파일과 `libmpv` 네이티브 바이너리를 직접 포함하지 않는다. 릴리스 워크플로는 이 파일들이 publish 디렉터리에 존재하면 실패한다.\n\n반드시 포함하는 것은 yttStudio의 `LICENSE`, `THIRD-PARTY-NOTICES.txt`, YTSubConverter MIT 고지, Roboto Apache-2.0 및 Liberation OFL 고지다. 자동 설치되는 libmpv/yt-dlp는 yttStudio 패키지 밖의 사용자 영역에 설치되며 각각 upstream 라이선스를 그대로 따른다.\n\n릴리스 직전에는 코드에 pin한 libmpv/yt-dlp 자산을 실제로 다시 내려받아 SHA-256과 필요한 libmpv 아카이브 경로를 확인한다. pin을 바꾸려면 코드 상수, 이 문서, 제3자 고지, QA 기록을 함께 갱신해야 한다.\n\nKMediaMpv 런타임은 corresponding-source URL을 provenance에 기록한다. Windows LGPL 빌드는 정확한 upstream 릴리스와 빌드 저장소를 provenance에 기록한다. 사용자 지정 libmpv는 해당 배포자가 제공한 라이선스와 build configuration을 별도로 따른다.\n'''
+          write(path, text)
+
+          # 법적 감사 요약의 과거 상태를 현재 상태로 맞춘다.
+          replace_once(
+              'docs/LEGAL-COMPLIANCE-AUDIT.md',
+              '| libmpv / FFmpeg | 검토 필요 | 검증되지 않은 Shinchiro 자동 설치 UI 비활성화, 사용자 설치/경로 지정 유지 |',
+              '| libmpv / FFmpeg | 고정 산출물 검증 | Shinchiro 기본 빌드 제거, Windows LGPL 전용 빌드와 macOS/Linux 검증 런타임만 내부 설치 대상으로 pin |')
+          legal = read('docs/LEGAL-COMPLIANCE-AUDIT.md')
+          if '- https://github.com/zhongfly/mpv-winbuild' not in legal:
+              legal = legal.replace('- https://github.com/shinchiro/mpv-winbuild-cmake\n',
+                  '- https://github.com/shinchiro/mpv-winbuild-cmake\n- https://github.com/zhongfly/mpv-winbuild\n- https://github.com/Shusek/KMediaMpv\n')
+          write('docs/LEGAL-COMPLIANCE-AUDIT.md', legal)
+
+          # 제3자 표에서도 libmpv 내부 설치가 누락되지 않게 한다.
+          replace_once(
+              'docs/THIRD-PARTY-NOTICES.md',
+              '| libmpv | 선택적 네이티브 동적 라이브러리 | 빌드 구성에 따라 LGPL/GPL 여부가 달라짐 | yttStudio 패키지에는 직접 번들하지 않음. 사용자가 설치/지정한 빌드를 우선 사용 |',
+              '| libmpv | 영상 재생용 교체 가능한 네이티브 동적 라이브러리 | 자동 설치 pin은 LGPL 목적/검증 증빙이 있는 정확한 산출물 기준 | yttStudio 패키지에는 직접 번들하지 않음. 사용자가 설치/지정한 빌드를 우선하고, 없으면 지원 플랫폼에서 검증 런타임을 사용자 영역에 내부 설치 |')
+
+          # 릴리스 산출물에는 yt-dlp뿐 아니라 libmpv도 직접 들어갈 수 없도록 한다.
+          release_path = '.github/workflows/release.yml'
+          release = read(release_path)
+          old = '''          # yt-dlp는 사용자 요청 시 공식 upstream에서 내려받으므로 yttStudio 릴리스\n          # 산출물에 포함되어서는 안 된다.\n          if find "$publish_dir" -maxdepth 2 -type f \\( -name 'yt-dlp' -o -name 'yt-dlp.exe' -o -name 'yt-dlp_macos' -o -name 'yt-dlp_linux' \\) | grep -q .; then\n            echo "yt-dlp must not be bundled in yttStudio release artifacts" >&2\n            exit 1\n          fi\n'''
+          new = '''          # yt-dlp와 libmpv는 첫 사용 시 upstream에서 검증 설치하므로 yttStudio\n          # 릴리스 산출물에 직접 포함되어서는 안 된다.\n          if find "$publish_dir" -type f \\( -name 'yt-dlp' -o -name 'yt-dlp.exe' -o -name 'yt-dlp_macos' -o -name 'yt-dlp_linux' \\) | grep -q .; then\n            echo "yt-dlp must not be bundled in yttStudio release artifacts" >&2\n            exit 1\n          fi\n          if find "$publish_dir" -type f \\( -name 'libmpv-2.dll' -o -name 'mpv-2.dll' -o -name 'libmpv.2.dylib' -o -name 'libmpv.dylib' -o -name 'libmpv.so.2' -o -name 'libmpv.so' \\) | grep -q .; then\n            echo "libmpv must not be bundled in yttStudio release artifacts" >&2\n            exit 1\n          fi\n'''
+          if release.count(old) != 1:
+              raise SystemExit('release.yml dependency gate anchor not found')
+          write(release_path, release.replace(old, new, 1))
+
+          # v0.2.3 릴리스 노트를 현재 동작으로 전면 갱신한다.
+          write('.github/RELEASE_NOTES.md', '''# yttStudio v0.2.3\n\n## 이번 변경\n\n- **영상 재생을 기본 기능으로 정리** — libmpv가 없는 첫 실행에서도 영상/YouTube 열기 명령을 사용할 수 있습니다. 첫 영상 열기에서 지원 플랫폼용 검증 런타임을 프로그램이 설치한 뒤 원래 열기 요청을 계속합니다.\n- **검증된 libmpv 내부 설치** — Windows x64는 `zhongfly/mpv-winbuild`의 LGPL 전용 고정 빌드, macOS arm64/Linux x64는 `Shusek/KMediaMpv v0.2.9` 검증 런타임을 사용합니다. URL·파일 길이·SHA-256을 고정해 검증합니다.\n- **yt-dlp 직접 번들 제거** — YouTube URL 프리뷰는 그대로 기본 제공하지만, yttStudio 릴리스 파일에 yt-dlp를 넣지 않습니다. 기존 설치본이 없으면 첫 YouTube 주소 열기에서 공식 `yt-dlp/yt-dlp 2026.08.19` 자산을 SHA-256 검증 후 사용자 영역에 설치합니다.\n- **배포 라이선스 게이트 강화** — 최종 ZIP/installer/DMG/AppImage에는 yt-dlp와 libmpv가 직접 포함되지 않도록 릴리스 단계에서 검사하고, yttStudio/YTSubConverter/번들 폰트의 필수 라이선스 고지는 누락 시 빌드를 실패시킵니다.\n- **문서 전면 동기화** — 한국어·영어·일본어 README와 전체 문서를 v0.2.3의 실제 설치·재생·라이선스 정책에 맞췄습니다.\n\n기존 유튜브 주소 스트리밍 프리뷰, 스페이스바 재생/일시정지, 자막 색 선택기, 뷰포트 모드와 편집 기능은 그대로 유지됩니다.\n\n## 설치\n\n.NET 런타임은 각 배포물에 포함됩니다. 영상 재생을 위해 사용자가 libmpv나 yt-dlp를 미리 설치할 필요는 없습니다.\n\n| 파일 | 대상 | 설치 방법 |\n|---|---|---|\n| `yttStudio-v0.2.3-win-x64-setup.exe` | Windows x64 | 실행하면 시작 메뉴 등록과 파일 연결까지 처리합니다 |\n| `yttStudio-v0.2.3-win-x64.zip` | Windows x64 (포터블) | 압축을 풀고 `YttStudio.App.exe` 실행 |\n| `yttStudio-v0.2.3-osx-arm64.dmg` | macOS Apple Silicon | 열어서 `yttStudio.app`을 `Applications`로 이동 |\n| `yttStudio-v0.2.3-osx-arm64.tar.gz` | macOS Apple Silicon | 앱 번들 압축본 |\n| `yttStudio-v0.2.3-linux-x64.AppImage` | Linux x64 | 실행 권한을 준 뒤 실행 |\n| `yttStudio-v0.2.3-linux-x64.tar.gz` | Linux x64 | 압축을 풀어 실행 |\n\n## 영상 런타임\n\n기존에 사용자가 지정한 호환 libmpv/yt-dlp가 있으면 그것을 우선 사용합니다. 없을 때만 프로그램 내부 설치가 동작합니다. 설치된 제3자 런타임은 yttStudio의 MIT 라이선스로 재라이선스되지 않으며 각 upstream 라이선스를 따릅니다.\n\nlibmpv는 **도구 → 설정 → 영상**에서 재설치하거나 직접 경로를 지정할 수 있습니다. 정확한 pin·해시·provenance와 라이선스 경계는 `docs/DEPENDENCIES.md`, `docs/THIRD-PARTY-NOTICES.md`, `docs/LEGAL-COMPLIANCE-AUDIT.md`를 참고하세요.\n\n## 서명\n\n코드 서명과 notarization은 아직 없습니다. 첫 실행에 운영체제 경고가 뜰 수 있습니다.\n\n- Windows: SmartScreen에서 **추가 정보 → 실행**\n- macOS: `yttStudio.app` 우클릭 → **열기**\n''')
+
+          Path('.github/workflows/v023-release-preflight-once.yml').unlink()
+          PY
+
+      - name: 고정 런타임 자산 실검증
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/yttstudio-runtime-check
+          cd /tmp/yttstudio-runtime-check
+
+          curl --fail --location --retry 3 --output mpv-win.7z \
+            "https://github.com/zhongfly/mpv-winbuild/releases/download/2026-08-29-e8673660ab/mpv-dev-lgpl-x86_64-20260829-git-e8673660ab.7z"
+          echo "78260166265fbc09b3bee75ee3464eb0f6bbaa8ecd172786e33c22bbf8a3cb47  mpv-win.7z" | sha256sum --check --strict
+          test "$(stat -c%s mpv-win.7z)" = "27984604"
+          7z l mpv-win.7z | grep -E 'libmpv-2\.dll|mpv-2\.dll'
+
+          curl --fail --location --retry 3 --output kmedia.jar \
+            "https://github.com/Shusek/KMediaMpv/releases/download/v0.2.9/kmedia-mpv-0.2.9-runtime-desktop.jar"
+          echo "4250b47144de085c7963f4bdbe99e995b9b2b0374e32a14ebe9d27fd38a67bef  kmedia.jar" | sha256sum --check --strict
+          test "$(stat -c%s kmedia.jar)" = "25946200"
+          unzip -l kmedia.jar | grep 'META-INF/kmediampv/native/macos-aarch64/.*libmpv'
+          unzip -l kmedia.jar | grep 'META-INF/kmediampv/native/linux-x86_64/.*libmpv'
+          curl --fail --location --retry 3 --range 0-0 --output /dev/null \
+            "https://github.com/Shusek/KMediaMpv/releases/download/v0.2.9/kmedia-mpv-0.2.9-corresponding-source.tar.gz"
+
+          curl --fail --location --retry 3 --output yt-dlp.exe \
+            "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp.exe"
+          echo "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a  yt-dlp.exe" | sha256sum --check --strict
+
+          curl --fail --location --retry 3 --output yt-dlp_macos \
+            "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_macos"
+          echo "0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202  yt-dlp_macos" | sha256sum --check --strict
+
+          curl --fail --location --retry 3 --output yt-dlp_linux \
+            "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_linux"
+          echo "58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a  yt-dlp_linux" | sha256sum --check --strict
+
+      - name: Release 빌드
+        run: dotnet build YttStudio.sln --configuration Release
+
+      - name: 전체 테스트
+        run: dotnet test YttStudio.sln --configuration Release --no-build
+
+      - name: 검증 결과 커밋
+        shell: bash
+        run: |
+          git config user.name "MAD_DOGGO"
+          git config user.email "95358325+DO0OG@users.noreply.github.com"
+          git add -A
+          git commit -m "release: v0.2.3 배포 정책과 런타임 검증 정리" -m "릴리스 노트와 컴플라이언스 문서의 과거 libmpv 문구를 현재 내부 설치 정책으로 통일하고, 릴리스 산출물에 yt-dlp와 libmpv가 직접 섞이지 않도록 게이트를 강화한다. 고정한 Windows LGPL libmpv, KMediaMpv 런타임과 corresponding-source, Windows/macOS/Linux yt-dlp 자산을 실제로 내려받아 SHA-256 및 필요한 아카이브 경로를 검증하고 Release 빌드와 전체 테스트를 통과한 상태만 커밋한다."
+          git push origin HEAD:release/v0.2.3-prep
