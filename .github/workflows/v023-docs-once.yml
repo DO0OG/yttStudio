@@ -1,0 +1,183 @@
+name: v0.2.3 문서 전체 동기화
+
+on:
+  push:
+    branches:
+      - release/v0.2.3-prep
+
+permissions:
+  contents: write
+
+jobs:
+  update-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: README와 문서 동기화
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          VERSION = 'v0.2.3'
+          DATE = '2026-08-30'
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+
+          def replace_once(text, old, new, label):
+              if text.count(old) != 1:
+                  raise SystemExit(f'{label}: expected one anchor, found {text.count(old)}')
+              return text.replace(old, new, 1)
+
+          def replace_section(path, start, end, body):
+              text = read(path)
+              start_index = text.find(start)
+              end_index = text.find(end, start_index + len(start))
+              if start_index < 0 or end_index < 0:
+                  raise SystemExit(f'{path}: section anchors not found: {start} / {end}')
+              text = text[:start_index] + body.rstrip() + '\n\n' + text[end_index:]
+              write(path, text)
+
+          def add_doc_basis(path):
+              text = read(path)
+              marker = f'> **문서 기준:** {VERSION} ({DATE})'
+              if marker in text:
+                  return
+              lines = text.splitlines()
+              if not lines or not lines[0].startswith('#'):
+                  raise SystemExit(f'{path}: first line is not a Markdown heading')
+              text = lines[0] + '\n\n' + marker + '\n\n' + '\n'.join(lines[1:]).lstrip('\n') + '\n'
+              write(path, text)
+
+          # 모든 docs Markdown 문서에 릴리스 기준을 명시한다.
+          for doc in sorted(Path('docs').rglob('*.md')):
+              add_doc_basis(doc)
+
+          # 한국어 README
+          path = 'README.md'
+          text = read(path)
+          text = re.sub(r'!\[Tests\]\(https://img\.shields\.io/badge/tests-[^)]+\)',
+                        '![Tests](https://img.shields.io/badge/tests-multi--platform%20CI-brightgreen)', text, count=1)
+          recent = '## 최근 변경점\n\n| | |\n|---|---|'
+          text = replace_once(text, recent,
+              recent + '\n| **v0.2.3 영상 엔진 기본화** | libmpv가 없으면 첫 영상 열기에서 검증된 LGPL 런타임을 프로그램이 직접 설치합니다. YouTube 주소를 처음 열 때 yt-dlp가 없으면 공식 릴리스 자산을 검증해 설치합니다 |',
+              'README.md 최근 변경점')
+          text, count = re.subn(
+              r'### 선택 의존성\n.*?(?=\n### 소스에서 빌드)',
+              '''### 영상 재생 런타임\n\n영상 재생은 기본 기능입니다. 별도 수동 설치를 선행할 필요는 없습니다.\n\n| 항목 | v0.2.3 동작 |\n|---|---|\n| libmpv 2.0 이상 | 로컬/YouTube 영상 재생에 필요합니다. 기존에 지정했거나 시스템에서 찾은 호환 라이브러리를 우선 사용하고, 없으면 첫 영상 열기에서 지원 플랫폼용 **검증된 LGPL 런타임**을 사용자 영역에 자동 설치합니다 |\n| yt-dlp | YouTube 주소 해석에 필요합니다. 기존 설치본을 우선 사용하고, 없으면 첫 YouTube 주소 열기에서 공식 `yt-dlp/yt-dlp` 릴리스 자산을 SHA-256 검증 후 사용자 영역에 자동 설치합니다 |\n\n현재 내부 libmpv 설치 대상은 Windows x64의 `zhongfly/mpv-winbuild` LGPL 전용 빌드와 macOS arm64/Linux x64의 `Shusek/KMediaMpv` 검증 런타임입니다. 두 도구 모두 yttStudio 릴리스 ZIP/설치 파일/DMG/AppImage 안에는 직접 번들하지 않습니다. **도구 → 설정 → 영상**에서 libmpv를 재설치하거나 직접 경로를 지정할 수도 있습니다. 자세한 pin·해시·라이선스 경계는 [의존성 문서](docs/DEPENDENCIES.md)와 [제3자 고지](docs/THIRD-PARTY-NOTICES.md)에 있습니다.\n''',
+              text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit('README.md runtime section not found')
+          write(path, text)
+
+          # English README
+          path = 'README.en.md'
+          text = read(path)
+          text = re.sub(r'!\[Tests\]\(https://img\.shields\.io/badge/tests-[^)]+\)',
+                        '![Tests](https://img.shields.io/badge/tests-multi--platform%20CI-brightgreen)', text, count=1)
+          recent = '## Recent changes\n\n| | |\n|---|---|'
+          text = replace_once(text, recent,
+              recent + '\n| **v0.2.3 video runtime by default** | If libmpv is missing, the app installs a verified LGPL runtime on the first video open. If yt-dlp is missing on the first YouTube URL open, the app verifies and installs an official upstream asset |',
+              'README.en.md recent changes')
+          text, count = re.subn(
+              r'### Optional dependencies\n.*?(?=\n### Building from source)',
+              '''### Video playback runtimes\n\nVideo playback is a core feature; no manual prerequisite installation is required.\n\n| Item | v0.2.3 behaviour |\n|---|---|\n| libmpv 2.0+ | Required for local and YouTube playback. yttStudio first prefers a user-selected or discoverable compatible library; if none exists, the first video open installs a **verified LGPL runtime** into the user data area on supported platforms |\n| yt-dlp | Required to resolve YouTube addresses. yttStudio first prefers an existing installation; if none exists, the first YouTube URL open downloads the pinned official `yt-dlp/yt-dlp` release asset and verifies its SHA-256 before installing it into the user data area |\n\nThe current in-app libmpv sources are the explicit LGPL build from `zhongfly/mpv-winbuild` on Windows x64 and the verified `Shusek/KMediaMpv` runtime on macOS arm64/Linux x64. Neither libmpv nor yt-dlp is embedded in yttStudio release ZIPs, installers, DMGs or AppImages. You can also reinstall libmpv or choose a custom path under **Tools → Settings → Video**. See [dependencies](docs/DEPENDENCIES.md) and [third-party notices](docs/THIRD-PARTY-NOTICES.md) for exact pins, hashes and licence boundaries.\n''',
+              text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit('README.en.md runtime section not found')
+          write(path, text)
+
+          # Japanese README
+          path = 'README.ja.md'
+          text = read(path)
+          text = re.sub(r'!\[Tests\]\(https://img\.shields\.io/badge/tests-[^)]+\)',
+                        '![Tests](https://img.shields.io/badge/tests-multi--platform%20CI-brightgreen)', text, count=1)
+          recent = '## 最近の変更\n\n| | |\n|---|---|'
+          text = replace_once(text, recent,
+              recent + '\n| **v0.2.3 映像ランタイムを標準化** | libmpv がない場合は最初に映像を開くときに検証済み LGPL ランタイムをアプリ内で導入します。YouTube URL を初めて開く際に yt-dlp がなければ、公式配布物を検証して導入します |',
+              'README.ja.md recent changes')
+          text, count = re.subn(
+              r'### 任意の依存関係\n.*?(?=\n### ソースからのビルド)',
+              '''### 映像再生ランタイム\n\n映像再生は基本機能です。事前の手動インストールは不要です。\n\n| 項目 | v0.2.3 の動作 |\n|---|---|\n| libmpv 2.0 以上 | ローカル映像と YouTube 再生に必要です。指定済み・検出可能な互換ライブラリを優先し、見つからない場合は最初に映像を開くとき、対応プラットフォーム向けの**検証済み LGPL ランタイム**をユーザー領域へ自動導入します |\n| yt-dlp | YouTube URL の解析に必要です。既存のインストールを優先し、見つからない場合は最初の YouTube URL オープン時に公式 `yt-dlp/yt-dlp` リリース資産を取得して SHA-256 を検証後、ユーザー領域へ導入します |\n\nアプリ内 libmpv の現在の取得元は Windows x64 では `zhongfly/mpv-winbuild` の明示的な LGPL ビルド、macOS arm64/Linux x64 では検証済みの `Shusek/KMediaMpv` ランタイムです。libmpv と yt-dlp は yttStudio の ZIP・インストーラ・DMG・AppImage には直接同梱しません。**ツール → 設定 → 映像**から libmpv の再インストールや任意パスの指定もできます。固定バージョン・ハッシュ・ライセンス境界は[依存関係](docs/DEPENDENCIES.md)と[サードパーティ告知](docs/THIRD-PARTY-NOTICES.md)を参照してください。\n''',
+              text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit('README.ja.md runtime section not found')
+          write(path, text)
+
+          # DEPENDENCIES: 과거 서로 모순되던 libmpv/yt-dlp 정책 구간을 현재 정책 하나로 교체한다.
+          dependencies_body = '''## libmpv 및 외부 재생 도구 (v0.2.3 현재 정책)\n\n영상 재생은 yttStudio의 기본 기능이다. 다만 yttStudio 자체 MIT 배포물에 제3자 네이티브/실행 바이너리를 직접 합쳐 넣지 않고, **기존 설치본 우선 → 없으면 프로그램 내부에서 고정·검증 설치** 순서를 사용한다.\n\n### libmpv\n\n지원 대상과 내부 설치 pin:\n\n| OS / RID | upstream 자산 | SHA-256 | 설치 방식 |\n|---|---|---|---|\n| Windows x64 | `zhongfly/mpv-winbuild` `mpv-dev-lgpl-x86_64-20260829-git-e8673660ab.7z` | `78260166265fbc09b3bee75ee3464eb0f6bbaa8ecd172786e33c22bbf8a3cb47` | LGPL 전용 개발 빌드를 사용자 LocalApplicationData에 설치 |\n| macOS arm64 | `Shusek/KMediaMpv` `kmedia-mpv-0.2.9-runtime-desktop.jar`의 `macos-aarch64` 네이티브 트리 | `4250b47144de085c7963f4bdbe99e995b9b2b0374e32a14ebe9d27fd38a67bef` | 검증 런타임의 해당 플랫폼 네이티브 트리만 사용자 영역에 설치 |\n| Linux x64 | 같은 KMediaMpv 자산의 `linux-x86_64` 네이티브 트리 | 같은 SHA-256 | 검증 런타임의 해당 플랫폼 네이티브 트리만 사용자 영역에 설치 |\n\n`MpvAutoInstaller`는 코드에 고정된 HTTPS URL, 파일 길이, SHA-256을 모두 확인한다. 최종 리디렉션 호스트는 `github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`만 허용한다. 압축 항목 수와 총 해제 크기를 제한하고 절대 경로/상위 디렉터리 탈출을 차단한 뒤, staging 디렉터리를 원자적으로 교체한다. 설치 디렉터리에는 upstream과 corresponding-source 위치를 적은 `YTTSTUDIO-RUNTIME-SOURCE.txt`를 남긴다.\n\n기존 `YTTSTUDIO_MPV_PATH` 또는 사용자가 설정에서 지정한 경로는 계속 우선한다. 호환 libmpv가 없다면 첫 로컬 영상/YouTube 영상 열기에서 `AutoInstallingVideoSource`가 설치를 수행한 뒤 같은 요청을 원래 `MpvVideoSource`에 이어서 전달한다. 설정 창에서도 같은 검증 설치기를 이용해 재설치할 수 있다.\n\n이 정책은 과거 Shinchiro 기본 GPL 계열 빌드를 자동 설치하던 기록과, libmpv를 전혀 자동 설치하지 않는다고 적었던 과도기 문서를 대체한다. Shinchiro 빌드는 현재 자동 설치 대상이 아니다.\n\n### yt-dlp\n\nYouTube URL을 열 때는 기존 `YTTSTUDIO_YTDLP_PATH`, 앱 경로, `PATH`의 실행 파일을 먼저 사용한다. 없으면 `YtDlpAutoInstaller`가 코드에 고정한 공식 `yt-dlp/yt-dlp` 릴리스 자산을 직접 받아 파일 길이와 SHA-256을 확인한 뒤 사용자 LocalApplicationData에 설치한다. yttStudio의 ZIP/installer/DMG/AppImage에는 yt-dlp standalone 실행 파일을 직접 넣지 않는다.\n\n현재 pin은 `2026.08.19`이며 Windows x64 `yt-dlp.exe`, macOS arm64 `yt-dlp_macos`, Linux x64 `yt-dlp_linux`를 사용한다. 새 버전으로 올릴 때는 자산 이름·길이·해시를 함께 갱신하고 CI와 수동 QA를 다시 수행한다.\n\n`yt-dlp`는 영상을 파일로 저장하기 위한 다운로드 명령으로 호출하지 않는다. URL을 검증하고 libmpv `ytdl_hook`이 스트림을 열 수 있도록 실행 파일 경로를 전달한다. 공개 VOD가 기본 지원 범위이며, 생방송·연령 제한·비공개·지역 차단은 별도 실패 사유로 처리될 수 있다.\n\n### 라이선스 경계\n\n- yttStudio 본체는 MIT를 유지한다.\n- 자동 설치되는 libmpv/yt-dlp는 각각 upstream 라이선스를 그대로 따른다. yttStudio가 MIT로 재라이선스하지 않는다.\n- yttStudio 릴리스 산출물 자체에는 이 네이티브/standalone 바이너리를 직접 포함하지 않는다.\n- libmpv는 교체 가능한 동적 라이브러리로 로드한다. 정확한 upstream, hash, corresponding-source 위치는 설치 provenance와 이 문서에 기록한다.\n- 제3자 라이선스 판단은 이름만 보고 추정하지 않고 **실제로 고정한 산출물** 기준으로 다시 확인한다.\n\n## 외부 도구\n\n| 도구 | 용도 | 정책 |\n|---|---|---|\n| mitmproxy | 실제 플레이어 프리뷰 | 번들 금지. 미설치 시 안내만. 스크립트는 upstream과 동기화 |\n| Fiddler Classic | 위의 Windows 대안 | 안내만 |\n| Aegisub | `.ass` 편집 | 안내만 |\n| yt-dlp | YouTube URL 스트림 해석 | 기존 설치본 우선, 없으면 공식 pin을 프로그램 내부에서 검증 설치. yttStudio 릴리스에는 직접 번들하지 않음 |'''
+          replace_section('docs/DEPENDENCIES.md', '## libmpv (네이티브, M5 결정)', '## 번들 폰트', dependencies_body)
+
+          third_party_body = '''## libmpv 정책\n\n`libmpv = LGPL`이라고 일반화하지 않고 **자동 설치 대상으로 고정한 정확한 산출물**을 기준으로 판단한다. v0.2.3은 과거 Shinchiro 기본 빌드를 사용하지 않는다.\n\n현재 프로그램 내부 설치 대상:\n\n- Windows x64: `zhongfly/mpv-winbuild`의 `mpv-dev-lgpl-x86_64-20260829-git-e8673660ab.7z`\n- macOS arm64 / Linux x64: `Shusek/KMediaMpv v0.2.9`의 `kmedia-mpv-0.2.9-runtime-desktop.jar` 내 해당 플랫폼 네이티브 런타임\n\n두 자산은 버전·파일 길이·SHA-256을 코드에 고정하고 검증한 뒤 사용자 로컬 application-data 영역에 설치한다. KMediaMpv 설치 provenance에는 exact corresponding-source 릴리스 URL을 남긴다. Windows 빌드 역시 upstream 저장소와 고정 릴리스 위치를 기록한다. yttStudio 릴리스 ZIP/installer/DMG/AppImage 자체에는 libmpv를 직접 포함하지 않는다.\n\n사용자가 `YTTSTUDIO_MPV_PATH` 또는 설정 화면에서 다른 libmpv를 지정하면 그 선택을 우선한다. 그 외부 빌드의 라이선스 적합성은 해당 배포자가 제공한 라이선스와 build configuration을 기준으로 별도 판단해야 한다.\n\n참고:\n\n- https://github.com/mpv-player/mpv/blob/master/Copyright\n- https://github.com/zhongfly/mpv-winbuild\n- https://github.com/Shusek/KMediaMpv\n- https://ffmpeg.org/legal.html'''
+          replace_section('docs/THIRD-PARTY-NOTICES.md', '## libmpv 정책', '## NuGet / 런타임 감사', third_party_body)
+
+          legal_body = '''## libmpv\n\n과거 Windows 자동 설치 대상으로 검토하던 Shinchiro 기본 빌드는 FFmpeg GPL/version3 구성이 확인되어 v0.2.3 자동 설치 대상에서 제거했다. 대신 **라이선스 목적이 명시되거나 검증 증빙이 제공되는 별도 런타임**만 pin한다.\n\n현재 자동 설치 대상은 Windows x64의 `zhongfly/mpv-winbuild` LGPL 전용 개발 빌드와 macOS arm64/Linux x64의 `Shusek/KMediaMpv v0.2.9` 검증 런타임이다. 다운로드 URL·파일 길이·SHA-256을 코드에 고정하고, 허용된 HTTPS GitHub 호스트에서 받은 결과만 압축 해제한다. 설치 후 provenance 파일에 upstream과 corresponding-source 위치를 남긴다.\n\n영상 열기는 libmpv 부재 상태에서도 비활성화되지 않는다. 지원 플랫폼에서는 첫 영상 열기가 내부 설치의 진입점이며, 설치가 끝나면 원래 영상 열기 요청을 계속 수행한다. 사용자가 지정한 `YTTSTUDIO_MPV_PATH` 또는 설정 경로는 계속 우선한다.\n\nyttStudio 릴리스 산출물에는 libmpv 바이너리를 직접 번들하지 않는다. 자동 설치된 런타임은 upstream 라이선스를 그대로 따르며 yttStudio의 MIT 라이선스로 재라이선스되지 않는다. 이 기록은 법률 자문이 아니라 배포 기술 경계를 추적하기 위한 감사 자료다.'''
+          replace_section('docs/LEGAL-COMPLIANCE-AUDIT.md', '## libmpv', '## 릴리스 라이선스 gate', legal_body)
+
+          # 사용자 가이드 / QA / 진행 기록에는 실제 첫 사용 동작을 명시한다.
+          guide = read('docs/USER_GUIDE.md')
+          guide_marker = '> **문서 기준:** v0.2.3 (2026-08-30)\n\n'
+          guide_note = '''## v0.2.3 영상 재생 첫 사용 흐름\n\n로컬 영상 또는 YouTube 주소 열기는 libmpv가 아직 없는 첫 실행에서도 사용할 수 있다. 기존 호환 libmpv를 찾지 못하면 지원 플랫폼에서 프로그램이 검증된 LGPL 런타임을 사용자 영역에 설치하고, 완료 후 사용자가 처음 요청한 영상을 그대로 연다. YouTube 주소에서 yt-dlp가 없을 때도 같은 방식으로 공식 고정 자산을 검증 설치한다. 설정의 **영상** 페이지에서는 libmpv 재설치와 수동 경로 지정도 가능하다.\n\n'''
+          if '## v0.2.3 영상 재생 첫 사용 흐름' not in guide:
+              guide = replace_once(guide, guide_marker, guide_marker + guide_note, 'USER_GUIDE marker')
+          write('docs/USER_GUIDE.md', guide)
+
+          qa = read('docs/MANUAL_QA.md')
+          qa_marker = '> **문서 기준:** v0.2.3 (2026-08-30)\n\n'
+          qa_note = '''## v0.2.3 영상 엔진 자동 설치 QA\n\n릴리스 후보에서는 Windows x64, macOS arm64, Linux x64 각각 깨끗한 사용자 환경에서 다음을 확인한다. (1) libmpv가 없는 상태에서도 영상/YouTube 열기 명령이 활성화되어 있는지, (2) 첫 영상 열기에서 다운로드·해시 검증·압축 해제·사용자 영역 설치가 완료되는지, (3) 같은 요청이 설치 직후 실제 재생으로 이어지는지, (4) 두 번째 실행은 네트워크 없이 기존 설치본을 재사용하는지, (5) 설정에서 재설치/수동 경로 지정 후 재생 소스가 정상 재초기화되는지 확인한다. YouTube는 yt-dlp 미설치 상태도 별도로 반복한다.\n\n'''
+          if '## v0.2.3 영상 엔진 자동 설치 QA' not in qa:
+              qa = replace_once(qa, qa_marker, qa_marker + qa_note, 'MANUAL_QA marker')
+          write('docs/MANUAL_QA.md', qa)
+
+          progress = read('docs/PROGRESS.md')
+          progress_marker = '> **문서 기준:** v0.2.3 (2026-08-30)\n\n'
+          progress_note = '''## v0.2.3 릴리스 준비 — 영상 런타임/배포 컴플라이언스\n\n- libmpv: Shinchiro 기본 GPL 계열 자동 설치를 제거하고 지원 플랫폼별 검증 런타임 pin으로 교체\n- 첫 영상 열기: libmpv 부재 상태에서도 명령을 열어 두고 프로그램 내부 설치 후 원래 요청 계속\n- yt-dlp: 릴리스 직접 번들 대신 공식 upstream 고정 자산을 첫 YouTube 사용 시 검증 설치\n- 배포: 제3자 네이티브/standalone 바이너리는 yttStudio 릴리스 패키지에 직접 포함하지 않음\n- 검증: Windows/macOS/Linux CI, release package 및 Codacy gate를 모두 통과한 커밋만 v0.2.3 태그 대상으로 사용\n\n'''
+          if '## v0.2.3 릴리스 준비 — 영상 런타임/배포 컴플라이언스' not in progress:
+              progress = replace_once(progress, progress_marker, progress_marker + progress_note, 'PROGRESS marker')
+          write('docs/PROGRESS.md', progress)
+
+          performance = read('docs/PERFORMANCE.md')
+          perf_marker = '> **문서 기준:** v0.2.3 (2026-08-30)\n\n'
+          perf_note = '> v0.2.3의 libmpv/yt-dlp 자동 설치는 **첫 사용 준비 단계**만 바꾸며, 설치 이후 디코딩·소프트웨어 콜백 렌더링·프레임 전달 경로와 아래 성능 측정 기준은 그대로다.\n\n'
+          if '첫 사용 준비 단계' not in performance:
+              performance = replace_once(performance, perf_marker, perf_marker + perf_note, 'PERFORMANCE marker')
+          write('docs/PERFORMANCE.md', performance)
+
+          ytt = read('docs/YTT-VERIFICATION.md')
+          ytt_marker = '> **문서 기준:** v0.2.3 (2026-08-30)\n\n'
+          ytt_note = '> v0.2.3의 영상 런타임 설치 정책 변경은 YTT 포맷 writer/reader 규칙을 바꾸지 않는다. 이 문서의 포맷 근거와 확실성 등급은 그대로 적용한다.\n\n'
+          if '영상 런타임 설치 정책 변경' not in ytt:
+              ytt = replace_once(ytt, ytt_marker, ytt_marker + ytt_note, 'YTT-VERIFICATION marker')
+          write('docs/YTT-VERIFICATION.md', ytt)
+
+          # 작업용 워크플로는 결과 트리에 남기지 않는다.
+          Path('.github/workflows/v023-docs-once.yml').unlink()
+          PY
+
+      - name: Release 빌드
+        run: dotnet build YttStudio.sln --configuration Release
+
+      - name: 전체 테스트
+        run: dotnet test YttStudio.sln --configuration Release --no-build
+
+      - name: 문서 동기화 커밋
+        shell: bash
+        run: |
+          git config user.name "MAD_DOGGO"
+          git config user.email "95358325+DO0OG@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: v0.2.3 전체 문서와 다국어 README 동기화" -m "한글·영문·일문 README와 docs 아래 모든 Markdown 문서를 v0.2.3 기준으로 갱신한다. libmpv는 지원 플랫폼별 검증 LGPL 런타임을 첫 영상 열기에서 프로그램 내부 설치하고, yt-dlp는 공식 upstream 고정 자산을 첫 YouTube 사용 시 검증 설치하는 현재 동작으로 의존성·QA·법적 고지 문서를 통일한다. Release 빌드와 전체 테스트를 통과한 문서 상태만 커밋한다."
+          git push origin HEAD:release/v0.2.3-prep
