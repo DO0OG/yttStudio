@@ -78,10 +78,28 @@ jobs:
           test -s "$publish_dir/licenses/fonts/LICENSE-Liberation.txt"
           test -s "$publish_dir/licenses/YTSubConverter/LICENSE.txt"
 
-          # yt-dlp는 사용자 요청 시 공식 upstream에서 내려받으므로 yttStudio 릴리스
-          # 산출물에 포함되어서는 안 된다.
-          if find "$publish_dir" -maxdepth 2 -type f \( -name 'yt-dlp' -o -name 'yt-dlp.exe' -o -name 'yt-dlp_macos' -o -name 'yt-dlp_linux' \) | grep -q .; then
+          # yt-dlp와 libmpv/KMediaMpv 네이티브 런타임은 첫 사용 시 upstream에서
+          # 검증 설치하므로 yttStudio 릴리스 산출물에 직접 포함되어서는 안 된다.
+          if find "$publish_dir" -type f \( \
+              -name 'yt-dlp' -o \
+              -name 'yt-dlp.exe' -o \
+              -name 'yt-dlp_macos' -o \
+              -name 'yt-dlp_linux' \
+            \) -print -quit | grep -q .; then
             echo "yt-dlp must not be bundled in yttStudio release artifacts" >&2
+            exit 1
+          fi
+
+          if find "$publish_dir" -type f \( \
+              -name 'libmpv*.dll' -o \
+              -name 'mpv-2.dll' -o \
+              -name 'libmpv*.dylib' -o \
+              -name 'libmpv*.so*' -o \
+              -name 'libkmediampv_*' -o \
+              -name 'kmedia.jar' -o \
+              -name 'kmedia-mpv-*-runtime-desktop.jar' \
+            \) -print -quit | grep -q .; then
+            echo "libmpv/KMediaMpv runtime must not be bundled in yttStudio release artifacts" >&2
             exit 1
           fi
 
