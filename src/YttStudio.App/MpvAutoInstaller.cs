@@ -403,7 +403,7 @@ public sealed class MpvAutoInstaller
     private static bool TryGetRelativeEntry(MpvRuntimePackage package, string key, out string relativePath)
     {
         relativePath = string.Empty;
-        if (string.IsNullOrWhiteSpace(key) || key.StartsWith('/', StringComparison.Ordinal))
+        if (string.IsNullOrWhiteSpace(key) || key.StartsWith("/", StringComparison.Ordinal))
         {
             return false;
         }

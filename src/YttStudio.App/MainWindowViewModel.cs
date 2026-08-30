@@ -201,8 +201,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             () => ShiftTimes(selectedOnly: false),
             () => editor is not null);
         OpenSubtitleCommand = new AsyncCommand(OpenSubtitleAsync);
-        OpenVideoCommand = new AsyncCommand(OpenVideoAsync, () => videoSource is not null);
-        OpenVideoUrlCommand = new AsyncCommand(OpenVideoUrlAsync, () => videoSource is not null);
+        OpenVideoCommand = new AsyncCommand(OpenVideoAsync, CanOpenVideo);
+        OpenVideoUrlCommand = new AsyncCommand(OpenVideoUrlAsync, CanOpenVideo);
         SaveCommand = new AsyncCommand(SaveAsync, () => project is not null);
         PlayPauseCommand = new DelegateCommand(TogglePlayback, () => videoLoaded);
         CreateColorPickingCommands();
