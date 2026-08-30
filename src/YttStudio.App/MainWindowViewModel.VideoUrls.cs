@@ -5,6 +5,7 @@ namespace YttStudio.App;
 /// <summary>YouTube 주소 입력과 재생 실패 안내를 담당한다.</summary>
 public sealed partial class MainWindowViewModel
 {
+    private static readonly DenoAutoInstaller YouTubeDenoInstaller = new();
     private static readonly YtDlpAutoInstaller YouTubeYtDlpInstaller = new();
     private string? loadedVideoOriginalUrl;
     private readonly object videoLoadGate = new();
@@ -64,12 +65,14 @@ public sealed partial class MainWindowViewModel
     {
         Status = Loc["YouTubePreflight"];
 
-        // 릴리스 패키지에 GPL 계열 standalone yt-dlp를 재배포하지 않는다. 실제 재생
-        // 경로에서는 사용자가 설치한 yt-dlp를 우선 쓰고, 없을 때만 고정된 공식 릴리스
-        // 바이너리를 사용자 로컬 영역에 내려받아 SHA-256을 검증한 뒤 사용한다.
-        // 테스트/대체 영상 소스는 외부 네트워크에 의존하지 않도록 이 단계를 건너뛴다.
+        // 릴리스 패키지에는 yt-dlp와 Deno를 재배포하지 않는다. 실제 재생 경로에서는
+        // 사용자가 준비한 호환 Deno/yt-dlp를 우선 쓰고, 없을 때만 고정된 공식 릴리스
+        // 자산을 사용자 로컬 영역에 설치해 크기와 SHA-256을 검증한다. Deno 경로는 현재
+        // 프로세스 PATH에도 등록하여 libmpv의 ytdl_hook이 실행하는 yt-dlp도 같은 런타임을
+        // 사용할 수 있게 한다. 테스트/대체 영상 소스는 외부 네트워크를 사용하지 않는다.
         if (videoSourceFactory is null)
         {
+            await YouTubeDenoInstaller.EnsureAvailableAsync(cancellationToken);
             await YouTubeYtDlpInstaller.EnsureAvailableAsync(cancellationToken);
         }
 
@@ -175,14 +178,28 @@ public sealed partial class MainWindowViewModel
             YouTubePlaybackFailureKind.YtDlpMissing => Loc["YouTubeYtDlpMissing"],
             YouTubePlaybackFailureKind.NetworkFailure => Loc["YouTubeNetworkFailure"],
             YouTubePlaybackFailureKind.Timeout => Loc["YouTubeNetworkFailure"],
+            YouTubePlaybackFailureKind.AccessDenied => GetYouTubeAccessDeniedMessage(),
             YouTubePlaybackFailureKind.Unplayable => Loc["YouTubeUnplayable"],
             _ => Loc["YouTubePlaybackFailed"],
+        };
+
+    private string GetYouTubeAccessDeniedMessage()
+        => Loc.Language switch
+        {
+            AppLanguage.English => "YouTube rejected the playback request. Please try again later.",
+            AppLanguage.Japanese => "YouTube が再生リクエストを拒否しました。しばらくしてからもう一度お試しください。",
+            _ => "YouTube가 현재 재생 요청을 거부했습니다. 잠시 후 다시 시도해 주세요.",
         };
 
     private string GetVideoLoadFailureMessage(Exception exception, bool isUrl)
     {
         if (isUrl && exception is YouTubePlaybackException youtubeException)
         {
+            Serilog.Log.Warning(
+                youtubeException,
+                "YouTube 재생 사전 확인 실패: {Kind}; {Message}",
+                youtubeException.Kind,
+                youtubeException.Message);
             return GetYouTubeFailureMessage(youtubeException);
         }
 

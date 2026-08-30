@@ -61,17 +61,36 @@ internal sealed class YtDlpProcessRunner : IYtDlpProcessRunner
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        startInfo.ArgumentList.Add("--dump-single-json");
-        startInfo.ArgumentList.Add("--no-download");
-        startInfo.ArgumentList.Add("--skip-download");
-        startInfo.ArgumentList.Add("--no-playlist");
-        startInfo.ArgumentList.Add("--no-warnings");
-        startInfo.ArgumentList.Add("--no-progress");
-        startInfo.ArgumentList.Add("--quiet");
-        startInfo.ArgumentList.Add("--simulate");
-        startInfo.ArgumentList.Add("--");
-        startInfo.ArgumentList.Add(uri.AbsoluteUri);
+        string? denoPath = Environment.GetEnvironmentVariable("YTTSTUDIO_DENO_PATH");
+        foreach (string argument in BuildArguments(uri, denoPath))
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
         return new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+    }
+
+    private static IReadOnlyList<string> BuildArguments(Uri uri, string? denoPath)
+    {
+        List<string> arguments =
+        [
+            "--dump-single-json",
+            "--no-download",
+            "--skip-download",
+            "--no-playlist",
+            "--no-progress",
+            "--quiet",
+            "--simulate",
+        ];
+        if (!string.IsNullOrWhiteSpace(denoPath))
+        {
+            arguments.Add("--js-runtimes");
+            arguments.Add($"deno:{denoPath}");
+        }
+
+        arguments.Add("--");
+        arguments.Add(uri.AbsoluteUri);
+        return arguments;
     }
 
     private static async Task<string> ReadOutputAsync(StreamReader reader, int maximumCharacters)

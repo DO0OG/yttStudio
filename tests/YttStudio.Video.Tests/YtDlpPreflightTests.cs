@@ -1,3 +1,4 @@
+using System.Reflection;
 using YttStudio.Video;
 
 namespace YttStudio.Video.Tests;
@@ -107,6 +108,37 @@ public sealed class YtDlpPreflightTests
             TestContext.Current.CancellationToken);
 
         Assert.Equal(YouTubePlaybackFailureKind.NetworkFailure, result.FailureKind);
+    }
+
+    [Theory]
+    [InlineData("ERROR: unable to download video data: HTTP Error 403: Forbidden")]
+    [InlineData("ERROR: Sign in to confirm you're not a bot")]
+    [InlineData("ERROR: HTTP Error 429: Too Many Requests")]
+    public async Task ProbeSeparatesYouTubeAccessDenialFromNetworkFailure(string stderr)
+    {
+        YtDlpPreflight preflight = Create(new YtDlpProcessResult(1, string.Empty, stderr, false));
+
+        YouTubePreflightResult result = await preflight.ProbeAsync(
+            ValidUrl,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("AccessDenied", result.FailureKind.ToString());
+        Assert.NotEqual(YouTubePlaybackFailureKind.NetworkFailure, result.FailureKind);
+    }
+
+    [Fact]
+    public void ProcessRunnerAddsManagedDenoOverrideToArguments()
+    {
+        MethodInfo? method = typeof(YtDlpProcessRunner).GetMethod(
+            "BuildArguments",
+            BindingFlags.Static | BindingFlags.NonPublic);
+
+        Assert.NotNull(method);
+        object? value = method!.Invoke(null, [new Uri(ValidUrl), "/managed/deno"]);
+        IEnumerable<string> arguments = Assert.IsAssignableFrom<IEnumerable<string>>(value);
+
+        Assert.Contains("--js-runtimes", arguments);
+        Assert.Contains("deno:/managed/deno", arguments);
     }
 
     [Fact]

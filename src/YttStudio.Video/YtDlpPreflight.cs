@@ -204,6 +204,22 @@ public sealed class YtDlpPreflight
                 reason is YouTubeUnplayableReason.Live);
         }
 
+        if (LooksLikeAccessDenied(diagnostic))
+        {
+            return YouTubePreflightResult.Failure(
+                uri,
+                YouTubePlaybackFailureKind.AccessDenied,
+                "YouTube가 현재 재생 요청을 거부했습니다. 잠시 후 다시 시도해 주세요.");
+        }
+
+        if (LooksLikeJavaScriptRuntimeFailure(diagnostic))
+        {
+            return YouTubePreflightResult.Failure(
+                uri,
+                YouTubePlaybackFailureKind.ToolFailure,
+                "YouTube 재생용 JavaScript 런타임을 사용할 수 없습니다.");
+        }
+
         if (LooksLikeNetworkFailure(diagnostic))
         {
             return YouTubePreflightResult.Failure(
@@ -306,14 +322,33 @@ public sealed class YtDlpPreflight
             : YouTubeUnplayableReason.None;
     }
 
+    private static bool LooksLikeAccessDenied(string diagnostic)
+    {
+        string value = diagnostic.ToLowerInvariant();
+        return ContainsAny(value,
+            "http error 403",
+            "403 forbidden",
+            "sign in to confirm you're not a bot",
+            "http error 429",
+            "too many requests");
+    }
+
+    private static bool LooksLikeJavaScriptRuntimeFailure(string diagnostic)
+    {
+        string value = diagnostic.ToLowerInvariant();
+        return ContainsAny(value,
+            "no supported javascript runtime could be found",
+            "javascript runtime is unavailable",
+            "js runtimes: none");
+    }
+
     private static bool LooksLikeNetworkFailure(string diagnostic)
     {
         string value = diagnostic.ToLowerInvariant();
         return ContainsAny(value, "urlopen error", "timed out", "timeout", "connection reset",
             "connection refused", "network is unreachable", "temporary failure in name resolution",
             "name or service not known", "could not resolve host", "unable to download",
-            "http error 4", "http error 429", "http error 5", "server returned 5", "proxy error",
-            "sign in to confirm you're not a bot", "too many requests", "ssl:");
+            "http error 5", "server returned 5", "proxy error", "ssl:");
     }
 
     private static string MessageForReason(YouTubeUnplayableReason reason)

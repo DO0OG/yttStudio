@@ -7,6 +7,7 @@ public enum YouTubePlaybackFailureKind
     InvalidUrl,
     YtDlpMissing,
     NetworkFailure,
+    AccessDenied,
     Unplayable,
     Timeout,
     ToolFailure,
