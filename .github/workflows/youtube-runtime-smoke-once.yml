@@ -1,0 +1,79 @@
+name: YouTube 런타임 실연동 스모크
+
+on:
+  push:
+    branches:
+      - fix/youtube-deno-v0.2.4
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            deno_asset: deno-x86_64-pc-windows-msvc.zip
+            deno_sha: 15e5300b0ba3c3695a7621d90160a746ec9e710228cee639afa9d580f6e3cd11
+            deno_exe: deno.exe
+            ytdlp_asset: yt-dlp.exe
+            ytdlp_sha: 66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a
+            ytdlp_exe: yt-dlp.exe
+          - os: macos-latest
+            deno_asset: deno-aarch64-apple-darwin.zip
+            deno_sha: 213a2f304f04d3c9cb5220669afad138f60a5aab1fe80962abdeb8f35807a472
+            deno_exe: deno
+            ytdlp_asset: yt-dlp_macos
+            ytdlp_sha: 0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202
+            ytdlp_exe: yt-dlp
+          - os: ubuntu-latest
+            deno_asset: deno-x86_64-unknown-linux-gnu.zip
+            deno_sha: 394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2
+            deno_exe: deno
+            ytdlp_asset: yt-dlp_linux
+            ytdlp_sha: 58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a
+            ytdlp_exe: yt-dlp
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Deno 공식 자산 다운로드와 검증
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o deno.zip "https://github.com/denoland/deno/releases/download/v2.9.6/${{ matrix.deno_asset }}"
+          echo "${{ matrix.deno_sha }}  deno.zip" | sha256sum -c -
+          unzip -q deno.zip
+          chmod +x "${{ matrix.deno_exe }}" || true
+          "./${{ matrix.deno_exe }}" --version
+
+      - name: yt-dlp 공식 자산 다운로드와 검증
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o "${{ matrix.ytdlp_exe }}" "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/${{ matrix.ytdlp_asset }}"
+          echo "${{ matrix.ytdlp_sha }}  ${{ matrix.ytdlp_exe }}" | sha256sum -c -
+          chmod +x "${{ matrix.ytdlp_exe }}" || true
+          "./${{ matrix.ytdlp_exe }}" --version
+
+      - name: YouTube 메타데이터 실제 추출
+        shell: bash
+        run: |
+          set -euo pipefail
+          deno_path="$PWD/${{ matrix.deno_exe }}"
+          "./${{ matrix.ytdlp_exe }}" \
+            --js-runtimes "deno:$deno_path" \
+            --dump-single-json \
+            --no-download \
+            --skip-download \
+            --no-playlist \
+            --no-progress \
+            --simulate \
+            -- \
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ" > metadata.json
+          python - <<'PY'
+          import json
+          with open('metadata.json', encoding='utf-8') as f:
+              data = json.load(f)
+          assert data.get('id') == 'dQw4w9WgXcQ', data.get('id')
+          assert data.get('title'), 'title missing'
+          assert data.get('duration'), 'duration missing'
+          print(data['id'], data['title'], data['duration'])
+          PY
