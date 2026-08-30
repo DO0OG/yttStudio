@@ -63,7 +63,7 @@ KMediaMpv v0.2.9의 실제 mpv 라이브러리 파일명은 다음과 같다.
 - macOS arm64: `libkmediampv_mpv.dylib`
 - Linux x64: `libkmediampv_mpv.so`
 
-Linux 고정 자산에서 yttStudio가 사용하는 mpv client/render API 심볼(`mpv_create`, `mpv_initialize`, `mpv_render_context_create`, `mpv_render_context_render` 등)을 확인했고, 런타임 의존 라이브러리는 `$ORIGIN` 기준으로 같은 추출 디렉터리에서 탐색하도록 구성되어 있다. macOS도 릴리스 전 사전 검증에서 실제 고정 자산의 dylib 및 API 심볼을 다시 확인한다.
+Linux 고정 자산에서 yttStudio가 사용하는 mpv client/render API 심볼(`mpv_create`, `mpv_initialize`, `mpv_render_context_create`, `mpv_render_context_render` 등) 전체와 `$ORIGIN` RUNPATH를 확인했다. macOS 고정 자산에서도 동일하게 yttStudio가 사용하는 mpv client/render API 심볼 전체를 실제 `libkmediampv_mpv.dylib`에서 확인했다.
 
 영상 열기는 libmpv 부재 상태에서도 비활성화되지 않는다. 지원 플랫폼에서는 첫 영상 열기가 내부 설치의 진입점이며, 설치가 끝나면 원래 영상 열기 요청을 계속 수행한다. 사용자가 지정한 `YTTSTUDIO_MPV_PATH` 또는 설정 경로는 계속 우선한다.
 
@@ -95,6 +95,21 @@ kmedia.jar / kmedia-mpv-*-runtime-desktop.jar
 ```
 
 따라서 향후 workflow가 변경되어도 yt-dlp standalone이나 자동 설치용 libmpv/KMediaMpv 런타임이 yttStudio 자체 릴리스에 무심코 포함되는 것을 방지한다.
+
+## 최종 사전검증 기록
+
+2026-08-30 v0.2.3 릴리스 준비에서 다음을 새로 검증했다.
+
+- 고정 Windows LGPL libmpv 자산의 URL, 파일 크기, SHA-256, `libmpv-2.dll` 존재 여부
+- KMediaMpv v0.2.9 데스크톱 JAR의 파일 크기와 SHA-256, macOS/Linux 실제 라이브러리 경로
+- KMediaMpv corresponding-source 자산 접근 가능 여부
+- Linux 및 macOS 고정 라이브러리의 yttStudio 필요 mpv client/render API 심볼
+- Linux 런타임의 `$ORIGIN` RUNPATH
+- Windows/macOS/Linux용 yt-dlp 2026.08.19 공식 자산의 SHA-256
+- Release 구성 빌드, 전체 테스트, 전이 NuGet 패키지 목록, 문서/배포 정책 모순 및 `git diff --check`
+- 같은 기준 커밋의 Windows/macOS/Ubuntu 정규 CI build + test
+
+사전검증 과정에서 실수로 저장소에 들어간 `kmedia.jar`는 제거했으며, 최종 릴리스 워크플로에도 yt-dlp와 libmpv/KMediaMpv 런타임 비번들 검사를 넣었다.
 
 ## 브랜드 / 이름
 
