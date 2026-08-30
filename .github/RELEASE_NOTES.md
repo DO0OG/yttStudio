@@ -21,7 +21,7 @@
 | `yttStudio-v0.2.3-win-x64.zip` | Windows x64 (포터블) | 압축을 풀고 `YttStudio.App.exe` 실행 |
 | `yttStudio-v0.2.3-osx-arm64.dmg` | macOS Apple Silicon | 열어서 `yttStudio.app`을 `Applications`로 이동 |
 | `yttStudio-v0.2.3-osx-arm64.tar.gz` | macOS Apple Silicon | 앱 번들 압축본 |
-| `yttStudio-v0.2.3-linux-x64.AppImage` | Linux x64 | 실행 권한을 준 뒤 실행 |
+| `yttStudio-v0.2.3-linux-x86_64.AppImage` | Linux x64 | 실행 권한을 준 뒤 실행 |
 | `yttStudio-v0.2.3-linux-x64.tar.gz` | Linux x64 | 압축을 풀어 실행 |
 
 ## 영상 런타임
