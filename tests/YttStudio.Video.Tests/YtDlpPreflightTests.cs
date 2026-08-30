@@ -1,3 +1,4 @@
+using System.Reflection;
 using YttStudio.Video;
 
 namespace YttStudio.Video.Tests;
@@ -123,6 +124,21 @@ public sealed class YtDlpPreflightTests
 
         Assert.Equal("AccessDenied", result.FailureKind.ToString());
         Assert.NotEqual(YouTubePlaybackFailureKind.NetworkFailure, result.FailureKind);
+    }
+
+    [Fact]
+    public void ProcessRunnerAddsManagedDenoOverrideToArguments()
+    {
+        MethodInfo? method = typeof(YtDlpProcessRunner).GetMethod(
+            "BuildArguments",
+            BindingFlags.Static | BindingFlags.NonPublic);
+
+        Assert.NotNull(method);
+        object? value = method!.Invoke(null, [new Uri(ValidUrl), "/managed/deno"]);
+        IEnumerable<string> arguments = Assert.IsAssignableFrom<IEnumerable<string>>(value);
+
+        Assert.Contains("--js-runtimes", arguments);
+        Assert.Contains("deno:/managed/deno", arguments);
     }
 
     [Fact]
