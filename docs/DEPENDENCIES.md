@@ -182,21 +182,12 @@ YouTube URL을 열 때는 기존 `YTTSTUDIO_YTDLP_PATH`, 앱 경로, `PATH`의 �
 
 ---
 
-## M5 배포 전 license gate
+## v0.2.3 릴리스 license gate
 
-정식 패키지는 `docs/THIRD-PARTY-NOTICES.md`의 목록과 함께 **실제 번들에 사용한
-libmpv 빌드의 원문 라이선스·저작권·소스 제공 정보**를 포함해야 한다. 현재 저장소에는
-libmpv 바이너리나 특정 빌드의 license payload가 없으므로, 아래를 완료했다고
-간주하지 않는다.
+정식 yttStudio 릴리스 ZIP/installer/DMG/AppImage에는 `yt-dlp` standalone 실행 파일과 `libmpv`/KMediaMpv 네이티브 런타임을 직접 포함하지 않는다. 릴리스 워크플로는 해당 파일들이 publish 디렉터리에 존재하면 실패한다.
 
-- libmpv가 LGPL-2.1-or-later 구성인지, GPL 구성 요소를 포함한 빌드인지 판정
-- 해당 빌드의 LGPL/GPL 전문, 저작권 고지, 빌드/수정 고지, 소스 또는 서면 제공 경로를
-  `licenses/libmpv/`에 복사
-- 동적 sidecar 교체가 가능한 패키지 구조와 그 방법을 사용자에게 고지
-- GPL 구성으로 배포할 경우 전체 배포물의 GPL 의무를 별도 법률 검토
-- YTSubConverter(MIT), 번들 폰트(Apache-2.0/SIL OFL 1.1), NuGet 및 기타 런타임
-  의존성의 고지를 같은 notice 파일에서 누락 없이 생성
+반드시 포함하는 것은 yttStudio의 `LICENSE`, `THIRD-PARTY-NOTICES.txt`, YTSubConverter MIT 고지, Roboto Apache-2.0 및 Liberation OFL 고지다. 자동 설치되는 libmpv/yt-dlp는 yttStudio 패키지 밖의 사용자 영역에 설치되며 각각 upstream 라이선스를 그대로 따른다.
 
-라이선스 분류는 빌드 플래그만으로 추정하지 않고, **배포하는 정확한 libmpv 산출물의
-upstream license 파일과 구성 정보**를 기준으로 한다. 자세한 payload 위치와 현재
-미결정 상태는 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md)에 기록한다.
+릴리스 직전에는 코드에 pin한 libmpv/yt-dlp 자산을 실제로 다시 내려받아 SHA-256, 파일 크기, 필요한 libmpv 아카이브 경로와 API 심볼을 확인한다. pin을 바꾸려면 코드 상수, 이 문서, 제3자 고지, QA 기록을 함께 갱신해야 한다.
+
+KMediaMpv v0.2.9에서 yttStudio가 사용하는 실제 라이브러리 파일명은 macOS arm64의 `libkmediampv_mpv.dylib`, Linux x64의 `libkmediampv_mpv.so`다. KMediaMpv 런타임은 corresponding-source URL을 provenance에 기록하고, Windows LGPL 빌드는 정확한 upstream 릴리스와 빌드 저장소를 provenance에 기록한다. 사용자 지정 libmpv는 해당 배포자가 제공한 라이선스와 build configuration을 별도로 따른다.
