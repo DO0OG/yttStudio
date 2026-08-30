@@ -1,4 +1,4 @@
-name: KMediaMpv v0.2.9 내부 경로 진단
+name: KMediaMpv v0.2.9 mpv API 진단
 
 on:
   push:
@@ -9,14 +9,27 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: KMediaMpv 자산 다운로드와 목록 확인
+      - name: KMediaMpv 심볼과 네이티브 의존성 확인
         shell: bash
         run: |
           set -euo pipefail
           curl --fail --location --retry 3 --output kmedia.jar \
             "https://github.com/Shusek/KMediaMpv/releases/download/v0.2.9/kmedia-mpv-0.2.9-runtime-desktop.jar"
           echo "4250b47144de085c7963f4bdbe99e995b9b2b0374e32a14ebe9d27fd38a67bef  kmedia.jar" | sha256sum --check --strict
-          echo '=== libmpv entries ==='
-          unzip -Z1 kmedia.jar | grep -i 'libmpv' || true
-          echo '=== native entries ==='
-          unzip -Z1 kmedia.jar | grep -E -i 'native|macos|linux' | head -300 || true
+          unzip -q kmedia.jar 'META-INF/kmediampv/native/linux-x86_64/*' 'META-INF/kmediampv/native/macos-aarch64/*'
+          linux_lib='META-INF/kmediampv/native/linux-x86_64/libkmediampv_mpv.so'
+          mac_lib='META-INF/kmediampv/native/macos-aarch64/libkmediampv_mpv.dylib'
+          echo '=== Linux required mpv exports ==='
+          for symbol in mpv_create mpv_initialize mpv_terminate_destroy mpv_set_option_string mpv_set_property_string mpv_get_property mpv_get_property_string mpv_free mpv_command mpv_wait_event mpv_error_string mpv_client_api_version mpv_render_context_create mpv_render_context_set_update_callback mpv_render_context_update mpv_render_context_render mpv_render_context_free; do
+            nm -D --defined-only "$linux_lib" | grep -E "[[:space:]]${symbol}$"
+          done
+          echo '=== Linux dynamic section ==='
+          readelf -d "$linux_lib" | grep -E 'NEEDED|RPATH|RUNPATH'
+          echo '=== macOS required mpv exports ==='
+          if command -v llvm-nm >/dev/null 2>&1; then
+            for symbol in mpv_create mpv_initialize mpv_terminate_destroy mpv_set_option_string mpv_set_property_string mpv_get_property mpv_get_property_string mpv_free mpv_command mpv_wait_event mpv_error_string mpv_client_api_version mpv_render_context_create mpv_render_context_set_update_callback mpv_render_context_update mpv_render_context_render mpv_render_context_free; do
+              llvm-nm -gU "$mac_lib" | grep -E "_${symbol}$"
+            done
+          else
+            echo 'llvm-nm 없음: macOS 심볼 검사는 macOS CI에서 수행 필요'
+          fi
