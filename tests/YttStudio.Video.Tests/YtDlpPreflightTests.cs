@@ -109,6 +109,22 @@ public sealed class YtDlpPreflightTests
         Assert.Equal(YouTubePlaybackFailureKind.NetworkFailure, result.FailureKind);
     }
 
+    [Theory]
+    [InlineData("ERROR: unable to download video data: HTTP Error 403: Forbidden")]
+    [InlineData("ERROR: Sign in to confirm you're not a bot")]
+    [InlineData("ERROR: HTTP Error 429: Too Many Requests")]
+    public async Task ProbeSeparatesYouTubeAccessDenialFromNetworkFailure(string stderr)
+    {
+        YtDlpPreflight preflight = Create(new YtDlpProcessResult(1, string.Empty, stderr, false));
+
+        YouTubePreflightResult result = await preflight.ProbeAsync(
+            ValidUrl,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("AccessDenied", result.FailureKind.ToString());
+        Assert.NotEqual(YouTubePlaybackFailureKind.NetworkFailure, result.FailureKind);
+    }
+
     [Fact]
     public async Task ProbeReportsTimeoutAsTypedFailure()
     {
