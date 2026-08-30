@@ -1,5 +1,7 @@
 # DEPENDENCIES.md
 
+> **문서 기준:** v0.2.3 (2026-08-30)
+
 의존성 고정(pin) 기록. **`master` 추종 금지** — 비공개 포맷의 버그 우회를 외부 프로젝트에 의존하므로, pin이 없으면 포맷 규칙의 의미가 시간에 따라 조용히 바뀐다.
 
 ---
@@ -117,279 +119,50 @@ FAIL 항목이 없으므로 .NET 8 + Avalonia 11 fallback 비용 산정은 필�
 
 ---
 
-## libmpv (네이티브, M5 결정)
+## libmpv 및 외부 재생 도구 (v0.2.3 현재 정책)
 
-libmpv는 .NET self-contained 런타임에 자동으로 들어가는 관리 코드가 아니다. 따라서
-배포 패키지의 앱 바이너리와 별도로 배치·서명·고지해야 한다. 아래 결정은 **배포
-정책**이며, 현재 저장소에 각 OS용 libmpv 바이너리를 추가했다는 뜻이 아니다.
+영상 재생은 yttStudio의 기본 기능이다. 다만 yttStudio 자체 MIT 배포물에 제3자 네이티브/실행 바이너리를 직접 합쳐 넣지 않고, **기존 설치본 우선 → 없으면 프로그램 내부에서 고정·검증 설치** 순서를 사용한다.
 
-### 지원 아키텍처와 우선순위
+### libmpv
 
-| OS / RID | M5 우선순위 | 결정 | 현재 상태 |
-|---|---:|---|---|
-| Windows x64 (`win-x64`) | 1 | 첫 정식 배포 대상 | Inno Setup 설치 프로그램 + zip 배포. libmpv 패키징 미구현, 코드 서명 없음 |
-| macOS arm64 (`osx-arm64`) | 2 | 두 번째 정식 배포 대상 | `.app` 번들 + `.dmg` 배포. ad-hoc 서명만이며 codesign/notarization 미구현 |
-| Linux x64 (`linux-x64`) | 3 | AppImage 정식 배포 대상 | AppImage 빌드는 구현. 실제 데스크톱에서 GPU/OpenGL 실행 검증은 미완 |
-| Windows arm64 | — | M5에서 지원하지 않음 | 별도 native fixture/CI 전까지 미지원 |
-| macOS x64 / universal | — | M5에서 지원하지 않음 | universal 빌드 결정 및 검증 전까지 미지원 |
-| Linux arm64 | — | M5에서 지원하지 않음 | 별도 native fixture/CI 전까지 미지원 |
+지원 대상과 내부 설치 pin:
 
-지원하지 않는 아키텍처에서 시스템 libmpv가 우연히 발견되더라도 호환성을 보장하지
-않는다. 릴리스 파일명과 설치 안내에는 위 세 RID만 노출한다.
-
-### 제공 방식과 probing 순서
-
-정식 패키지는 **앱 옆의 동적 sidecar 번들**을 기본으로 한다. 개발자와 고급 사용자는
-환경 변수로 다른 빌드를 지정할 수 있고, 번들이 없는 개발 환경에서만 OS 표준 탐색을
-마지막으로 사용한다. 최종 순서는 다음과 같다.
-
-1. `YTTSTUDIO_MPV_PATH` — 라이브러리 파일 또는 디렉터리. 디렉터리면 해당 OS의 후보
-   파일명을 순서대로 검사한다.
-2. `AppContext.BaseDirectory` — 정식 패키지에 포함된 sidecar 위치.
-3. OS 동적 로더의 표준 탐색 경로.
-
-현재 `MpvNativeLibrary.EnumerateCandidates()`가 실제로 사용하는 파일명은 다음과 같다.
-
-| OS | 후보 파일명(순서대로) |
-|---|---|
-| Windows | `libmpv-2.dll`, `mpv-2.dll` |
-| macOS | `libmpv.2.dylib`, `libmpv.dylib` |
-| Linux/기타 Unix | `libmpv.so.2`, `libmpv.so` |
-
-현재 구현은 로드 실패 시 크래시하지 않고 `libmpv 없음 · 배경 모드`로 시작하며,
-로그에는 `libmpv was not found. Probed: ...` 진단을 남긴다. **M5 사용자 메시지 계약**은
-다음 문구와 troubleshooting 링크를 추가하는 것이며, 아직 UI에 반영되지 않았다.
-
-> 영상을 재생할 수 없습니다. libmpv를 찾지 못했습니다. 앱을 다시 설치하거나
-> `YTTSTUDIO_MPV_PATH`에 호환되는 libmpv 파일/폴더를 지정한 뒤 다시 시작하세요.
-
-### 버전 및 client API 정책
-
-현재 코드는 `mpv_create`부터 Render API 함수까지 필요한 native export를 조회하고,
-초기화 후 `mpv-version` property를 우선 읽는다. property를 읽지 못하면
-`mpv_client_api_version()`을 `client API major.minor` 문자열로 기록한다. **숫자형
-최소 libmpv 버전 또는 client API floor를 강제하는 코드는 아직 없다.**
-
-M5 배포 정책은 다음처럼 고정한다.
-
-- 각 릴리스는 실제로 시험한 libmpv **빌드 식별자, `mpv-version`, client API 값, RID**를
-  릴리스 노트와 notice payload에 기록한다.
-- 현재처럼 필요한 export 누락 또는 초기화 실패는 호환되지 않는 라이브러리로 보고
-  로드를 거부한다. `mpv-version`을 읽지 못했다는 이유만으로 호환이라고 판정하지
-  않는다.
-- 수치형 최소 버전은 M2 native matrix를 측정하기 전까지 **미정(TBD)** 으로 둔다.
-  임의의 버전을 최소값이라고 문서화하거나, 현재 코드가 거부한다고 표현하지 않는다.
-
-따라서 현 상태의 `LibraryVersion`은 진단용 값이지, 배포 호환성 보증값이 아니다.
-
-### M2 렌더 결정과 OS별 fallback
-
-- **libmpv 렌더 백엔드:** `MPV_RENDER_API_TYPE_SW`; `hwdec=no`. 근거는
-  `docs/PERFORMANCE.md`이며, CPU readback이 필요한 airspace 경로에서 GPU
-  readback보다 측정 비용이 낮았다.
-- **Windows:** libmpv는 SW 경로를 사용하므로 libmpv 자체의 GPU/OpenGL 드라이버를
-  요구하지 않는다. Avalonia/Skia의 GL 초기화는 호스트 드라이버에 의존한다. 현재
-  앱에는 GL 초기화 실패를 감지해 별도 software UI backend로 전환하는 선택지가
-  없으므로, “Windows GL/SW 자동 fallback”은 **정책만 확정된 미구현 항목**이다.
-- **Linux AppImage (`linux-x64`):** AppImage에 vendor GPU 드라이버를 넣지 않는다.
-  libmpv는 SW로 동작하지만 Avalonia 창은 호스트의 OpenGL/EGL 및 세션 런타임에
-  의존할 수 있다. Wayland 세션은 Wayland client 런타임, X11 세션은 X11/XCB 런타임을
-  확인해야 하며, 두 세션 모두에서 실행 검증한다. 현재 AppImage launcher의 GL 실패
-  fallback과 의존성 사전 점검은 미구현이다.
-- **macOS:** M5 정식 대상은 arm64이며, dylib와 앱을 함께 서명해야 한다. macOS x64
-  또는 universal은 이 릴리스 범위가 아니다.
-
-### self-contained publish와 sidecar
-
-`dotnet publish --self-contained`는 .NET 런타임과 관리 어셈블리를 포함할 뿐,
-임의의 libmpv를 자동 포함하지 않는다. 정식 패키지 빌더는 RID별로 다음을 하나의
-배포 단위로 취급해야 한다.
-
-```
-yttStudio 실행 파일/앱 번들
-libmpv sidecar (RID별 실제 시험 빌드)
-THIRD-PARTY-NOTICES.txt 및 licenses/libmpv/*
-```
-
-현재 프로젝트에는 libmpv native asset 또는 패키징 대상이 없으므로 self-contained
-아티팩트만으로 영상 재생이 된다고 안내하지 않는다.
-
-### macOS codesign / notarization 정책
-
-정식 `osx-arm64` 아티팩트는 sidecar dylib를 먼저 서명하고 앱 번들을 서명한 뒤
-notarization한다. 배포 전 최소 게이트는 다음과 같다.
-
-1. hardened runtime과 필요한 최소 entitlement로 `libmpv.2.dylib` 및 앱을 서명한다.
-2. `codesign --verify --deep --strict`로 서명·봉입 경로를 검사한다.
-3. notarization 제출 후 `xcrun notarytool` 결과를 확인하고, 최종 DMG/ZIP에 stapling한다.
-4. 깨끗한 arm64 macOS에서 Gatekeeper 실행을 확인한다.
-
-패키징 스크립트와 실제 인증서/팀 ID는 저장소에 없으며, 이 문서는 서명을 수행했다고
-주장하지 않는다.
-
-### crash metadata
-
-현재 `Program`은 `%LOCALAPPDATA%/YttStudio/logs/yttstudio-YYYYMMDD.log`에
-managed fatal을 기록하고, libmpv 초기화 시 버전과 로드 경로를 남긴다. 그러나 native
-crash 전용 수집기는 없다. M5 crash report의 필수 metadata는 다음으로 고정한다.
-
-- 앱 버전/commit 또는 package RID, OS 버전, process architecture
-- libmpv 로드 경로, `mpv-version`, client API 값, probing diagnostic
-- 렌더 경로(`MPV_RENDER_API_TYPE_SW`), Avalonia/Skia backend, GPU/OpenGL/Wayland/X11
-  초기화 상태
-- UTC 시각과 managed exception/stack trace(있는 경우)
-
-영상 파일의 전체 경로와 자막 본문은 기본 crash payload에 넣지 않는다. 현재 로그에는
-위 항목 중 libmpv 버전·경로와 managed fatal만 있으므로, 나머지 metadata 및 native
-crash 수집은 **미구현**이다.
-
----
-
-### 자동 설치는 고정한 빌드만 받는다
-
-윈도우 자동 설치는 `shinchiro/mpv-winbuild-cmake` 의 **특정 릴리즈**를 받는다. 최신을
-따라가지 않는다.
-
-| 항목 | 값 |
-|---|---|
-| 릴리즈 태그 | `20260828` |
-| 자산 | `mpv-dev-x86_64-20260828-git-182fa6ca49.7z` |
-| 크기 | 31,354,441 바이트 |
-| SHA-256 | `9efd04d3…1905635b` |
-
-내려받은 파일은 **압축을 풀기 전에** 크기와 SHA-256 을 확인한다. 다르면 지우고 설치를
-중단한다. 다운로드는 `github.com` 과 `objects.githubusercontent.com`,
-`release-assets.githubusercontent.com` 에서만 받으며 리디렉션이 그 밖으로 나가면 거부한다.
-
-이 파일은 압축을 풀어 이 프로세스에 로드된다. HTTPS 는 전송 구간만 보호하고 산출물이
-무엇인지는 보증하지 않으므로, 무엇이 올지 모르는 채로 로드할 수 없다. 그래서 최신 추적을
-버렸다.
-
-**버전을 올리려면** 새 자산을 받아 SHA-256 을 계산하고 `MpvAutoInstaller` 의 네 상수
-(`PinnedReleaseTag` · `PinnedAssetName` · `PinnedAssetSha256` · `PinnedAssetLength`) 를
-함께 고친 뒤 이 표도 갱신한다.
-
-### 라이브러리 탐색 순서
-
-1. `YTTSTUDIO_MPV_PATH` 환경 변수 — 디렉터리면 그 안에서, 파일이면 그대로
-2. 실행 파일이 있는 디렉터리
-3. 시스템 라이브러리 경로 — **리눅스와 macOS 만**
-
-윈도우에서 3번을 쓰지 않는 이유가 있다. `LoadLibrary` 에 맨 이름을 주면 기본 탐색 순서에
-현재 작업 디렉터리가 포함된다. 공격자가 쓸 수 있는 폴더에서 앱을 실행하면 그 자리의
-`libmpv-2.dll` 이 로드된다. 로드가 끝난 뒤에 도는 버전 검사로는 막을 수 없다.
-
-## 네이티브 배포 전략 (M5 확정)
-
-### 지원 아키텍처
-
-| OS | 아키텍처 | 우선순위 | 상태 |
+| OS / RID | upstream 자산 | SHA-256 | 설치 방식 |
 |---|---|---|---|
-| Windows | x64 | 1순위 | CI 빌드·테스트 통과 |
-| macOS | arm64 | 2순위 | CI 빌드·테스트 통과 |
-| Linux | x64 | 3순위 | CI 빌드·테스트 통과 |
-| Windows / Linux arm64, macOS x64 | — | 미지원 | 요청 시 재검토 |
+| Windows x64 | `zhongfly/mpv-winbuild` `mpv-dev-lgpl-x86_64-20260829-git-e8673660ab.7z` | `78260166265fbc09b3bee75ee3464eb0f6bbaa8ecd172786e33c22bbf8a3cb47` | LGPL 전용 개발 빌드를 사용자 LocalApplicationData에 설치 |
+| macOS arm64 | `Shusek/KMediaMpv` `kmedia-mpv-0.2.9-runtime-desktop.jar`의 `macos-aarch64` 네이티브 트리 | `4250b47144de085c7963f4bdbe99e995b9b2b0374e32a14ebe9d27fd38a67bef` | 검증 런타임의 해당 플랫폼 네이티브 트리만 사용자 영역에 설치 |
+| Linux x64 | 같은 KMediaMpv 자산의 `linux-x86_64` 네이티브 트리 | 같은 SHA-256 | 검증 런타임의 해당 플랫폼 네이티브 트리만 사용자 영역에 설치 |
 
-> CI는 빌드·테스트만 검증한다. **실제 배포 패키지 생성과 플랫폼 검증은 미수행이다.**
+`MpvAutoInstaller`는 코드에 고정된 HTTPS URL, 파일 길이, SHA-256을 모두 확인한다. 최종 리디렉션 호스트는 `github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`만 허용한다. 압축 항목 수와 총 해제 크기를 제한하고 절대 경로/상위 디렉터리 탈출을 차단한 뒤, staging 디렉터리를 원자적으로 교체한다. 설치 디렉터리에는 upstream과 corresponding-source 위치를 적은 `YTTSTUDIO-RUNTIME-SOURCE.txt`를 남긴다.
 
-### libmpv 제공 방식: 시스템 탐색 (번들하지 않음)
+기존 `YTTSTUDIO_MPV_PATH` 또는 사용자가 설정에서 지정한 경로는 계속 우선한다. 호환 libmpv가 없다면 첫 로컬 영상/YouTube 영상 열기에서 `AutoInstallingVideoSource`가 설치를 수행한 뒤 같은 요청을 원래 `MpvVideoSource`에 이어서 전달한다. 설정 창에서도 같은 검증 설치기를 이용해 재설치할 수 있다.
 
-**결정: 번들하지 않고 탐색만 한다.**
+이 정책은 과거 Shinchiro 기본 GPL 계열 빌드를 자동 설치하던 기록과, libmpv를 전혀 자동 설치하지 않는다고 적었던 과도기 문서를 대체한다. Shinchiro 빌드는 현재 자동 설치 대상이 아니다.
 
-근거:
-- libmpv는 **LGPLv2.1+ (빌드 구성에 따라 GPL)** 이다. 번들하면 배포 패키지 전체의
-  라이선스 의무가 커지고, 정적 링크 여부에 따라 소스 공개 의무가 생길 수 있다
-- 영상 재생은 **선택 기능**이다. libmpv가 없어도 자막 편집·검증·export가 전부 동작한다
-- 사용자가 이미 mpv를 설치한 경우가 많고, 배포본이 그것과 충돌할 이유가 없다
+### yt-dlp
 
-### probing 순서
+YouTube URL을 열 때는 기존 `YTTSTUDIO_YTDLP_PATH`, 앱 경로, `PATH`의 실행 파일을 먼저 사용한다. 없으면 `YtDlpAutoInstaller`가 코드에 고정한 공식 `yt-dlp/yt-dlp` 릴리스 자산을 직접 받아 파일 길이와 SHA-256을 확인한 뒤 사용자 LocalApplicationData에 설치한다. yttStudio의 ZIP/installer/DMG/AppImage에는 yt-dlp standalone 실행 파일을 직접 넣지 않는다.
 
-`MpvNativeLibrary.TryLoad`가 다음 순서로 시도한다:
+현재 pin은 `2026.08.19`이며 Windows x64 `yt-dlp.exe`, macOS arm64 `yt-dlp_macos`, Linux x64 `yt-dlp_linux`를 사용한다. 새 버전으로 올릴 때는 자산 이름·길이·해시를 함께 갱신하고 CI와 수동 QA를 다시 수행한다.
 
-1. 환경변수 `YTTSTUDIO_MPV_PATH` — 파일 경로 또는 디렉터리
-2. 앱 실행 디렉터리
-3. OS 표준 라이브러리 탐색 (`NativeLibrary.TryLoad`)
+`yt-dlp`는 영상을 파일로 저장하기 위한 다운로드 명령으로 호출하지 않는다. URL을 검증하고 libmpv `ytdl_hook`이 스트림을 열 수 있도록 실행 파일 경로를 전달한다. 공개 VOD가 기본 지원 범위이며, 생방송·연령 제한·비공개·지역 차단은 별도 실패 사유로 처리될 수 있다.
 
-플랫폼별 파일명: Windows `libmpv-2.dll` / `mpv-2.dll`, Linux `libmpv.so.2`, macOS `libmpv.2.dylib`.
+### 라이선스 경계
 
-**실패 시**: 크래시하지 않고 영상 기능만 비활성화한 뒤 단색·체커보드 배경으로 폴백한다.
-어떤 경로를 시도했는지 진단 메시지에 남긴다.
-
-### 버전 게이트
-
-- 최소 `mpv_client_api_version()` = **2.0** (mpv 0.35+). `MpvCompatibility.MinimumClientApiVersion`
-- 이 프로젝트가 쓰는 render API 진입점이 안정화된 최초 릴리스가 기준이다
-- 미달 시 render context를 만들기 전에 거부하고, **발견한 버전 · 요구 버전 · 로드 경로**를
-  메시지에 담는다. 파이프라인 깊은 곳에서 크래시하는 것보다 낫다
-
-### crash log
-
-`MpvCompatibility.DescribeForCrashLog`가 한 줄로 기록한다:
-
-```
-libmpv client-api=2.0 path=... os=... arch=...
-```
-
-네이티브 크래시의 대부분이 버전·드라이버 문제이므로 이 줄이 없으면 원인 추적이 불가능하다.
-
-### 라이선스 파일
-
-배포 패키지에 포함한다:
-
-| 대상 | 라이선스 |
-|---|---|
-| yttStudio | 저장소 `LICENSE` |
-| YTSubConverter (fork) | MIT |
-| Roboto | Apache-2.0 (`src/YttStudio.Render/Assets/Fonts/LICENSE-Roboto.txt`) |
-| Liberation Sans/Serif/Mono | SIL OFL 1.1 (`LICENSE-Liberation.txt`) |
-| libmpv | **번들하지 않으므로 미포함.** 시스템 설치본을 쓴다 |
-
-### 미수행 — 실제 패키징
-
-아래는 **문서로 전략만 확정**했고 구현·검증하지 않았다. 이 환경에서 불가능하다.
-
-- self-contained publish 산출물 생성 및 검증
-- macOS codesign / notarization
-- Linux AppImage (GPU / OpenGL / Wayland / X11 의존성)
-- Windows GPU 드라이버 / OpenGL fallback 실측
-- 각 플랫폼 설치 관리자
-
----
+- yttStudio 본체는 MIT를 유지한다.
+- 자동 설치되는 libmpv/yt-dlp는 각각 upstream 라이선스를 그대로 따른다. yttStudio가 MIT로 재라이선스하지 않는다.
+- yttStudio 릴리스 산출물 자체에는 이 네이티브/standalone 바이너리를 직접 포함하지 않는다.
+- libmpv는 교체 가능한 동적 라이브러리로 로드한다. 정확한 upstream, hash, corresponding-source 위치는 설치 provenance와 이 문서에 기록한다.
+- 제3자 라이선스 판단은 이름만 보고 추정하지 않고 **실제로 고정한 산출물** 기준으로 다시 확인한다.
 
 ## 외부 도구
 
 | 도구 | 용도 | 정책 |
 |---|---|---|
-| mitmproxy | 실제 플레이어 프리뷰 | 번들 금지. 미설치 시 다운로드 안내만. 스크립트는 upstream `mitmproxy_script.py`와 동기화 |
+| mitmproxy | 실제 플레이어 프리뷰 | 번들 금지. 미설치 시 안내만. 스크립트는 upstream과 동기화 |
 | Fiddler Classic | 위의 Windows 대안 | 안내만 |
 | Aegisub | `.ass` 편집 | 안내만 |
-| yt-dlp | YouTube 주소에서 스트림 정보를 해석하는 libmpv `ytdl_hook`의 외부 도구 | 릴리즈에는 고정·검증 바이너리를 번들. 개발 빌드는 앱 디렉터리 → `PATH` 순서로 탐색. 자동 설치·업데이트 없음 |
-
-### yt-dlp — YouTube 주소 미리보기
-
-YouTube 주소를 열 때만 `yt-dlp`가 필요하다. 릴리즈 패키지에는 공식 `2026.08.19`
-릴리즈의 플랫폼별 바이너리를 `SHA2-256SUMS`로 검증해 번들하며, 실행 파일 이름은
-Windows에서 `yt-dlp.exe`, 그 밖의 환경에서는 `yt-dlp`다. 따라서 릴리즈에서는 앱
-디렉터리의 번들을 먼저 사용한다.
-
-개발 빌드는 `yt-dlp`를 자동으로 내려받거나 설치하지 않는다. 실행 파일을 앱 실행
-파일과 같은 디렉터리 또는 운영체제의 `PATH`에 두면 된다. 모든 빌드에서 자동 업데이트는
-없다. `YTTSTUDIO_YTDLP_PATH`를 파일 또는 디렉터리 경로로 지정하면 명시한 경로를 먼저
-사용하고, 지정하지 않으면 앱 디렉터리(일반·`tools`·`bin`)를 먼저 검사한 뒤 `PATH`를
-검사한다.
-
-찾은 실행 파일의 경로는 libmpv의 `ytdl_hook`에 전달한다
-(`script-opts=ytdl_hook-ytdl_path=...`). `yt-dlp`는 영상 파일을 내려받는 용도로
-호출되지 않으며, libmpv가 VOD 스트림을 재생할 수 있도록 필요한 정보와 스트림
-주소를 해석하는 데만 쓴다. 따라서 주소로 연 영상은 디스크에 저장하지 않는다.
-
-이 경로의 지원·QA 대상은 공개 YouTube VOD다. 생방송, 연령 제한, 비공개 영상,
-지역 차단 영상은 형식이 맞는 주소라도 재생할 수 없는 영상으로 안내될 수 있다.
-`yt-dlp`가 없을 때, 네트워크에 연결하지 못했을 때, 영상 자체를 재생할 수 없을 때는
-서로 다른 오류 사유로 사용자에게 알리고 앱을 계속 사용할 수 있어야 한다. 자세한
-확인 절차는 [`MANUAL_QA.md`](MANUAL_QA.md)의 YouTube 주소 항목을 따른다.
-
----
+| yt-dlp | YouTube URL 스트림 해석 | 기존 설치본 우선, 없으면 공식 pin을 프로그램 내부에서 검증 설치. yttStudio 릴리스에는 직접 번들하지 않음 |
 
 ## 번들 폰트
 

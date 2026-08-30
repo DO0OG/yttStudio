@@ -11,7 +11,7 @@
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![Avalonia](https://img.shields.io/badge/Avalonia-12-8B44AC)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
-![Tests](https://img.shields.io/badge/tests-361%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-multi--platform%20CI-brightgreen)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/bd1f9a95330940aeab504f29f2e57d1a)](https://app.codacy.com/gh/DO0OG/yttStudio/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 **한국어** · [English](README.en.md) · [日本語](README.ja.md)
@@ -61,6 +61,7 @@
 
 | | |
 |---|---|
+| **v0.2.3 영상 엔진 기본화** | libmpv가 없으면 첫 영상 열기에서 검증된 LGPL 런타임을 프로그램이 직접 설치합니다. YouTube 주소를 처음 열 때 yt-dlp가 없으면 공식 릴리스 자산을 검증해 설치합니다 |
 | **유튜브 주소로 프리뷰** | 주소를 넣으면 스트리밍으로 재생하고 그 위에서 자막을 편집합니다. 주소 해석에 `yt-dlp` 가 필요합니다 |
 | **재생 단축키 정리** | 창 어디에 포커스가 있어도 `Space` 가 재생·일시정지로 동작합니다. 프레임 이동 버튼은 `⏮` `⏭` 로 바꿨습니다 |
 | **뷰포트 모드** | 유튜브 플레이어를 실측해 일반·극장·전체화면·모바일 비율을 재현합니다 |
@@ -83,16 +84,16 @@
 > Windows 는 SmartScreen 경고에서 **추가 정보 → 실행**, macOS 는 `yttStudio.app` 을
 > 우클릭해 **열기** 를 고르세요.
 
-### 선택 의존성
+### 영상 재생 런타임
 
-| 항목 | 언제 필요한가 |
+영상 재생은 기본 기능입니다. 별도 수동 설치를 선행할 필요는 없습니다.
+
+| 항목 | v0.2.3 동작 |
 |---|---|
-| libmpv 2.0 이상 | **영상 재생.** 없어도 자막 편집·검증·저장은 정상 동작합니다 |
-| yt-dlp | **유튜브 주소로 열기.** 사용자가 설치한 실행 파일을 앱 디렉터리 또는 `PATH` 에서 찾습니다 |
+| libmpv 2.0 이상 | 로컬/YouTube 영상 재생에 필요합니다. 기존에 지정했거나 시스템에서 찾은 호환 라이브러리를 우선 사용하고, 없으면 첫 영상 열기에서 지원 플랫폼용 **검증된 LGPL 런타임**을 사용자 영역에 자동 설치합니다 |
+| yt-dlp | YouTube 주소 해석에 필요합니다. 기존 설치본을 우선 사용하고, 없으면 첫 YouTube 주소 열기에서 공식 `yt-dlp/yt-dlp` 릴리스 자산을 SHA-256 검증 후 사용자 영역에 자동 설치합니다 |
 
-libmpv 는 **도구 → 설정 → 영상** 탭에서 경로를 지정할 수 있습니다. 제3자 바이너리는
-각 프로젝트의 별도 라이선스를 따르며 yttStudio의 MIT 라이선스로 재라이선스되지 않습니다.
-자세한 탐색 순서와 라이선스 사정은 [의존성 문서](docs/DEPENDENCIES.md)에 있습니다.
+현재 내부 libmpv 설치 대상은 Windows x64의 `zhongfly/mpv-winbuild` LGPL 전용 빌드와 macOS arm64/Linux x64의 `Shusek/KMediaMpv` 검증 런타임입니다. 두 도구 모두 yttStudio 릴리스 ZIP/설치 파일/DMG/AppImage 안에는 직접 번들하지 않습니다. **도구 → 설정 → 영상**에서 libmpv를 재설치하거나 직접 경로를 지정할 수도 있습니다. 자세한 pin·해시·라이선스 경계는 [의존성 문서](docs/DEPENDENCIES.md)와 [제3자 고지](docs/THIRD-PARTY-NOTICES.md)에 있습니다.
 
 ### 소스에서 빌드
 

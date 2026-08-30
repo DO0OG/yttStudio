@@ -1,5 +1,7 @@
 # yttStudio 배포 컴플라이언스 감사
 
+> **문서 기준:** v0.2.3 (2026-08-30)
+
 검토 기준일: 2026-08-30
 
 이 문서는 yttStudio의 제3자 구성 요소와 배포 방식을 추적하기 위한 기술적
@@ -49,24 +51,13 @@ PyInstaller 및 포함된 제3자 구성 요소의 라이선스 조건을 함께
 
 ## libmpv
 
-`libmpv`라는 이름만으로 LGPL이라고 판단하지 않는다. 실제 mpv, FFmpeg 및 링크된
-라이브러리의 빌드 옵션에 따라 GPL 구성이 될 수 있다.
+과거 Windows 자동 설치 대상으로 검토하던 Shinchiro 기본 빌드는 FFmpeg GPL/version3 구성이 확인되어 v0.2.3 자동 설치 대상에서 제거했다. 대신 **라이선스 목적이 명시되거나 검증 증빙이 제공되는 별도 런타임**만 pin한다.
 
-검토 당시 Windows 자동 설치 대상으로 사용되던 Shinchiro build 계열은 FFmpeg의
-GPL/version3 옵션을 사용하는 구성이 확인되어 MIT 애플리케이션의 공식 자동 설치
-대상으로 계속 고정하기에는 불확실성이 남았다.
+현재 자동 설치 대상은 Windows x64의 `zhongfly/mpv-winbuild` LGPL 전용 개발 빌드와 macOS arm64/Linux x64의 `Shusek/KMediaMpv v0.2.9` 검증 런타임이다. 다운로드 URL·파일 길이·SHA-256을 코드에 고정하고, 허용된 HTTPS GitHub 호스트에서 받은 결과만 압축 해제한다. 설치 후 provenance 파일에 upstream과 corresponding-source 위치를 남긴다.
 
-따라서 현재 정식 UI에서는 해당 자동 설치 delegate를 제공하지 않는다.
+영상 열기는 libmpv 부재 상태에서도 비활성화되지 않는다. 지원 플랫폼에서는 첫 영상 열기가 내부 설치의 진입점이며, 설치가 끝나면 원래 영상 열기 요청을 계속 수행한다. 사용자가 지정한 `YTTSTUDIO_MPV_PATH` 또는 설정 경로는 계속 우선한다.
 
-유지되는 기능:
-
-- `YTTSTUDIO_MPV_PATH`
-- 설정 창에서 libmpv 파일/디렉터리 선택
-- 앱/OS loader의 표준 탐색
-- macOS/Linux 패키지 관리자 설치 안내
-
-향후 자동 설치를 복원하려면 정확한 binary provenance, mpv/FFmpeg commit,
-build options, 포함 library 및 최종 GPL/LGPL 상태를 검증해야 한다.
+yttStudio 릴리스 산출물에는 libmpv 바이너리를 직접 번들하지 않는다. 자동 설치된 런타임은 upstream 라이선스를 그대로 따르며 yttStudio의 MIT 라이선스로 재라이선스되지 않는다. 이 기록은 법률 자문이 아니라 배포 기술 경계를 추적하기 위한 감사 자료다.
 
 ## 릴리스 라이선스 gate
 

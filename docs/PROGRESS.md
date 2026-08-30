@@ -1,5 +1,15 @@
 # PROGRESS.md
 
+> **문서 기준:** v0.2.3 (2026-08-30)
+
+## v0.2.3 릴리스 준비 — 영상 런타임/배포 컴플라이언스
+
+- libmpv: Shinchiro 기본 GPL 계열 자동 설치를 제거하고 지원 플랫폼별 검증 런타임 pin으로 교체
+- 첫 영상 열기: libmpv 부재 상태에서도 명령을 열어 두고 프로그램 내부 설치 후 원래 요청 계속
+- yt-dlp: 릴리스 직접 번들 대신 공식 upstream 고정 자산을 첫 YouTube 사용 시 검증 설치
+- 배포: 제3자 네이티브/standalone 바이너리는 yttStudio 릴리스 패키지에 직접 포함하지 않음
+- 검증: Windows/macOS/Linux CI, release package 및 Codacy gate를 모두 통과한 커밋만 v0.2.3 태그 대상으로 사용
+
 yttStudio 마일스톤 진행 체크리스트.
 
 **규칙:** 각 마일스톤의 "완료 조건"을 만족해야 다음으로 넘어간다.

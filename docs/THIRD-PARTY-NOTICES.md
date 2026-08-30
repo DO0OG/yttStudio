@@ -1,5 +1,7 @@
 # THIRD-PARTY-NOTICES
 
+> **문서 기준:** v0.2.3 (2026-08-30)
+
 yttStudio 자체 소스 코드는 별도 표기가 없는 한 MIT License로 배포된다. 제3자
 라이브러리, 폰트, 실행 파일 및 선택적 네이티브 구성 요소는 각각의 원래 라이선스를
 따르며 yttStudio의 MIT License로 재라이선스되지 않는다.
@@ -60,26 +62,23 @@ YouTube URL 프리뷰는 yttStudio의 기본 기능으로 유지한다. 사용�
 
 ## libmpv 정책
 
-`libmpv = LGPL`이라고 일반화하지 않는다. mpv/FFmpeg와 관련 라이브러리의 실제 build
-configuration에 따라 GPL 구성이 될 수 있다.
+`libmpv = LGPL`이라고 일반화하지 않고 **자동 설치 대상으로 고정한 정확한 산출물**을 기준으로 판단한다. v0.2.3은 과거 Shinchiro 기본 빌드를 사용하지 않는다.
 
-따라서 다음 규칙을 적용한다.
+현재 프로그램 내부 설치 대상:
 
-1. yttStudio 릴리스 산출물에 검증되지 않은 libmpv sidecar를 직접 넣지 않는다.
-2. `YTTSTUDIO_MPV_PATH`, 앱 경로 및 OS loader 경로를 통한 교체 가능한 동적 로드를 유지한다.
-3. 특정 libmpv build를 공식 제공하거나 자동 설치 대상으로 고정할 경우 해당 build의
-   정확한 mpv/FFmpeg commit, configure options, 포함 라이브러리 및 최종 라이선스를 다시 감사한다.
-4. LGPL-compatible이라고 검증되지 않은 build를 문서에서 LGPL이라고 표시하지 않는다.
+- Windows x64: `zhongfly/mpv-winbuild`의 `mpv-dev-lgpl-x86_64-20260829-git-e8673660ab.7z`
+- macOS arm64 / Linux x64: `Shusek/KMediaMpv v0.2.9`의 `kmedia-mpv-0.2.9-runtime-desktop.jar` 내 해당 플랫폼 네이티브 런타임
 
-현재 Windows의 기존 Shinchiro 자동 설치 경로는 과거 호환성을 위해 코드에 남아 있을 수
-있으며, 정식 배포 정책으로 유지할지 여부는 정확한 build license 검증 후 결정해야 한다.
-새로운 libmpv build를 자동 설치 대상으로 추가하지 않는다.
+두 자산은 버전·파일 길이·SHA-256을 코드에 고정하고 검증한 뒤 사용자 로컬 application-data 영역에 설치한다. KMediaMpv 설치 provenance에는 exact corresponding-source 릴리스 URL을 남긴다. Windows 빌드 역시 upstream 저장소와 고정 릴리스 위치를 기록한다. yttStudio 릴리스 ZIP/installer/DMG/AppImage 자체에는 libmpv를 직접 포함하지 않는다.
+
+사용자가 `YTTSTUDIO_MPV_PATH` 또는 설정 화면에서 다른 libmpv를 지정하면 그 선택을 우선한다. 그 외부 빌드의 라이선스 적합성은 해당 배포자가 제공한 라이선스와 build configuration을 기준으로 별도 판단해야 한다.
 
 참고:
 
 - https://github.com/mpv-player/mpv/blob/master/Copyright
+- https://github.com/zhongfly/mpv-winbuild
+- https://github.com/Shusek/KMediaMpv
 - https://ffmpeg.org/legal.html
-- https://github.com/shinchiro/mpv-winbuild-cmake
 
 ## NuGet / 런타임 감사
 

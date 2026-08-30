@@ -11,7 +11,7 @@
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![Avalonia](https://img.shields.io/badge/Avalonia-12-8B44AC)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
-![Tests](https://img.shields.io/badge/tests-361%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-multi--platform%20CI-brightgreen)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/bd1f9a95330940aeab504f29f2e57d1a)](https://app.codacy.com/gh/DO0OG/yttStudio/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 [한국어](README.md) · [English](README.en.md) · **日本語**
@@ -61,6 +61,7 @@ yttStudio はその空白を埋めます。
 
 | | |
 |---|---|
+| **v0.2.3 映像ランタイムを標準化** | libmpv がない場合は最初に映像を開くときに検証済み LGPL ランタイムをアプリ内で導入します。YouTube URL を初めて開く際に yt-dlp がなければ、公式配布物を検証して導入します |
 | **YouTube アドレスでプレビュー** | アドレスを入れるとストリーミング再生し、その上で字幕を編集できます。アドレスの解析に `yt-dlp` が必要です |
 | **再生ショートカットの整理** | ウィンドウのどこにフォーカスがあっても `Space` が再生・一時停止として働きます。コマ送りボタンは `⏮` `⏭` に変えました |
 | **ビューポートモード** | YouTube プレイヤーを実測し、通常・シアター・全画面・モバイルの比率を再現します |
@@ -83,15 +84,16 @@ yttStudio はその空白を埋めます。
 > Windows は SmartScreen の警告で**詳細情報 → 実行**、macOS は `yttStudio.app` を
 > 右クリックして**開く**を選んでください。
 
-### 任意の依存関係
+### 映像再生ランタイム
 
-| 項目 | 必要になる場面 |
+映像再生は基本機能です。事前の手動インストールは不要です。
+
+| 項目 | v0.2.3 の動作 |
 |---|---|
-| libmpv 2.0 以上 | **映像再生。** なくても字幕の編集・検証・保存は正常に動作します |
-| yt-dlp | **YouTube アドレスで開く場合。** アプリのディレクトリと `PATH` から探します |
+| libmpv 2.0 以上 | ローカル映像と YouTube 再生に必要です。指定済み・検出可能な互換ライブラリを優先し、見つからない場合は最初に映像を開くとき、対応プラットフォーム向けの**検証済み LGPL ランタイム**をユーザー領域へ自動導入します |
+| yt-dlp | YouTube URL の解析に必要です。既存のインストールを優先し、見つからない場合は最初の YouTube URL オープン時に公式 `yt-dlp/yt-dlp` リリース資産を取得して SHA-256 を検証後、ユーザー領域へ導入します |
 
-libmpv は**ツール → 設定 → 映像**タブでパスを選ぶか、Windows ではその場でダウンロード
-できます。探索順序とライセンスの事情は[依存関係の文書](docs/DEPENDENCIES.md)にあります。
+アプリ内 libmpv の現在の取得元は Windows x64 では `zhongfly/mpv-winbuild` の明示的な LGPL ビルド、macOS arm64/Linux x64 では検証済みの `Shusek/KMediaMpv` ランタイムです。libmpv と yt-dlp は yttStudio の ZIP・インストーラ・DMG・AppImage には直接同梱しません。**ツール → 設定 → 映像**から libmpv の再インストールや任意パスの指定もできます。固定バージョン・ハッシュ・ライセンス境界は[依存関係](docs/DEPENDENCIES.md)と[サードパーティ告知](docs/THIRD-PARTY-NOTICES.md)を参照してください。
 
 ### ソースからのビルド
 

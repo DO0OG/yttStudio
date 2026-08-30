@@ -11,7 +11,7 @@ Position and style captions directly on the video, then export `.ytt` — on the
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![Avalonia](https://img.shields.io/badge/Avalonia-12-8B44AC)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
-![Tests](https://img.shields.io/badge/tests-361%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-multi--platform%20CI-brightgreen)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/bd1f9a95330940aeab504f29f2e57d1a)](https://app.codacy.com/gh/DO0OG/yttStudio/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 [한국어](README.md) · **English** · [日本語](README.ja.md)
@@ -61,6 +61,7 @@ The full set of controls is in the [user guide](docs/USER_GUIDE.md).
 
 | | |
 |---|---|
+| **v0.2.3 video runtime by default** | If libmpv is missing, the app installs a verified LGPL runtime on the first video open. If yt-dlp is missing on the first YouTube URL open, the app verifies and installs an official upstream asset |
 | **YouTube address preview** | Enter an address to stream it and edit captions on top. Address resolution needs `yt-dlp` |
 | **Playback shortcut cleanup** | `Space` now toggles playback wherever focus sits. The frame-step buttons became `⏮` and `⏭` |
 | **Viewport modes** | Normal, theater, fullscreen and mobile ratios reproduced from measured YouTube players |
@@ -83,16 +84,16 @@ The .NET runtime is bundled, so there is nothing else to install.
 > warning. On Windows choose **More info → Run anyway** in the SmartScreen dialog; on
 > macOS right-click `yttStudio.app` and choose **Open**.
 
-### Optional dependencies
+### Video playback runtimes
 
-| Item | When it is needed |
+Video playback is a core feature; no manual prerequisite installation is required.
+
+| Item | v0.2.3 behaviour |
 |---|---|
-| libmpv 2.0 or later | **Video playback.** Editing, validation and saving work without it |
-| yt-dlp | **Opening a YouTube address.** Looked up in the app directory and on `PATH` |
+| libmpv 2.0+ | Required for local and YouTube playback. yttStudio first prefers a user-selected or discoverable compatible library; if none exists, the first video open installs a **verified LGPL runtime** into the user data area on supported platforms |
+| yt-dlp | Required to resolve YouTube addresses. yttStudio first prefers an existing installation; if none exists, the first YouTube URL open downloads the pinned official `yt-dlp/yt-dlp` release asset and verifies its SHA-256 before installing it into the user data area |
 
-Pick the libmpv path under **Tools → Settings → Video**, or download it there on Windows.
-The full lookup order and the licensing situation are in the
-[dependencies document](docs/DEPENDENCIES.md).
+The current in-app libmpv sources are the explicit LGPL build from `zhongfly/mpv-winbuild` on Windows x64 and the verified `Shusek/KMediaMpv` runtime on macOS arm64/Linux x64. Neither libmpv nor yt-dlp is embedded in yttStudio release ZIPs, installers, DMGs or AppImages. You can also reinstall libmpv or choose a custom path under **Tools → Settings → Video**. See [dependencies](docs/DEPENDENCIES.md) and [third-party notices](docs/THIRD-PARTY-NOTICES.md) for exact pins, hashes and licence boundaries.
 
 ### Building from source
 
