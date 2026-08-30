@@ -1,0 +1,43 @@
+name: v0.2.4 문서 동기화
+
+on:
+  push:
+    branches:
+      - fix/youtube-deno-v0.2.4
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 문서와 버전 표기 동기화
+        shell: bash
+        run: python .github/scripts/v024_doc_sync.py
+
+      - name: 변경 검증
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '문서 기준.*v0.2.4' docs/DEPENDENCIES.md
+          grep -q '^### Deno$' docs/DEPENDENCIES.md
+          grep -q '^## Deno$' docs/LEGAL-COMPLIANCE-AUDIT.md
+          grep -q 'Deno 2.3' docs/USER_GUIDE.md
+          ! test -e .github/workflows/v024-doc-sync-once.yml
+          ! test -e .github/scripts/v024_doc_sync.py
+          git diff --check
+
+      - name: 동기화 커밋
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "MAD_DOGGO"
+          git config user.email "95358325+DO0OG@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: v0.2.4 유튜브 런타임 문서 동기화"
+          git push origin HEAD:fix/youtube-deno-v0.2.4
