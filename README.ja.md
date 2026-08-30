@@ -61,8 +61,9 @@ yttStudio はその空白を埋めます。
 
 | | |
 |---|---|
+| **v0.2.4 YouTube 再生ホットフィックス** | 現在の yt-dlp が YouTube の JavaScript challenge を処理するために必要な Deno 2.3+ を利用します。互換 Deno がない場合は公式 Deno v2.9.6 資産を検証してユーザー領域へ自動導入し、yt-dlp の事前確認と libmpv 再生の両方で利用します |
+| **アクセス拒否の分類を修正** | HTTP 403・429・bot challenge を通常のネットワーク切断として誤表示しないようにしました |
 | **v0.2.3 映像ランタイムを標準化** | libmpv がない場合は最初に映像を開くときに検証済み LGPL ランタイムをアプリ内で導入します。YouTube URL を初めて開く際に yt-dlp がなければ、公式配布物を検証して導入します |
-| **YouTube アドレスでプレビュー** | アドレスを入れるとストリーミング再生し、その上で字幕を編集できます。アドレスの解析に `yt-dlp` が必要です |
 | **再生ショートカットの整理** | ウィンドウのどこにフォーカスがあっても `Space` が再生・一時停止として働きます。コマ送りボタンは `⏮` `⏭` に変えました |
 | **ビューポートモード** | YouTube プレイヤーを実測し、通常・シアター・全画面・モバイルの比率を再現します |
 | **インストーラの配布** | Windows インストーラ、macOS `.dmg`、Linux AppImage |
@@ -86,14 +87,15 @@ yttStudio はその空白を埋めます。
 
 ### 映像再生ランタイム
 
-映像再生は基本機能です。事前の手動インストールは不要です。
+映像再生は基本機能です。対応プラットフォームでは事前の手動インストールは不要です。
 
-| 項目 | v0.2.3 の動作 |
+| 項目 | v0.2.4 の動作 |
 |---|---|
 | libmpv 2.0 以上 | ローカル映像と YouTube 再生に必要です。指定済み・検出可能な互換ライブラリを優先し、見つからない場合は最初に映像を開くとき、対応プラットフォーム向けの**検証済み LGPL ランタイム**をユーザー領域へ自動導入します |
-| yt-dlp | YouTube URL の解析に必要です。既存のインストールを優先し、見つからない場合は最初の YouTube URL オープン時に公式 `yt-dlp/yt-dlp` リリース資産を取得して SHA-256 を検証後、ユーザー領域へ導入します |
+| yt-dlp | YouTube URL の解析に必要です。既存のインストールを優先し、見つからない場合は最初の YouTube URL オープン時に公式 `yt-dlp/yt-dlp 2026.08.19` 資産を取得して SHA-256 を検証後、ユーザー領域へ導入します |
+| Deno 2.3 以上 | 現在の yt-dlp が YouTube の JavaScript challenge を解決するために必要です。互換インストールが見つからない場合は公式 `denoland/deno v2.9.6` 資産を取得し、サイズと SHA-256 を検証してユーザー領域へ導入します |
 
-アプリ内 libmpv の現在の取得元は Windows x64 では `zhongfly/mpv-winbuild` の明示的な LGPL ビルド、macOS arm64/Linux x64 では検証済みの `Shusek/KMediaMpv` ランタイムです。libmpv と yt-dlp は yttStudio の ZIP・インストーラ・DMG・AppImage には直接同梱しません。**ツール → 設定 → 映像**から libmpv の再インストールや任意パスの指定もできます。固定バージョン・ハッシュ・ライセンス境界は[依存関係](docs/DEPENDENCIES.md)と[サードパーティ告知](docs/THIRD-PARTY-NOTICES.md)を参照してください。
+アプリ内 libmpv の現在の取得元は Windows x64 では `zhongfly/mpv-winbuild` の明示的な LGPL ビルド、macOS arm64/Linux x64 では検証済みの `Shusek/KMediaMpv` ランタイムです。yt-dlp と Deno もそれぞれ公式 upstream のリリース資産だけを利用します。これらの外部ランタイムは yttStudio の ZIP・インストーラ・DMG・AppImage には直接同梱しません。**ツール → 設定 → 映像**から libmpv の再インストールや任意パスの指定もできます。固定バージョン・ハッシュ・ライセンス境界は[依存関係](docs/DEPENDENCIES.md)と[サードパーティ告知](docs/THIRD-PARTY-NOTICES.md)を参照してください。
 
 ### ソースからのビルド
 
