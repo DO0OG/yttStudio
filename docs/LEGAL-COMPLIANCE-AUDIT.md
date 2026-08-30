@@ -1,6 +1,6 @@
 # yttStudio 배포 컴플라이언스 감사
 
-> **문서 기준:** v0.2.3 (2026-08-30)
+> **문서 기준:** v0.2.4 (2026-08-30)
 
 검토 기준일: 2026-08-30
 
@@ -15,6 +15,7 @@
 | YTSubConverter.Shared | 낮은 위험 | MIT 고지 보존 및 릴리스 payload 포함 |
 | Roboto / Liberation 폰트 | 낮음~중간 | 각 라이선스를 최종 패키지에 포함 |
 | yt-dlp standalone 재배포 | 기존 높은 위험 완화 | yttStudio 릴리스 직접 번들 제거, 필요 시 공식 upstream 고정 자산을 사용자 영역에 검증 설치 |
+| Deno 자동 설치 | 낮은 위험 | MIT 라이선스의 공식 v2.9.6 자산을 실행 시 upstream에서 직접 받아 크기·SHA-256 검증 후 사용자 영역에 설치 |
 | YouTube URL 기본 프리뷰 | 유지 | 공개 VOD 프리뷰를 기본 기능으로 유지하고 yt-dlp는 URL 해석/스트림 연동에만 사용 |
 | libmpv / FFmpeg | 고정 산출물 검증 | Shinchiro 기본 빌드 제거, Windows LGPL 전용 빌드와 macOS/Linux KMediaMpv 검증 런타임만 내부 설치 대상으로 pin |
 | 프로젝트 이름 `yttStudio` | 상표 검토 항목 | 현재 이름 유지, 비제휴 고지 추가 |
@@ -46,6 +47,22 @@ PyInstaller 및 포함된 제3자 구성 요소의 라이선스 조건을 함께
 - Linux x64: `yt-dlp_linux`
 
 새 버전으로 올릴 때는 공식 release asset과 SHA-256을 함께 다시 검증해야 한다.
+
+
+## Deno
+
+v0.2.4부터 현재 yt-dlp의 YouTube JavaScript challenge 요구사항을 충족하기 위해 Deno를 별도 런타임으로 관리한다.
+
+- 최소 호환 버전: Deno 2.3.0
+- 내부 설치 pin: 공식 `denoland/deno v2.9.6`
+- 기존 `YTTSTUDIO_DENO_PATH`/`PATH` 호환 설치본을 우선 사용
+- 없으면 플랫폼별 공식 `deno` ZIP을 사용자 LocalApplicationData에 설치
+- 다운로드 파일 길이와 SHA-256 고정 검증
+- ZIP에서 예상 실행 파일 하나만 추출하고 설치 후 `deno --version` 재검증
+- 설치 경로를 현재 프로세스 환경에 등록해 직접 yt-dlp와 libmpv `ytdl_hook` 양쪽에서 사용
+- yttStudio Release에는 Deno 실행 파일을 직접 번들하지 않음
+
+Deno v2.9.6은 MIT License이다. v0.2.4 사전검증에서는 Windows/macOS/Linux 세 환경 모두 공식 Deno와 yt-dlp 자산의 SHA-256을 확인하고 `--js-runtimes deno:<path>`를 사용한 공개 YouTube VOD 메타데이터 추출을 실제로 통과했다.
 
 ## libmpv
 
@@ -87,6 +104,7 @@ licenses/YTSubConverter/LICENSE.txt
 
 ```text
 yt-dlp / yt-dlp.exe / yt-dlp_macos / yt-dlp_linux
+deno / deno.exe
 libmpv*.dll / mpv-2.dll
 libmpv*.dylib
 libmpv*.so*
@@ -98,7 +116,7 @@ kmedia.jar / kmedia-mpv-*-runtime-desktop.jar
 
 ## 최종 사전검증 기록
 
-2026-08-30 v0.2.3 릴리스 준비에서 다음을 새로 검증했다.
+2026-08-30 v0.2.4 릴리스 준비에서 v0.2.3 검증 항목에 더해 다음을 확인했다.
 
 - 고정 Windows LGPL libmpv 자산의 URL, 파일 크기, SHA-256, `libmpv-2.dll` 존재 여부
 - KMediaMpv v0.2.9 데스크톱 JAR의 파일 크기와 SHA-256, macOS/Linux 실제 라이브러리 경로
@@ -106,10 +124,12 @@ kmedia.jar / kmedia-mpv-*-runtime-desktop.jar
 - Linux 및 macOS 고정 라이브러리의 yttStudio 필요 mpv client/render API 심볼
 - Linux 런타임의 `$ORIGIN` RUNPATH
 - Windows/macOS/Linux용 yt-dlp 2026.08.19 공식 자산의 SHA-256
+- Deno v2.9.6 공식 자산의 Windows/macOS/Linux 파일 크기와 SHA-256
+- 세 플랫폼에서 `--js-runtimes deno:<path>`를 사용한 실제 YouTube VOD 메타데이터 추출
 - Release 구성 빌드, 전체 테스트, 전이 NuGet 패키지 목록, 문서/배포 정책 모순 및 `git diff --check`
 - 같은 기준 커밋의 Windows/macOS/Ubuntu 정규 CI build + test
 
-사전검증 과정에서 실수로 저장소에 들어간 `kmedia.jar`는 제거했으며, 최종 릴리스 워크플로에도 yt-dlp와 libmpv/KMediaMpv 런타임 비번들 검사를 넣었다.
+사전검증 과정에서 실수로 저장소에 들어간 `kmedia.jar`는 제거했으며, 최종 릴리스 워크플로에도 yt-dlp, Deno와 libmpv/KMediaMpv 런타임 비번들 검사를 넣었다.
 
 ## 브랜드 / 이름
 

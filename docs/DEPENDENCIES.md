@@ -1,6 +1,6 @@
 # DEPENDENCIES.md
 
-> **문서 기준:** v0.2.3 (2026-08-30)
+> **문서 기준:** v0.2.4 (2026-08-30)
 
 의존성 고정(pin) 기록. **`master` 추종 금지** — 비공개 포맷의 버그 우회를 외부 프로젝트에 의존하므로, pin이 없으면 포맷 규칙의 의미가 시간에 따라 조용히 바뀐다.
 
@@ -119,7 +119,7 @@ FAIL 항목이 없으므로 .NET 8 + Avalonia 11 fallback 비용 산정은 필�
 
 ---
 
-## libmpv 및 외부 재생 도구 (v0.2.3 현재 정책)
+## libmpv 및 외부 재생 도구 (v0.2.4 현재 정책)
 
 영상 재생은 yttStudio의 기본 기능이다. 다만 yttStudio 자체 MIT 배포물에 제3자 네이티브/실행 바이너리를 직접 합쳐 넣지 않고, **기존 설치본 우선 → 없으면 프로그램 내부에서 고정·검증 설치** 순서를 사용한다.
 
@@ -179,6 +179,23 @@ YouTube URL을 열 때는 기존 `YTTSTUDIO_YTDLP_PATH`, 앱 경로, `PATH`의 �
 로컬에 없으면 폴백하되 미리보기에 "근사 표시 중" 배지를 띄운다. 조용한 폴백 금지.
 
 라이선스 파일은 배포 패키지에 포함한다.
+
+
+### Deno
+
+현재 yt-dlp의 YouTube EJS 추출은 외부 JavaScript 런타임을 사용한다. v0.2.4는 yt-dlp가 권장하는 Deno 경로를 기본으로 사용하며 최소 지원 버전은 2.3.0이다. `DenoAutoInstaller`는 `YTTSTUDIO_DENO_PATH`와 `PATH`에서 호환 Deno를 먼저 찾고, 없으면 공식 `denoland/deno v2.9.6`의 `deno` ZIP 자산을 사용자 LocalApplicationData에 설치한다. `denort` 자산은 사용하지 않는다.
+
+| OS / RID | 공식 자산 | SHA-256 |
+|---|---|---|
+| Windows x64 | `deno-x86_64-pc-windows-msvc.zip` | `15e5300b0ba3c3695a7621d90160a746ec9e710228cee639afa9d580f6e3cd11` |
+| macOS arm64 | `deno-aarch64-apple-darwin.zip` | `213a2f304f04d3c9cb5220669afad138f60a5aab1fe80962abdeb8f35807a472` |
+| Linux x64 | `deno-x86_64-unknown-linux-gnu.zip` | `394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2` |
+
+다운로드 URL·정확한 파일 길이·SHA-256을 고정하고 HTTPS GitHub release 호스트만 허용한다. ZIP에서 예상 `deno`/`deno.exe` 한 파일만 추출하며 설치 후 `--version`으로 실제 런타임이 2.3.0 이상인지 확인한다. 설치 경로를 `YTTSTUDIO_DENO_PATH`에 기록하고 현재 프로세스 `PATH` 앞에 추가해, 직접 yt-dlp 사전 확인과 libmpv `ytdl_hook`이 실행하는 yt-dlp가 동일한 Deno를 사용하게 한다.
+
+직접 사전 확인은 `--js-runtimes deno:<path>`를 명시한다. v0.2.4 사전검증에서는 Windows/macOS/Linux 모두 고정 Deno와 yt-dlp 공식 자산을 실제 다운로드·해시 검증한 뒤 공개 YouTube VOD의 JSON 메타데이터 추출까지 성공했다.
+
+Deno v2.9.6은 MIT License이며 yttStudio 릴리스 산출물에는 직접 번들하지 않는다.
 
 ---
 

@@ -259,7 +259,7 @@ public sealed class MpvAutoInstaller
         CancellationToken cancellationToken)
     {
         using HttpRequestMessage request = new(HttpMethod.Get, package.DownloadUri);
-        request.Headers.UserAgent.ParseAdd("yttStudio/0.2.3");
+        request.Headers.UserAgent.ParseAdd("yttStudio/0.2.4");
         using HttpResponseMessage response = await httpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
             .ConfigureAwait(false);
