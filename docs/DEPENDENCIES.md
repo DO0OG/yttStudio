@@ -1,6 +1,6 @@
 # DEPENDENCIES.md
 
-> **문서 기준:** v0.2.4 (2026-08-30)
+> **문서 기준:** v0.2.5 (2026-08-30)
 
 의존성 고정(pin) 기록. **`master` 추종 금지** — 비공개 포맷의 버그 우회를 외부 프로젝트에 의존하므로, pin이 없으면 포맷 규칙의 의미가 시간에 따라 조용히 바뀐다.
 
@@ -119,7 +119,7 @@ FAIL 항목이 없으므로 .NET 8 + Avalonia 11 fallback 비용 산정은 필�
 
 ---
 
-## libmpv 및 외부 재생 도구 (v0.2.4 현재 정책)
+## libmpv 및 외부 재생 도구 (v0.2.5 현재 정책)
 
 영상 재생은 yttStudio의 기본 기능이다. 다만 yttStudio 자체 MIT 배포물에 제3자 네이티브/실행 바이너리를 직접 합쳐 넣지 않고, **기존 설치본 우선 → 없으면 프로그램 내부에서 고정·검증 설치** 순서를 사용한다.
 
@@ -141,7 +141,7 @@ FAIL 항목이 없으므로 .NET 8 + Avalonia 11 fallback 비용 산정은 필�
 
 ### yt-dlp
 
-YouTube URL을 열 때는 기존 `YTTSTUDIO_YTDLP_PATH`, 앱 경로, `PATH`의 실행 파일을 먼저 사용한다. 없으면 `YtDlpAutoInstaller`가 코드에 고정한 공식 `yt-dlp/yt-dlp` 릴리스 자산을 직접 받아 파일 길이와 SHA-256을 확인한 뒤 사용자 LocalApplicationData에 설치한다. yttStudio의 ZIP/installer/DMG/AppImage에는 yt-dlp standalone 실행 파일을 직접 넣지 않는다.
+YouTube URL을 열 때는 기존 `YTTSTUDIO_YTDLP_PATH`, 앱 경로, `PATH`의 실행 파일을 먼저 사용한다. 다만 v0.2.5부터는 찾은 실행 파일이 yttStudio 사전 확인에 필요한 `--js-runtimes` 옵션을 실제로 지원할 때만 재사용한다. 옵션을 지원하지 않는 오래된 yt-dlp는 인자 파싱 단계에서 즉시 실패하므로 고정 릴리스로 대체한다. 재사용할 수 없으면 `YtDlpAutoInstaller`가 코드에 고정한 공식 `yt-dlp/yt-dlp` 릴리스 자산을 직접 받아 파일 길이와 SHA-256을 확인한 뒤 사용자 LocalApplicationData에 설치한다. yttStudio의 ZIP/installer/DMG/AppImage에는 yt-dlp standalone 실행 파일을 직접 넣지 않는다.
 
 현재 pin은 `2026.08.19`이며 Windows x64 `yt-dlp.exe`, macOS arm64 `yt-dlp_macos`, Linux x64 `yt-dlp_linux`를 사용한다. 새 버전으로 올릴 때는 자산 이름·길이·해시를 함께 갱신하고 CI와 수동 QA를 다시 수행한다.
 
@@ -162,7 +162,7 @@ YouTube URL을 열 때는 기존 `YTTSTUDIO_YTDLP_PATH`, 앱 경로, `PATH`의 �
 | mitmproxy | 실제 플레이어 프리뷰 | 번들 금지. 미설치 시 안내만. 스크립트는 upstream과 동기화 |
 | Fiddler Classic | 위의 Windows 대안 | 안내만 |
 | Aegisub | `.ass` 편집 | 안내만 |
-| yt-dlp | YouTube URL 스트림 해석 | 기존 설치본 우선, 없으면 공식 pin을 프로그램 내부에서 검증 설치. yttStudio 릴리스에는 직접 번들하지 않음 |
+| yt-dlp | YouTube URL 스트림 해석 | `--js-runtimes`를 지원하는 기존 설치본 우선, 없으면 공식 pin을 프로그램 내부에서 검증 설치. yttStudio 릴리스에는 직접 번들하지 않음 |
 
 ## 번들 폰트
 
@@ -183,7 +183,7 @@ YouTube URL을 열 때는 기존 `YTTSTUDIO_YTDLP_PATH`, 앱 경로, `PATH`의 �
 
 ### Deno
 
-현재 yt-dlp의 YouTube EJS 추출은 외부 JavaScript 런타임을 사용한다. v0.2.4는 yt-dlp가 권장하는 Deno 경로를 기본으로 사용하며 최소 지원 버전은 2.3.0이다. `DenoAutoInstaller`는 `YTTSTUDIO_DENO_PATH`와 `PATH`에서 호환 Deno를 먼저 찾고, 없으면 공식 `denoland/deno v2.9.6`의 `deno` ZIP 자산을 사용자 LocalApplicationData에 설치한다. `denort` 자산은 사용하지 않는다.
+현재 yt-dlp의 YouTube EJS 추출은 외부 JavaScript 런타임을 사용한다. v0.2.5는 yt-dlp가 권장하는 Deno 경로를 기본으로 사용하며 최소 지원 버전은 2.3.0이다. `DenoAutoInstaller`는 `YTTSTUDIO_DENO_PATH`와 `PATH`에서 호환 Deno를 먼저 찾고, 없으면 공식 `denoland/deno v2.9.6`의 `deno` ZIP 자산을 사용자 LocalApplicationData에 설치한다. `denort` 자산은 사용하지 않는다.
 
 | OS / RID | 공식 자산 | SHA-256 |
 |---|---|---|
@@ -193,7 +193,7 @@ YouTube URL을 열 때는 기존 `YTTSTUDIO_YTDLP_PATH`, 앱 경로, `PATH`의 �
 
 다운로드 URL·정확한 파일 길이·SHA-256을 고정하고 HTTPS GitHub release 호스트만 허용한다. ZIP에서 예상 `deno`/`deno.exe` 한 파일만 추출하며 설치 후 `--version`으로 실제 런타임이 2.3.0 이상인지 확인한다. 설치 경로를 `YTTSTUDIO_DENO_PATH`에 기록하고 현재 프로세스 `PATH` 앞에 추가해, 직접 yt-dlp 사전 확인과 libmpv `ytdl_hook`이 실행하는 yt-dlp가 동일한 Deno를 사용하게 한다.
 
-직접 사전 확인은 `--js-runtimes deno:<path>`를 명시한다. v0.2.4 사전검증에서는 Windows/macOS/Linux 모두 고정 Deno와 yt-dlp 공식 자산을 실제 다운로드·해시 검증한 뒤 공개 YouTube VOD의 JSON 메타데이터 추출까지 성공했다.
+직접 사전 확인은 `--js-runtimes deno:<path>`를 명시한다. v0.2.5 사전검증에서는 Windows/macOS/Linux 모두 고정 Deno와 yt-dlp 공식 자산을 실제 다운로드·해시 검증한 뒤 공개 YouTube VOD의 JSON 메타데이터 추출까지 성공했다.
 
 Deno v2.9.6은 MIT License이며 yttStudio 릴리스 산출물에는 직접 번들하지 않는다.
 

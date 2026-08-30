@@ -1,6 +1,6 @@
 # THIRD-PARTY-NOTICES
 
-> **문서 기준:** v0.2.4 (2026-08-30)
+> **문서 기준:** v0.2.5 (2026-08-30)
 
 yttStudio 자체 소스 코드는 별도 표기가 없는 한 MIT License로 배포된다. 제3자
 라이브러리, 폰트, 실행 파일 및 선택적 네이티브 구성 요소는 각각의 원래 라이선스를
@@ -59,7 +59,7 @@ YouTube URL 프리뷰는 yttStudio의 기본 기능으로 유지한다. 사용�
 - macOS arm64: `yt-dlp_macos`
 - Linux x64: `yt-dlp_linux`
 
-현재 yt-dlp의 YouTube EJS 경로는 외부 JavaScript 런타임을 필요로 한다. yttStudio v0.2.4는 아래 Deno 정책으로 해당 요구를 충족하고, 직접 사전 확인에는 `--js-runtimes deno:<path>`를 명시한다.
+현재 yt-dlp의 YouTube EJS 경로는 외부 JavaScript 런타임을 필요로 한다. yttStudio v0.2.5는 아래 Deno 정책으로 해당 요구를 충족하고, 직접 사전 확인에는 `--js-runtimes deno:<path>`를 명시한다. 이 옵션을 지원하지 않는 기존 yt-dlp는 재사용하지 않고 위 고정 자산으로 대체한다.
 
 참고:
 
@@ -89,7 +89,7 @@ Deno v2.9.6 자체 라이선스는 MIT이다. yttStudio는 Deno 실행 파일을
 
 ## libmpv 정책
 
-`libmpv = LGPL`이라고 일반화하지 않고 **자동 설치 대상으로 고정한 정확한 산출물**을 기준으로 판단한다. v0.2.4는 과거 Shinchiro 기본 빌드를 자동 설치 대상으로 사용하지 않는다.
+`libmpv = LGPL`이라고 일반화하지 않고 **자동 설치 대상으로 고정한 정확한 산출물**을 기준으로 판단한다. v0.2.5는 과거 Shinchiro 기본 빌드를 자동 설치 대상으로 사용하지 않는다.
 
 현재 프로그램 내부 설치 대상:
 

@@ -61,6 +61,7 @@ The full set of controls is in the [user guide](docs/USER_GUIDE.md).
 
 | | |
 |---|---|
+| **v0.2.5 YouTube playback fix** | Fixes a file lock that made the Deno runtime install fail every time a YouTube URL was opened. An existing yt-dlp without `--js-runtimes` support is now replaced with the pinned official asset |
 | **v0.2.4 YouTube playback hotfix** | Current yt-dlp YouTube extraction needs a JavaScript challenge runtime. yttStudio now uses Deno 2.3+ and, when no compatible Deno is available, verifies and installs the official Deno v2.9.6 asset into the user data area for both yt-dlp preflight and libmpv playback |
 | **Access errors classified correctly** | HTTP 403, 429 and bot-challenge responses are no longer reported as a generic network outage |
 | **v0.2.3 video runtime by default** | If libmpv is missing, the app installs a verified LGPL runtime on the first video open. If yt-dlp is missing on the first YouTube URL open, the app verifies and installs an official upstream asset |
@@ -89,7 +90,7 @@ The .NET runtime is bundled, so there is nothing else to install.
 
 Video playback is a core feature. On supported platforms no manual prerequisite installation is required.
 
-| Item | v0.2.4 behaviour |
+| Item | v0.2.5 behaviour |
 |---|---|
 | libmpv 2.0+ | Required for local and YouTube playback. yttStudio first prefers a user-selected or discoverable compatible library; if none exists, the first video open installs a **verified LGPL runtime** into the user data area on supported platforms |
 | yt-dlp | Required to resolve YouTube addresses. yttStudio first prefers an existing installation; if none exists, the first YouTube URL open downloads the pinned official `yt-dlp/yt-dlp 2026.08.19` release asset and verifies its SHA-256 before installing it into the user data area |

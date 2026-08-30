@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using YttStudio.Video;
@@ -28,6 +29,10 @@ internal sealed class YtDlpAutoInstaller
 
     private static readonly SemaphoreSlim InstallationGate = new(1, 1);
 
+    private const string RequiredOption = "--js-runtimes";
+    private static readonly TimeSpan SupportProbeTimeout = TimeSpan.FromSeconds(30);
+    private static readonly Dictionary<string, bool> SupportProbeCache = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly HttpClient httpClient;
     private readonly string installDirectory;
 
@@ -47,8 +52,10 @@ internal sealed class YtDlpAutoInstaller
     public async Task<string> EnsureAvailableAsync(CancellationToken cancellationToken = default)
     {
         if (YtDlpLocator.TryFind(out string? existing, out _)
-            && !string.IsNullOrWhiteSpace(existing))
+            && !string.IsNullOrWhiteSpace(existing)
+            && await SupportsRequiredOptionsAsync(existing, cancellationToken).ConfigureAwait(false))
         {
+            SetOverride(existing);
             return existing;
         }
 
@@ -57,8 +64,10 @@ internal sealed class YtDlpAutoInstaller
         try
         {
             if (YtDlpLocator.TryFind(out existing, out _)
-                && !string.IsNullOrWhiteSpace(existing))
+                && !string.IsNullOrWhiteSpace(existing)
+                && await SupportsRequiredOptionsAsync(existing, cancellationToken).ConfigureAwait(false))
             {
+                SetOverride(existing);
                 return existing;
             }
 
@@ -174,6 +183,72 @@ internal sealed class YtDlpAutoInstaller
         return new Asset(
             new Uri($"https://github.com/yt-dlp/yt-dlp/releases/download/{PinnedVersion}/{assetName}"),
             sha256);
+    }
+
+    /// <summary>
+    /// yttStudio의 YouTube 사전 확인은 Deno 런타임을 <c>--js-runtimes</c>로 넘긴다.
+    /// 이 옵션이 없던 시절의 yt-dlp는 인자 파싱 단계에서 즉시 실패하므로,
+    /// 이미 설치된 yt-dlp라도 옵션을 지원할 때만 그대로 사용한다.
+    /// </summary>
+    private static async Task<bool> SupportsRequiredOptionsAsync(
+        string executablePath,
+        CancellationToken cancellationToken)
+    {
+        string key = Path.GetFullPath(executablePath);
+        lock (SupportProbeCache)
+        {
+            if (SupportProbeCache.TryGetValue(key, out bool cached))
+            {
+                return cached;
+            }
+        }
+
+        bool supported = await ProbeRequiredOptionsAsync(executablePath, cancellationToken).ConfigureAwait(false);
+        lock (SupportProbeCache)
+        {
+            SupportProbeCache[key] = supported;
+        }
+
+        return supported;
+    }
+
+    private static async Task<bool> ProbeRequiredOptionsAsync(
+        string executablePath,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            ProcessStartInfo startInfo = new()
+            {
+                FileName = executablePath,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            startInfo.ArgumentList.Add("--help");
+            using Process process = new() { StartInfo = startInfo };
+            if (!process.Start())
+            {
+                return false;
+            }
+
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(SupportProbeTimeout);
+            string output = await process.StandardOutput.ReadToEndAsync(timeout.Token).ConfigureAwait(false);
+            await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            return process.ExitCode == 0
+                && output.Contains(RequiredOption, StringComparison.Ordinal);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+            or InvalidOperationException or System.ComponentModel.Win32Exception or OperationCanceledException)
+        {
+            return false;
+        }
     }
 
     private static string GetInstalledFileName()

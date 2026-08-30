@@ -259,7 +259,7 @@ public sealed class MpvAutoInstaller
         CancellationToken cancellationToken)
     {
         using HttpRequestMessage request = new(HttpMethod.Get, package.DownloadUri);
-        request.Headers.UserAgent.ParseAdd("yttStudio/0.2.4");
+        request.Headers.UserAgent.ParseAdd("yttStudio/0.2.5");
         using HttpResponseMessage response = await httpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
             .ConfigureAwait(false);
@@ -284,42 +284,49 @@ public sealed class MpvAutoInstaller
             throw Failure(MpvAutoInstallErrorKind.DownloadFailed, "libmpv 런타임 파일 크기가 예상과 다릅니다.");
         }
 
-        await using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        await using FileStream output = new(
+        long transferred = 0;
+        await using (Stream input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
+        await using (FileStream output = new(
             destinationPath,
             FileMode.CreateNew,
             FileAccess.Write,
             FileShare.None,
             BufferSize,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-        byte[] buffer = new byte[BufferSize];
-        long transferred = 0;
-        while (true)
+            FileOptions.Asynchronous | FileOptions.SequentialScan))
         {
-            int read = await input.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
-            if (read == 0)
+            byte[] buffer = new byte[BufferSize];
+            while (true)
             {
-                break;
+                int read = await input.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                transferred = checked(transferred + read);
+                if (transferred > MaximumArchiveBytes || transferred > package.AssetLength)
+                {
+                    throw Failure(MpvAutoInstallErrorKind.DownloadFailed, "libmpv 런타임 파일이 예상 크기를 초과했습니다.");
+                }
+
+                await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                progress?.Report(new(MpvInstallStage.DownloadingArchive, package.AssetName, transferred, package.AssetLength));
             }
 
-            transferred = checked(transferred + read);
-            if (transferred > MaximumArchiveBytes || transferred > package.AssetLength)
-            {
-                throw Failure(MpvAutoInstallErrorKind.DownloadFailed, "libmpv 런타임 파일이 예상 크기를 초과했습니다.");
-            }
-
-            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
-            progress?.Report(new(MpvInstallStage.DownloadingArchive, package.AssetName, transferred, package.AssetLength));
+            await output.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        await output.FlushAsync(cancellationToken).ConfigureAwait(false);
         if (transferred != package.AssetLength)
         {
             throw Failure(MpvAutoInstallErrorKind.DownloadFailed, "libmpv 런타임 파일 크기가 예상과 다릅니다.");
         }
 
-        await using FileStream verifyStream = new(destinationPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        byte[] hash = await SHA256.HashDataAsync(verifyStream, cancellationToken).ConfigureAwait(false);
+        byte[] hash;
+        await using (FileStream verifyStream = new(destinationPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            hash = await SHA256.HashDataAsync(verifyStream, cancellationToken).ConfigureAwait(false);
+        }
+
         string actualHash = Convert.ToHexStringLower(hash);
         if (!string.Equals(actualHash, package.Sha256, StringComparison.OrdinalIgnoreCase))
         {

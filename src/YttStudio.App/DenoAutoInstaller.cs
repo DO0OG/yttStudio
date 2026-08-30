@@ -95,6 +95,7 @@ internal sealed class DenoAutoInstaller
             string parent = Path.GetDirectoryName(installDirectory)
                 ?? throw new InvalidOperationException("Deno 설치 상위 경로를 확인할 수 없습니다.");
             Directory.CreateDirectory(parent);
+            TryDeleteStaleWorkspaces(parent);
             string workspace = Path.Combine(parent, $".deno-install-{Guid.NewGuid():N}");
             string archivePath = Path.Combine(workspace, asset.AssetName);
             string stagingPath = Path.Combine(workspace, "staging");
@@ -146,7 +147,7 @@ internal sealed class DenoAutoInstaller
     private async Task DownloadAsync(DenoAsset asset, string destinationPath, CancellationToken cancellationToken)
     {
         using HttpRequestMessage request = new(HttpMethod.Get, asset.DownloadUri);
-        request.Headers.UserAgent.ParseAdd("yttStudio/0.2.4");
+        request.Headers.UserAgent.ParseAdd("yttStudio/0.2.5");
         using HttpResponseMessage response = await httpClient.SendAsync(
                 request,
                 HttpCompletionOption.ResponseHeadersRead,
@@ -171,41 +172,48 @@ internal sealed class DenoAutoInstaller
             throw new InvalidDataException("Deno 런타임 파일 크기가 예상과 다릅니다.");
         }
 
-        await using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        await using FileStream output = new(
+        long transferred = 0;
+        await using (Stream input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
+        await using (FileStream output = new(
             destinationPath,
             FileMode.CreateNew,
             FileAccess.Write,
             FileShare.None,
             BufferSize,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-        byte[] buffer = new byte[BufferSize];
-        long transferred = 0;
-        while (true)
+            FileOptions.Asynchronous | FileOptions.SequentialScan))
         {
-            int read = await input.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
-            if (read == 0)
+            byte[] buffer = new byte[BufferSize];
+            while (true)
             {
-                break;
+                int read = await input.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                transferred = checked(transferred + read);
+                if (transferred > MaximumArchiveBytes || transferred > asset.AssetLength)
+                {
+                    throw new InvalidDataException("Deno 런타임 파일이 예상 크기를 초과했습니다.");
+                }
+
+                await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
             }
 
-            transferred = checked(transferred + read);
-            if (transferred > MaximumArchiveBytes || transferred > asset.AssetLength)
-            {
-                throw new InvalidDataException("Deno 런타임 파일이 예상 크기를 초과했습니다.");
-            }
-
-            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            await output.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        await output.FlushAsync(cancellationToken).ConfigureAwait(false);
         if (transferred != asset.AssetLength)
         {
             throw new InvalidDataException("Deno 런타임 파일 크기가 예상과 다릅니다.");
         }
 
-        await using FileStream verify = new(destinationPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        byte[] hash = await SHA256.HashDataAsync(verify, cancellationToken).ConfigureAwait(false);
+        byte[] hash;
+        await using (FileStream verify = new(destinationPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            hash = await SHA256.HashDataAsync(verify, cancellationToken).ConfigureAwait(false);
+        }
+
         if (!string.Equals(Convert.ToHexStringLower(hash), asset.Sha256, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException("Deno 런타임 SHA-256 검증에 실패했습니다.");
@@ -454,6 +462,26 @@ internal sealed class DenoAutoInstaller
             }
 
             throw;
+        }
+    }
+
+    /// <summary>
+    /// 중단된 설치가 남긴 임시 작업 폴더를 정리한다. 실패해도 설치를 막지 않는다.
+    /// </summary>
+    private static void TryDeleteStaleWorkspaces(string parent)
+    {
+        try
+        {
+            foreach (string stale in Directory.EnumerateDirectories(parent, ".deno-install-*"))
+            {
+                TryDeleteDirectory(stale);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 
