@@ -19,6 +19,27 @@ public sealed class MpvAutoInstallerContractTests
     }
 
     [Theory]
+    [InlineData(
+        MpvPackagePlatform.MacOS,
+        "META-INF/kmediampv/native/macos-aarch64/",
+        "libkmediampv_mpv.dylib")]
+    [InlineData(
+        MpvPackagePlatform.Linux,
+        "META-INF/kmediampv/native/linux-x86_64/",
+        "libkmediampv_mpv.so")]
+    public void KMediaPackageMatchesPinnedArchiveLayout(
+        MpvPackagePlatform platform,
+        string archivePrefix,
+        string libraryFileName)
+    {
+        MpvPackageDefinition? package = MpvPackageCatalog.Get(platform);
+
+        Assert.NotNull(package);
+        Assert.Equal(archivePrefix, package!.ArchivePrefix);
+        Assert.Equal(libraryFileName, package.LibraryFileName);
+    }
+
+    [Theory]
     [InlineData(MpvPackagePlatform.Windows)]
     [InlineData(MpvPackagePlatform.MacOS)]
     [InlineData(MpvPackagePlatform.Linux)]
