@@ -61,6 +61,9 @@ The full set of controls is in the [user guide](docs/USER_GUIDE.md).
 
 | | |
 |---|---|
+| **v0.3.0 Multi-keyframe motion** | Position motion now spans a path of several keyframes instead of interpolating between two points. The preview draws the path and its keyframe markers, markers can be dragged to move a point, and the timeline shows where each keyframe sits |
+| **Automatic release updates** | The editor reports a newer release and, once you choose to update, downloads the asset for your operating system and installs it. The startup check can be turned off in settings |
+| **Multi-line subtitle editing** | The cue list grows each row to fit the number of subtitle lines so multi-line text is shown and edited in place. The maximum number of visible lines is set in settings |
 | **v0.2.5 YouTube playback fix** | Fixes a file lock that made the Deno runtime install fail every time a YouTube URL was opened. An existing yt-dlp without `--js-runtimes` support is now replaced with the pinned official asset |
 | **v0.2.4 YouTube playback hotfix** | Current yt-dlp YouTube extraction needs a JavaScript challenge runtime. yttStudio now uses Deno 2.3+ and, when no compatible Deno is available, verifies and installs the official Deno v2.9.6 asset into the user data area for both yt-dlp preflight and libmpv playback |
 | **Access errors classified correctly** | HTTP 403, 429 and bot-challenge responses are no longer reported as a generic network outage |
