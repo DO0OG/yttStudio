@@ -200,7 +200,7 @@ internal static class AppUpdateProcessSecurity
     /// 신뢰 루트도 같은 방식으로 해석하므로, 링크가 루트 밖을 가리키면 해석된 경로가
     /// 루트를 벗어나 그대로 걸러진다.
     /// </remarks>
-    private static string ResolveRealPath(string path)
+    internal static string ResolveRealPath(string path)
     {
         string root = Path.GetPathRoot(path) ?? string.Empty;
         if (root.Length == 0)

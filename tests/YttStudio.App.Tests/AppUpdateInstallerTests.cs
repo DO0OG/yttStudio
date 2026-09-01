@@ -427,7 +427,10 @@ public sealed class AppUpdateInstallerTests
             "yttStudio-update-installer-tests",
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
-        return path;
+
+        // macOS 의 임시 폴더는 /var/folders 아래에 있고 /var 는 운영체제가 두는 링크다.
+        // 검증 대상이 링크를 해석한 실제 경로를 돌려주므로 시험도 같은 기준을 쓴다.
+        return AppUpdateProcessSecurity.ResolveRealPath(path);
     }
 
     private static void DeleteTemporaryDirectory(string path)
