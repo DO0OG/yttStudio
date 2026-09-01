@@ -27,7 +27,7 @@
             <TextBlock Text="{Binding Loc[SnapThreshold]}" FontWeight="SemiBold" />
             <NumericUpDown Minimum="0" Maximum="64" Value="{Binding SnapThreshold}" />
             <TextBlock Text="{Binding Loc[MaxSubtitleLinesLabel]}" FontWeight="SemiBold" />
-            <NumericUpDown Minimum="1" Maximum="5" Increment="1" FormatString="0"
+            <NumericUpDown Minimum="1" Maximum="10" Increment="1" FormatString="0"
                           Value="{Binding MaxSubtitleLines}" />
             <TextBlock Text="{Binding Loc[MaxSubtitleLinesHint]}"
                        Foreground="{DynamicResource AppSubtleForegroundBrush}"

@@ -212,7 +212,7 @@ public sealed class Localizer : System.ComponentModel.INotifyPropertyChanged
         ["CheckForUpdatesEnabled"] = new("앱을 연 뒤 업데이트 자동 확인", "Check for updates when the app opens", "アプリを開いたときに更新を自動確認"),
         ["AutosaveInterval"] = new("자동 저장 간격", "Autosave interval", "自動保存の間隔"),
         ["MaxSubtitleLinesLabel"] = new("최대 자막 표시 줄 수", "Maximum subtitle display lines", "字幕の最大表示行数"),
-        ["MaxSubtitleLinesHint"] = new("1~5줄로 제한합니다. 넘치는 내용은 셀 안에서 세로로 스크롤할 수 있습니다.", "Limit each cue to 1-5 visible lines. Overflow can be scrolled vertically inside the cell.", "各キューの表示行数を1～5行に制限します。超過分はセル内で縦にスクロールできます。"),
+        ["MaxSubtitleLinesHint"] = new("1~10줄로 제한합니다. 넘치는 내용은 셀 안에서 세로로 스크롤할 수 있습니다.", "Limit each cue to 1-10 visible lines. Overflow can be scrolled vertically inside the cell.", "各キューの表示行数を1～10行に制限します。超過分はセル内で縦にスクロールできます。"),
         ["Autosave15Seconds"] = new("15초", "15 seconds", "15秒"),
         ["Autosave30Seconds"] = new("30초", "30 seconds", "30秒"),
         ["Autosave1Minute"] = new("1분", "1 minute", "1分"),

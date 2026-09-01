@@ -19,8 +19,8 @@ public enum AppThemeMode
 public sealed class AppPreferences
 {
     public const int MinimumSubtitleLines = 1;
-    public const int MaximumSubtitleLines = 5;
-    public const int DefaultSubtitleLines = 3;
+    public const int MaximumSubtitleLines = 10;
+    public const int DefaultSubtitleLines = 5;
 
     private PreviewViewportMode previewViewportMode = PreviewViewportMode.VideoFrame;
     private int maxSubtitleLines = DefaultSubtitleLines;

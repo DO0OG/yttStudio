@@ -64,13 +64,13 @@ public sealed class AppPreferencesTests
     {
         AppPreferences preferences = new();
 
-        Assert.Equal(3, preferences.MaxSubtitleLines);
+        Assert.Equal(5, preferences.MaxSubtitleLines);
 
         preferences.MaxSubtitleLines = 0;
         Assert.Equal(1, preferences.MaxSubtitleLines);
 
         preferences.MaxSubtitleLines = 99;
-        Assert.Equal(5, preferences.MaxSubtitleLines);
+        Assert.Equal(10, preferences.MaxSubtitleLines);
     }
 
     [Theory]
@@ -78,7 +78,9 @@ public sealed class AppPreferencesTests
     [InlineData(1, 1)]
     [InlineData(3, 3)]
     [InlineData(5, 5)]
-    [InlineData(6, 5)]
+    [InlineData(6, 6)]
+    [InlineData(10, 10)]
+    [InlineData(11, 10)]
     public void SubtitleLineLimitClampsLegacyPreferenceJson(int stored, int expected)
     {
         string path = CreateTemporaryPath();
