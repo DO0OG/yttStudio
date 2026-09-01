@@ -9,7 +9,7 @@ using System.Globalization;
 namespace YttStudio.App;
 
 /// <summary>스크럽과 확대와 이동과 끝 트림 제스처를 갖춘 트랙 타임라인을 제공한다.</summary>
-public sealed class TimelineControl : Control
+public sealed partial class TimelineControl : Control
 {
     private const double HeaderWidth = 64;
     private const double RulerHeight = 22;
@@ -83,7 +83,12 @@ public sealed class TimelineControl : Control
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MainWindowViewModel.PositionMilliseconds) or
-            nameof(MainWindowViewModel.MaximumMilliseconds))
+            nameof(MainWindowViewModel.MaximumMilliseconds) or
+            nameof(MainWindowViewModel.SelectedCueKeyframes) or
+            nameof(MainWindowViewModel.SelectedCueKeyframeMarkers) or
+            nameof(MainWindowViewModel.SelectedMotionKeyframeIndex) or
+            nameof(MainWindowViewModel.IsMotionPathEditing) or
+            nameof(MainWindowViewModel.MoveEffectEnabled))
         {
             if (e.PropertyName == nameof(MainWindowViewModel.MaximumMilliseconds))
             {
@@ -228,6 +233,7 @@ public sealed class TimelineControl : Control
                 Rect block = GetCueRect(start, end, track, maximum);
                 IBrush fill = viewModel.SelectedCueIds.Contains(row.Id) ? Brushes.DeepSkyBlue : Brushes.SlateBlue;
                 context.DrawRectangle(fill, new Pen(Brushes.White, 1), block, 3, 3);
+                DrawMotionKeyframeMarkers(context, viewModel, row, start, track, maximum);
             }
 
             double playheadX = TimeToX(viewModel.PositionMilliseconds, maximum);

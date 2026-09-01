@@ -27,6 +27,10 @@ public static class YttConstants
     // [UPSTREAM] 렌더 계산은 upstream 의 1280×720 기준 프레임을 사용한다.
     public const int ReferenceHeight = 720;
 
+    // [PRODUCT] acceleration exponent가 1에서 벗어난 정도를 판정하는 무차원 허용오차다.
+    // 이 값 안의 차이는 1280 px 진행에서 0.001 px 이하의 기존 테스트 오차로 남는다.
+    public const double MotionAccelerationExponentTolerance = 1e-6;
+
     // [PRODUCT] 편집기는 720p 기준 32 px 을 100 퍼센트 폰트 기준으로 삼는다.
     public const double DefaultFontSizePixels = 32.0;
 

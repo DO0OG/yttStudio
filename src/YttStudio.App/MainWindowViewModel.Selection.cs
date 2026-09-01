@@ -125,8 +125,8 @@ public sealed partial class MainWindowViewModel
 
     private void RefreshInlinePreview()
     {
-        // Live typing is a visual/model notification only. The open editor
-        // transaction owns the eventual dirty/history transition at commit.
+        // 입력 중에는 화면과 모델에만 알린다. 편집기 트랜잭션이 커밋할 때
+        // 변경 상태와 실행 취소 기록을 최종 반영한다.
         RefreshRowsAndStyles();
         ReconcileSelection();
         RenderSubtitlePreview();
@@ -209,6 +209,7 @@ public sealed partial class MainWindowViewModel
 
     private void NotifySelectionProperties()
     {
+        NotifyMotionPresentationProperties();
         RefreshKaraokePresentation();
         OnPropertyChanged(nameof(SelectionSummary));
         OnPropertyChanged(nameof(HasMixedSelection));

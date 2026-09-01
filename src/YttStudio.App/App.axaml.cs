@@ -30,7 +30,11 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             MainWindow window = new();
-            mainViewModel = new MainWindowViewModel(new FileDialogService(window));
+            mainViewModel = new MainWindowViewModel(
+                new FileDialogService(window),
+                null,
+                null,
+                updateService: new AppUpdateService(new HttpClient()));
             window.DataContext = mainViewModel;
             desktop.MainWindow = window;
             desktop.ShutdownRequested += (_, _) => mainViewModel.Dispose();
@@ -51,6 +55,9 @@ public partial class App : Application
                         break;
                     }
                 }
+
+                await viewModel.CheckForUpdatesAsync(automatic: true);
+                viewModel.ConsumeUpdateInstallResult();
             };
         }
 

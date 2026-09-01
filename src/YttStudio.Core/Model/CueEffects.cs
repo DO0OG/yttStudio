@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 namespace YttStudio.Core;
 
 /// <summary>큐 전체에 적용되는 효과의 기반 타입이다.</summary>
@@ -18,8 +20,13 @@ public enum CueEffectKind
 /// <summary>두 ASS 좌표 사이에서 큐 위치를 보간한다.</summary>
 public sealed class MoveEffect : CueEffect
 {
+    private readonly MotionKeyframe[] keyframes;
+    private readonly ReadOnlyCollection<MotionKeyframe> readOnlyKeyframes;
+
     public MoveEffect()
     {
+        keyframes = [];
+        readOnlyKeyframes = Array.AsReadOnly(keyframes);
     }
 
     public MoveEffect(double fromX, double fromY, double toX, double toY,
@@ -31,6 +38,31 @@ public sealed class MoveEffect : CueEffect
         ToY = toY;
         StartTime = startTime;
         EndTime = endTime;
+        keyframes = [];
+        readOnlyKeyframes = Array.AsReadOnly(keyframes);
+    }
+
+    /// <summary>불변인 큐 상대 키프레임으로 동작 경로를 만들고 시각순으로 정렬한다.</summary>
+    public MoveEffect(IEnumerable<MotionKeyframe> keyframes)
+    {
+        ArgumentNullException.ThrowIfNull(keyframes);
+        this.keyframes = keyframes
+            .Select(CloneKeyframe)
+            .OrderBy(keyframe => keyframe.RelativeTime)
+            .ToArray();
+        readOnlyKeyframes = Array.AsReadOnly(this.keyframes);
+
+        if (this.keyframes.Length > 0)
+        {
+            MotionKeyframe first = this.keyframes[0];
+            MotionKeyframe last = this.keyframes[^1];
+            FromX = first.X;
+            FromY = first.Y;
+            ToX = last.X;
+            ToY = last.Y;
+            StartTime = first.RelativeTime;
+            EndTime = last.RelativeTime;
+        }
     }
 
     public double FromX { get; internal set; }
@@ -39,6 +71,21 @@ public sealed class MoveEffect : CueEffect
     public double ToY { get; internal set; }
     public TimeSpan? StartTime { get; internal set; }
     public TimeSpan? EndTime { get; internal set; }
+
+    /// <summary>불변 큐 상대 동작 경로다. 빈 목록이면 기존 구간 필드를 사용한다.</summary>
+    public IReadOnlyList<MotionKeyframe> Keyframes => readOnlyKeyframes;
+
+
+    private static MotionKeyframe CloneKeyframe(MotionKeyframe source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return new MotionKeyframe(
+            source.RelativeTime,
+            source.X,
+            source.Y,
+            source.Interpolation,
+            source.Acceleration);
+    }
 }
 
 /// <summary>큐를 서서히 나타내고 사라지게 한다. 네 점 ASS 페이드 형식도 쓸 수 있다.</summary>

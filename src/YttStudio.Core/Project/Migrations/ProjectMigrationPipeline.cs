@@ -20,7 +20,7 @@ internal sealed class ProjectMigrationPipeline
     }
 
     public static ProjectMigrationPipeline Default { get; } = new(
-        [new Version0To1Migration(), new Version1To2Migration()]);
+        [new Version0To1Migration(), new Version1To2Migration(), new Version2To3Migration()]);
 
     public JsonNode Migrate(JsonNode source, int sourceVersion)
     {

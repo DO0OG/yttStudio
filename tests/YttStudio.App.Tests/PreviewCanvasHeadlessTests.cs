@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Themes.Fluent;
 using YttStudio.App;
 
 [assembly: AvaloniaTestApplication(typeof(YttStudio.App.Tests.HeadlessTestAppBuilder))]
@@ -12,12 +13,20 @@ namespace YttStudio.App.Tests;
 public static class HeadlessTestAppBuilder
 {
     public static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<Application>()
+        => AppBuilder.Configure<HeadlessTestApplication>()
             .UseSkia()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions
             {
                 UseHeadlessDrawing = false,
             });
+}
+
+public sealed class HeadlessTestApplication : Application
+{
+    public override void Initialize()
+    {
+        Styles.Add(new FluentTheme());
+    }
 }
 
 public sealed class PreviewCanvasHeadlessTests

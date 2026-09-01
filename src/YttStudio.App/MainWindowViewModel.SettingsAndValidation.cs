@@ -67,7 +67,9 @@ public sealed partial class MainWindowViewModel
             value => SnapThreshold = value,
             ApplyAutosaveSettings,
             () => VideoStatus,
-            mpvAutoInstaller is null ? null : InstallMpvAndApplyAsync);
+            mpvAutoInstaller is null ? null : InstallMpvAndApplyAsync,
+            value => MaxSubtitleLines = value,
+            ApplyCheckForUpdatesSettings);
 
     private async Task ShowSettingsDialogAsync(Window owner)
     {
@@ -217,6 +219,17 @@ public sealed partial class MainWindowViewModel
         preferences.AutosaveEnabled = enabled;
         preferences.AutosaveIntervalSeconds = normalizedInterval;
         RestartAutosave(enabled, normalizedInterval);
+        SavePreferences();
+    }
+
+    private void ApplyCheckForUpdatesSettings(bool enabled)
+    {
+        if (preferences.CheckForUpdatesEnabled == enabled)
+        {
+            return;
+        }
+
+        preferences.CheckForUpdatesEnabled = enabled;
         SavePreferences();
     }
 

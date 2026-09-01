@@ -18,7 +18,12 @@ public enum AppThemeMode
 
 public sealed class AppPreferences
 {
+    public const int MinimumSubtitleLines = 1;
+    public const int MaximumSubtitleLines = 10;
+    public const int DefaultSubtitleLines = 5;
+
     private PreviewViewportMode previewViewportMode = PreviewViewportMode.VideoFrame;
+    private int maxSubtitleLines = DefaultSubtitleLines;
 
     public AppLanguage Language { get; set; } = AppLanguage.Korean;
 
@@ -39,6 +44,13 @@ public sealed class AppPreferences
     /// <summary>마지막으로 선택한 음소거 상태다.</summary>
     public bool IsMuted { get; set; }
 
+    /// <summary>큐 편집기에서 한 번에 표시할 자막 줄 수의 상한이다.</summary>
+    public int MaxSubtitleLines
+    {
+        get => maxSubtitleLines;
+        set => maxSubtitleLines = NormalizeSubtitleLines(value);
+    }
+
     /// <summary>프리뷰에 사용할 데스크톱 플레이어 모드다.</summary>
     /// <remarks>실측되지 않은 모바일 세로 모드는 저장하지 않고 기본 모드로 되돌린다.</remarks>
     public PreviewViewportMode PreviewViewportMode
@@ -50,6 +62,9 @@ public sealed class AppPreferences
     /// <summary>프로젝트 복구용 자동 저장을 사용할지 나타낸다.</summary>
     public bool AutosaveEnabled { get; set; } = true;
 
+    /// <summary>앱을 연 뒤 업데이트를 자동으로 확인할지 나타낸다.</summary>
+    public bool CheckForUpdatesEnabled { get; set; } = true;
+
     /// <summary>자동 저장 간격(초)이다.</summary>
     public int AutosaveIntervalSeconds { get; set; } = 60;
 
@@ -58,6 +73,9 @@ public sealed class AppPreferences
     /// 편집 중 재생 부하를 낮추려고 쓴다.
     /// </summary>
     public int PlaybackScaleDivisor { get; set; } = 1;
+
+    public static int NormalizeSubtitleLines(int lines)
+        => Math.Clamp(lines, MinimumSubtitleLines, MaximumSubtitleLines);
 
     /// <summary>환경설정에서 사용할 수 있는 데스크톱 뷰포트 모드인지 확인한다.</summary>
     public static bool IsSelectablePreviewViewportMode(PreviewViewportMode mode)
@@ -110,6 +128,8 @@ public sealed class PreferencesStore
             // 숫자로 저장된 알 수 없는 열거형 값도 다음 실행에서 안전하게 복구한다.
             preferences.PreviewViewportMode = AppPreferences.NormalizePreviewViewportMode(
                 preferences.PreviewViewportMode);
+            preferences.MaxSubtitleLines = AppPreferences.NormalizeSubtitleLines(
+                preferences.MaxSubtitleLines);
             return preferences;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
