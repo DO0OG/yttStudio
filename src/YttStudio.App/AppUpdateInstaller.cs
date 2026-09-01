@@ -63,6 +63,10 @@ internal sealed class AppUpdateProcessRunner : IAppUpdateProcessRunner
             startInfo.ArgumentList.Add(argument);
         }
 
+        // 실행 대상은 AppUpdateProcessSecurity 가 허용 목록과 신뢰 루트로 이미 좁혔고
+        // 인자는 ArgumentList 로 넘겨 셸이 해석하지 않는다. 정적 분석기는 Process.Start 에
+        // 상수가 아닌 경로가 오면 무조건 경고하므로 이 지점만 예외로 둔다.
+        // nosemgrep: csharp.lang.security.os-command-injection.os-command-injection
         Process? process = Process.Start(startInfo);
         if (process is null)
         {

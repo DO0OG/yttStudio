@@ -13,31 +13,30 @@ internal enum AppUpdateProcessPlatform
 /// <summary>업데이트 프로세스의 실행 파일과 작업 경계를 검증한다.</summary>
 internal static class AppUpdateProcessSecurity
 {
+    /// <summary>심볼릭 링크를 따라갈 최대 깊이다. 순환 링크에서 멈추기 위한 상한이다.</summary>
+    private const int MaximumLinkResolutionDepth = 40;
+
     internal static AppUpdateProcessRequest ValidateAndNormalize(
         AppUpdateProcessRequest request,
-        AppUpdateProcessPlatform? platformOverride = null,
-        Func<string, FileAttributes>? attributesReader = null)
+        AppUpdateProcessPlatform? platformOverride = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         AppUpdateProcessPlatform platform = platformOverride ?? DetectPlatform();
-        Func<string, FileAttributes> readAttributes = attributesReader ?? File.GetAttributes;
         if (request.Arguments is null)
         {
             throw Reject("프로세스 인자가 비어 있다.");
         }
 
-        List<string> trustedRoots = NormalizeTrustedRoots(request.TrustedRoots, readAttributes, platform);
-        string fileName = NormalizeFileName(request.FileName, trustedRoots, readAttributes, platform);
+        List<string> trustedRoots = NormalizeTrustedRoots(request.TrustedRoots, platform);
+        string fileName = NormalizeFileName(request.FileName, trustedRoots, platform);
         string? workingDirectory = NormalizeWorkingDirectory(
             request.WorkingDirectory,
             trustedRoots,
-            readAttributes,
             platform);
         ValidateInterpreterArguments(
             fileName,
             request.Arguments,
             trustedRoots,
-            readAttributes,
             platform);
         return request with
         {
@@ -59,7 +58,6 @@ internal static class AppUpdateProcessSecurity
     private static string NormalizeFileName(
         string fileName,
         IReadOnlyList<string> trustedRoots,
-        Func<string, FileAttributes> attributesReader,
         AppUpdateProcessPlatform platform)
     {
         if (string.IsNullOrWhiteSpace(fileName) || ContainsParentSegment(fileName))
@@ -74,13 +72,12 @@ internal static class AppUpdateProcessSecurity
         }
 
         string normalizedPath = NormalizeAbsolutePath(fileName, "프로세스 경로");
-        EnsureTrustedFile(normalizedPath, trustedRoots, attributesReader, platform);
+        EnsureTrustedFile(normalizedPath, trustedRoots, platform);
         return normalizedPath;
     }
 
     private static List<string> NormalizeTrustedRoots(
         IReadOnlyList<string>? roots,
-        Func<string, FileAttributes> attributesReader,
         AppUpdateProcessPlatform platform)
     {
         List<string> normalizedRoots = [];
@@ -97,7 +94,7 @@ internal static class AppUpdateProcessSecurity
                 throw Reject($"신뢰 업데이트 루트가 없다: {normalizedRoot}");
             }
 
-            EnsureNoReparseComponents(normalizedRoot, attributesReader, platform);
+            normalizedRoot = ResolveRealPath(normalizedRoot);
             if (!normalizedRoots.Any(existing =>
                     string.Equals(existing, normalizedRoot, GetPathComparison(platform))))
             {
@@ -111,7 +108,6 @@ internal static class AppUpdateProcessSecurity
     private static string? NormalizeWorkingDirectory(
         string? workingDirectory,
         IReadOnlyList<string> trustedRoots,
-        Func<string, FileAttributes> attributesReader,
         AppUpdateProcessPlatform platform)
     {
         if (string.IsNullOrWhiteSpace(workingDirectory))
@@ -120,17 +116,17 @@ internal static class AppUpdateProcessSecurity
         }
 
         string normalizedDirectory = NormalizeAbsolutePath(workingDirectory, "프로세스 작업 디렉터리");
-        if (!trustedRoots.Any(root => IsWithinRoot(normalizedDirectory, root, platform)))
-        {
-            throw Reject($"프로세스 작업 디렉터리가 신뢰 루트 밖에 있다: {workingDirectory}");
-        }
-
         if (!Directory.Exists(normalizedDirectory))
         {
             throw Reject($"프로세스 작업 디렉터리가 없다: {normalizedDirectory}");
         }
 
-        EnsureNoReparseComponents(normalizedDirectory, attributesReader, platform);
+        normalizedDirectory = ResolveRealPath(normalizedDirectory);
+        if (!trustedRoots.Any(root => IsWithinRoot(normalizedDirectory, root, platform)))
+        {
+            throw Reject($"프로세스 작업 디렉터리가 신뢰 루트 밖에 있다: {workingDirectory}");
+        }
+
         return normalizedDirectory;
     }
 
@@ -138,7 +134,6 @@ internal static class AppUpdateProcessSecurity
         string fileName,
         IReadOnlyList<string> arguments,
         IReadOnlyList<string> trustedRoots,
-        Func<string, FileAttributes> attributesReader,
         AppUpdateProcessPlatform platform)
     {
         if (platform == AppUpdateProcessPlatform.Linux && IsUnixShell(fileName))
@@ -151,7 +146,7 @@ internal static class AppUpdateProcessSecurity
             }
 
             string scriptPath = NormalizeAbsolutePath(arguments[0], "쉘 스크립트 경로");
-            EnsureTrustedFile(scriptPath, trustedRoots, attributesReader, platform);
+            EnsureTrustedFile(scriptPath, trustedRoots, platform);
             return;
         }
 
@@ -174,67 +169,86 @@ internal static class AppUpdateProcessSecurity
             }
 
             string scriptPath = NormalizeAbsolutePath(arguments[commandIndex + 1], "cmd helper 경로");
-            EnsureTrustedFile(scriptPath, trustedRoots, attributesReader, platform);
+            EnsureTrustedFile(scriptPath, trustedRoots, platform);
         }
     }
 
     private static void EnsureTrustedFile(
         string path,
         IReadOnlyList<string> trustedRoots,
-        Func<string, FileAttributes> attributesReader,
         AppUpdateProcessPlatform platform)
     {
-        if (!File.Exists(path) ||
-            !trustedRoots.Any(root => IsWithinRoot(path, root, platform)))
+        if (!File.Exists(path))
         {
             throw Reject($"실행 파일이 신뢰 업데이트 루트 밖에 있다: {path}");
         }
 
-        EnsureNoReparseComponents(path, attributesReader, platform);
+        string realPath = ResolveRealPath(path);
+        if (!trustedRoots.Any(root => IsWithinRoot(realPath, root, platform)))
+        {
+            throw Reject($"실행 파일이 신뢰 업데이트 루트 밖에 있다: {path}");
+        }
     }
 
-    private static void EnsureNoReparseComponents(
-        string path,
-        Func<string, FileAttributes> attributesReader,
-        AppUpdateProcessPlatform platform)
+    /// <summary>
+    /// 경로 구성요소를 차례로 따라가며 심볼릭 링크를 최종 대상까지 해석한다.
+    /// </summary>
+    /// <remarks>
+    /// 링크가 있다고 무조건 거부하면 macOS 의 <c>/var</c> 처럼 운영체제가 기본으로 두는
+    /// 링크 때문에 정상적인 임시 디렉터리(<c>/var/folders/...</c>)까지 막힌다.
+    /// 대신 링크를 해석한 실제 경로로 신뢰 루트 포함 여부를 판정한다.
+    /// 신뢰 루트도 같은 방식으로 해석하므로, 링크가 루트 밖을 가리키면 해석된 경로가
+    /// 루트를 벗어나 그대로 걸러진다.
+    /// </remarks>
+    private static string ResolveRealPath(string path)
+    {
+        string root = Path.GetPathRoot(path) ?? string.Empty;
+        if (root.Length == 0)
+        {
+            return path;
+        }
+
+        string current = ResolveLinkChain(root);
+        foreach (string segment in path[root.Length..].Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = ResolveLinkChain(Path.Combine(current, segment));
+        }
+
+        return Path.TrimEndingDirectorySeparator(current);
+    }
+
+    /// <summary>구성요소 하나가 심볼릭 링크면 최종 대상까지 따라간다.</summary>
+    private static string ResolveLinkChain(string path)
     {
         string current = path;
-        while (true)
+        for (int depth = 0; depth < MaximumLinkResolutionDepth; depth++)
         {
-            FileAttributes attributes;
+            FileSystemInfo? target;
             try
             {
-                attributes = attributesReader(current);
+                target = Directory.Exists(current)
+                    ? Directory.ResolveLinkTarget(current, returnFinalTarget: true)
+                    : File.ResolveLinkTarget(current, returnFinalTarget: true);
             }
             catch (Exception exception) when (
                 exception is IOException or UnauthorizedAccessException or ArgumentException or
                     NotSupportedException or System.Security.SecurityException)
             {
-                throw Reject($"업데이트 프로세스 경로를 확인하지 못했다: {current}", exception);
+                // 해석할 수 없는 구성요소는 원래 경로 그대로 두고 루트 검사에 맡긴다.
+                return current;
             }
 
-            if ((attributes & FileAttributes.ReparsePoint) != 0)
+            if (target is null)
             {
-                throw Reject($"업데이트 프로세스 경로의 reparse 지점을 차단했다: {current}");
+                return current;
             }
 
-            FileSystemInfo info = Directory.Exists(current)
-                ? new DirectoryInfo(current)
-                : new FileInfo(current);
-            if (info.LinkTarget is not null)
-            {
-                throw Reject($"업데이트 프로세스 경로의 symbolic link를 차단했다: {current}");
-            }
-
-            string? parent = Directory.GetParent(current)?.FullName;
-            if (string.IsNullOrWhiteSpace(parent) ||
-                string.Equals(parent, current, GetPathComparison(platform)))
-            {
-                return;
-            }
-
-            current = parent;
+            current = target.FullName;
         }
+
+        throw Reject($"업데이트 프로세스 경로의 링크가 너무 깊다: {path}");
     }
 
     private static string NormalizeAbsolutePath(string path, string description)

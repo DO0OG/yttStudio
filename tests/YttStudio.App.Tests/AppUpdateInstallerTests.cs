@@ -288,6 +288,44 @@ public sealed class AppUpdateInstallerTests
     }
 
     [Fact]
+    public void ProcessSecurityRejectsSymbolicLinkEscapingTrustedRoot()
+    {
+        string root = CreateTemporaryDirectory();
+        string outsideRoot = CreateTemporaryDirectory();
+        string outsidePayload = Path.Combine(outsideRoot, "apply.sh");
+        File.WriteAllText(outsidePayload, "#!/bin/sh");
+        string linkPath = Path.Combine(root, "apply.sh");
+
+        try
+        {
+            try
+            {
+                File.CreateSymbolicLink(linkPath, outsidePayload);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or
+                    PlatformNotSupportedException)
+            {
+                // 심볼릭 링크를 만들 권한이 없는 환경에서는 이 시나리오를 검증할 수 없다.
+                // 조용히 통과시키지 않고 건너뛰었음을 남긴다.
+                Assert.Skip($"심볼릭 링크를 만들 수 없어 건너뛴다: {exception.Message}");
+                return;
+            }
+
+            // 링크 자체는 신뢰 루트 안에 있지만 실제 대상은 루트 밖이므로 거부되어야 한다.
+            Assert.Throws<AppUpdateException>(() =>
+                AppUpdateProcessSecurity.ValidateAndNormalize(
+                    new(linkPath, [], TrustedRoots: [root]),
+                    AppUpdateProcessPlatform.Linux));
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(root);
+            DeleteTemporaryDirectory(outsideRoot);
+        }
+    }
+
+    [Fact]
     public void ProcessSecurityRejectsArbitraryAndTraversalFileNames()
     {
         string root = CreateTemporaryDirectory();
@@ -351,28 +389,6 @@ public sealed class AppUpdateInstallerTests
             Assert.Throws<AppUpdateException>(() => AppUpdateProcessSecurity.ValidateAndNormalize(
                 request with { Arguments = [outsideScript] },
                 AppUpdateProcessPlatform.Linux));
-        }
-        finally
-        {
-            DeleteTemporaryDirectory(root);
-        }
-    }
-
-    [Fact]
-    public void ProcessSecurityRejectsReparsePointFromDeterministicValidatorSeam()
-    {
-        string root = CreateTemporaryDirectory();
-        string payloadPath = Path.Combine(root, "apply.sh");
-        File.WriteAllText(payloadPath, "#!/bin/sh");
-
-        try
-        {
-            Assert.Throws<AppUpdateException>(() => AppUpdateProcessSecurity.ValidateAndNormalize(
-                new(payloadPath, [], TrustedRoots: [root]),
-                AppUpdateProcessPlatform.Linux,
-                path => string.Equals(path, payloadPath, StringComparison.Ordinal)
-                    ? FileAttributes.ReparsePoint
-                    : File.GetAttributes(path)));
         }
         finally
         {
