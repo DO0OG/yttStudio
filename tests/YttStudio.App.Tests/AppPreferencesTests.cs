@@ -59,6 +59,43 @@ public sealed class AppPreferencesTests
         Assert.Equal(PreviewViewportMode.VideoFrame, preferences.PreviewViewportMode);
     }
 
+    [Fact]
+    public void SubtitleLineLimitDefaultsToThreeAndClampsAssignments()
+    {
+        AppPreferences preferences = new();
+
+        Assert.Equal(3, preferences.MaxSubtitleLines);
+
+        preferences.MaxSubtitleLines = 0;
+        Assert.Equal(1, preferences.MaxSubtitleLines);
+
+        preferences.MaxSubtitleLines = 99;
+        Assert.Equal(5, preferences.MaxSubtitleLines);
+    }
+
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(1, 1)]
+    [InlineData(3, 3)]
+    [InlineData(5, 5)]
+    [InlineData(6, 5)]
+    public void SubtitleLineLimitClampsLegacyPreferenceJson(int stored, int expected)
+    {
+        string path = CreateTemporaryPath();
+        try
+        {
+            File.WriteAllText(path, $"{{\"MaxSubtitleLines\":{stored}}}");
+
+            AppPreferences restored = new PreferencesStore(path).Load();
+
+            Assert.Equal(expected, restored.MaxSubtitleLines);
+        }
+        finally
+        {
+            DeleteTemporaryPath(path);
+        }
+    }
+
     private static string CreateTemporaryPath()
         => Path.Combine(Path.GetTempPath(), $"YttStudio-preferences-{Guid.NewGuid():N}.json");
 

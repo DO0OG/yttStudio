@@ -10,7 +10,7 @@ using YttStudio.Core.Editing;
 namespace YttStudio.App;
 
 /// <summary>합성된 영상 위에 선택과 앵커와 세이프 에어리어와 스냅 오버레이를 그린다.</summary>
-public sealed class PreviewCanvas : Control, ICustomHitTest
+public sealed partial class PreviewCanvas : Control, ICustomHitTest
 {
     private const double AnchorHitRadius = 8.0;
     // 편집 가이드용 여백이다. 유튜브에서 측정한 값이 아니다. 판정과 같은 값을 쓴다.
@@ -115,7 +115,12 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(MainWindowViewModel.CanvasItems))
+        if (e.PropertyName is nameof(MainWindowViewModel.CanvasItems) or
+            nameof(MainWindowViewModel.SelectedCueKeyframes) or
+            nameof(MainWindowViewModel.SelectedMotionKeyframeIndex) or
+            nameof(MainWindowViewModel.IsMotionPathEditing) or
+            nameof(MainWindowViewModel.PositionMilliseconds) or
+            nameof(MainWindowViewModel.MoveEffectEnabled))
         {
             InvalidateVisual();
         }
@@ -125,10 +130,9 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
     {
         base.Render(context);
 
-        // Avalonia hit-tests against drawn geometry, so a control that only
-        // strokes outlines receives no pointer events over its empty areas.
-        // This transparent fill makes the whole canvas hit-testable, which
-        // double-click-to-add and click-to-select both depend on.
+        // Avalonia는 그려진 도형을 기준으로 적중 검사하므로 외곽선만 그리면
+        // 빈 영역에서 포인터 이벤트를 받지 못한다. 투명 배경으로 캔버스 전체를
+        // 적중 가능하게 만들어 더블클릭 추가와 클릭 선택을 모두 지원한다.
         context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size));
 
         if (DataContext is not MainWindowViewModel viewModel)
@@ -138,6 +142,7 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
 
         Rect content = GetContentRect();
         DrawSafeArea(context, content);
+        DrawMotionPath(context, viewModel, content);
         DrawSelectedCues(context, viewModel, content);
         DrawSnapGuides(context, content);
         DrawSelectionRectangle(context);
@@ -154,6 +159,12 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
         Focus();
         Point screen = e.GetPosition(this);
         Rect content = GetContentRect();
+
+        if (TryBeginMotionInteraction(viewModel, e, screen, content))
+        {
+            e.Handled = true;
+            return;
+        }
 
         if (TryBeginHandlePress(viewModel, e, screen, content))
         {
@@ -182,6 +193,12 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
         base.OnPointerMoved(e);
         Point current = e.GetPosition(this);
         ActivatePendingResize(current);
+
+        if (motionKeyframeDragging && DataContext is MainWindowViewModel motionViewModel)
+        {
+            UpdateMotionKeyframePreview(motionViewModel, current);
+            return;
+        }
 
         if (resizingCue && DataContext is MainWindowViewModel resizeViewModel)
         {
@@ -456,6 +473,7 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
         draggingCue = false;
         selectingRange = false;
         movePreview = null;
+        ResetMotionPointerState();
         ToolTip.SetIsOpen(this, false);
         e.Pointer.Capture(null);
         InvalidateVisual();
@@ -463,9 +481,14 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
 
     private void CommitPointerRelease(MainWindowViewModel viewModel)
     {
+        if (CommitMotionPointerRelease(viewModel))
+        {
+            return;
+        }
+
         if (pendingHandlePress)
         {
-            // Never crossed the drag threshold, so treat it as an anchor pick.
+            // 드래그 임계값을 넘지 않았으므로 앵커 선택으로 처리한다.
             viewModel.ChangeAnchor(pendingHandleCueId,
                 ToAnchor(pendingHandleRow, pendingHandleColumn));
         }
@@ -500,6 +523,8 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
             viewModel.CancelCanvasResize();
         }
 
+        CancelMotionPointerInteraction();
+
         pendingHandlePress = false;
         resizingCue = false;
         resizePrimaryBounds = default;
@@ -514,7 +539,8 @@ public sealed class PreviewCanvas : Control, ICustomHitTest
             return;
         }
 
-        if (TryHandleDelete(viewModel, e) ||
+        if (TryHandleMotionDelete(viewModel, e) ||
+            TryHandleDelete(viewModel, e) ||
             TryHandleInlineEdit(viewModel, e) ||
             TryHandleAlignment(viewModel, e))
         {

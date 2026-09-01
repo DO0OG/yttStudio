@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:YttStudio.App"
+        xmlns:local="using:YttStudio.App"
         mc:Ignorable="d"
         d:DesignWidth="1440"
         d:DesignHeight="900"
@@ -120,6 +121,9 @@
       </MenuItem>
       <MenuItem Header="{Binding Loc[MenuHelp]}">
         <MenuItem Header="{Binding Loc[MenuAbout]}" Command="{Binding AboutCommand}" />
+        <MenuItem Header="{Binding Loc[CheckForUpdates]}" Command="{Binding CheckForUpdatesCommand}" />
+        <MenuItem Header="{Binding Loc[DownloadUpdate]}" Command="{Binding DownloadUpdateCommand}"
+                  IsVisible="{Binding IsUpdateAvailable}" />
       </MenuItem>
     </Menu>
 
@@ -322,8 +326,8 @@
         <Border Grid.Row="5" MinHeight="100"
                 BorderBrush="{DynamicResource AppPanelBorderBrush}" BorderThickness="1">
           <Grid RowDefinitions="Auto,*">
-            <Grid Grid.Row="0" ColumnDefinitions="40,104,104,88,64,120,*" ColumnSpacing="8"
-                  Background="{DynamicResource AppTableHeaderBrush}" Margin="0,0,14,0" Height="30">
+            <local:CueTableGrid Grid.Row="0" ColumnSpacing="8"
+                  Background="{DynamicResource AppTableHeaderBrush}" Margin="0,0,14,0" MinHeight="30">
               <TextBlock Grid.Column="0" Text="#" VerticalAlignment="Center" TextAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
               <TextBlock Grid.Column="1" Text="{Binding Loc[StartMs]}" VerticalAlignment="Center" TextAlignment="Right" Margin="0,0,4,0" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
               <TextBlock Grid.Column="2" Text="{Binding Loc[EndMs]}" VerticalAlignment="Center" TextAlignment="Right" Margin="0,0,4,0" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
@@ -331,9 +335,14 @@
               <TextBlock Grid.Column="4" Text="{Binding Loc[Track]}" VerticalAlignment="Center" TextAlignment="Right" Margin="0,0,4,0" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
               <TextBlock Grid.Column="5" Text="{Binding Loc[Style]}" VerticalAlignment="Center" TextAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
               <TextBlock Grid.Column="6" Text="{Binding Loc[TextSection]}" VerticalAlignment="Center" TextAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource AppTableHeaderForegroundBrush}" />
-            </Grid>
+            </local:CueTableGrid>
             <ListBox x:Name="CueList" Grid.Row="1" Classes="cueTable" ItemsSource="{Binding CueRows}"
                      SelectedItem="{Binding SelectedCueRow}">
+              <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <VirtualizingStackPanel Orientation="Vertical" />
+                </ItemsPanelTemplate>
+              </ListBox.ItemsPanel>
               <ListBox.Styles>
                 <Style Selector="ListBoxItem">
                   <Setter Property="Padding" Value="0" />
@@ -342,24 +351,31 @@
                 </Style>
                 <Style Selector="TextBox.cueTableEditor">
                   <Setter Property="MinWidth" Value="0" />
-                  <Setter Property="MinHeight" Value="0" />
-                  <Setter Property="Height" Value="26" />
+                  <Setter Property="MinHeight" Value="26" />
                   <Setter Property="Padding" Value="4,2" />
                   <Setter Property="VerticalAlignment" Value="Center" />
                   <Setter Property="TextWrapping" Value="NoWrap" />
                 </Style>
+                <Style Selector="TextBox.cueTableEditor.multilineEditor">
+                  <Setter Property="VerticalAlignment" Value="Stretch" />
+                  <Setter Property="VerticalContentAlignment" Value="Top" />
+                  <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+                  <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+                </Style>
               </ListBox.Styles>
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:CueRowViewModel">
-                  <Grid ColumnDefinitions="40,104,104,88,64,120,*" ColumnSpacing="8" Margin="0" Height="30">
+                  <local:CueTableGrid ColumnSpacing="8" Margin="0" MinHeight="30">
                     <TextBlock Grid.Column="0" Text="{Binding Number}" VerticalAlignment="Center" TextAlignment="Center" Foreground="{DynamicResource AppMutedForegroundBrush}" />
                     <TextBox Grid.Column="1" Classes="cueTableEditor" Text="{Binding StartMilliseconds}" HorizontalContentAlignment="Right" />
                     <TextBox Grid.Column="2" Classes="cueTableEditor" Text="{Binding EndMilliseconds}" HorizontalContentAlignment="Right" />
                     <TextBlock Grid.Column="3" Text="{Binding DurationMilliseconds}" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,6,0" Foreground="{DynamicResource AppStrongForegroundBrush}" />
                     <TextBox Grid.Column="4" Classes="cueTableEditor" Text="{Binding Track}" HorizontalContentAlignment="Right" />
                     <TextBlock Grid.Column="5" Text="{Binding Style}" VerticalAlignment="Center" TextAlignment="Center" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource AppStrongForegroundBrush}" />
-                    <TextBox Grid.Column="6" Classes="cueTableEditor" Text="{Binding Text}" MinWidth="160" />
-                  </Grid>
+                    <TextBox Grid.Column="6" Classes="cueTableEditor multilineEditor" Text="{Binding Text}" MinWidth="160"
+                             AcceptsReturn="True" TextWrapping="Wrap" MinLines="1"
+                             MaxLines="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).MaxSubtitleLines}" />
+                  </local:CueTableGrid>
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>

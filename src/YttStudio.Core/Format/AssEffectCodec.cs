@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace YttStudio.Core.Format;
@@ -7,7 +8,7 @@ namespace YttStudio.Core.Format;
 /// <summary>효과 모델을 고정된 변환기의 ASS 태그로 인코딩한다.</summary>
 internal static partial class AssEffectCodec
 {
-    private static readonly string[] EffectNames = ["fad", "fade", "move", "t", "ytshake", "ytchroma", "ytkt"];
+    private static readonly string[] EffectNames = ["fad", "fade", "move", "t", "ytshake", "ytchroma", "ytkt", "ytmotion"];
 
     public static string SanitizeAndRead(string path, out List<IReadOnlyList<CueEffect>> effectsByLine)
     {
@@ -45,10 +46,19 @@ internal static partial class AssEffectCodec
         List<CueEffect> result = [];
         foreach (Match block in OverrideBlockRegex().Matches(text))
         {
+            List<CueEffect> blockEffects = [];
+            MoveEffect? authoritativeMotion = null;
             foreach (Match tag in EffectTagRegex().Matches(block.Groups[1].Value))
             {
                 string name = tag.Groups["name"].Value.ToLowerInvariant();
                 string arg = tag.Groups["arg"].Value.Trim();
+                if (name == "ytmotion")
+                {
+                    // 잘못된 메타데이터 태그는 무시하여 일반 이동 태그를 대체 수단으로 남긴다.
+                    authoritativeMotion ??= ParseMotionMetadata(arg);
+                    continue;
+                }
+
                 CueEffect? effect = name switch
                 {
                     "move" => ParseMove(arg),
@@ -60,12 +70,90 @@ internal static partial class AssEffectCodec
                     _ => null,
                 };
                 if (effect is not null)
-                    result.Add(effect);
+                    blockEffects.Add(effect);
+            }
+
+            if (authoritativeMotion is not null)
+            {
+                bool companionReplaced = false;
+                foreach (CueEffect effect in blockEffects)
+                {
+                    if (effect is MoveEffect)
+                    {
+                        if (!companionReplaced)
+                        {
+                            AddParsedEffect(result, authoritativeMotion);
+                            companionReplaced = true;
+                        }
+
+                        continue;
+                    }
+
+                    AddParsedEffect(result, effect);
+                }
+
+                if (!companionReplaced)
+                {
+                    AddParsedEffect(result, authoritativeMotion);
+                }
+            }
+            else
+            {
+                foreach (CueEffect effect in blockEffects)
+                {
+                    AddParsedEffect(result, effect);
+                }
             }
         }
 
         return result;
     }
+
+    /// <summary>
+    /// ASS에는 경로 기본형이 없으므로 여러 이동 태그로 경로를 표현한다.
+    /// 끝점과 경계 시각이 같은 인접 시간 구간만 합친다. 나머지 구간은 별도
+    /// MoveEffect로 유지하여 보간을 임의로 만들지 않고 단절을 보존한다.
+    /// </summary>
+    private static void AddParsedEffect(List<CueEffect> result, CueEffect effect)
+    {
+        if (effect is MoveEffect current && result.LastOrDefault() is MoveEffect previous &&
+            TryGetKeyframes(previous, out IReadOnlyList<MotionKeyframe> previousPath) &&
+            TryGetKeyframes(current, out IReadOnlyList<MotionKeyframe> currentPath) &&
+            IsContinuous(previousPath[^1], currentPath[0]))
+        {
+            MotionKeyframe[] merged = [.. previousPath, .. currentPath.Skip(1)];
+            result[^1] = new MoveEffect(merged);
+            return;
+        }
+
+        result.Add(effect);
+    }
+
+    private static bool TryGetKeyframes(MoveEffect move, out IReadOnlyList<MotionKeyframe> path)
+    {
+        if (move.Keyframes.Count > 0)
+        {
+            path = move.Keyframes;
+            return true;
+        }
+
+        if (move.StartTime is TimeSpan start && move.EndTime is TimeSpan end)
+        {
+            path =
+            [
+                new MotionKeyframe(start, move.FromX, move.FromY),
+                new MotionKeyframe(end, move.ToX, move.ToY),
+            ];
+            return true;
+        }
+
+        path = [];
+        return false;
+    }
+
+    private static bool IsContinuous(MotionKeyframe previous, MotionKeyframe current)
+        => previous.RelativeTime == current.RelativeTime &&
+            previous.X.Equals(current.X) && previous.Y.Equals(current.Y);
 
     public static string Strip(string text)
     {
@@ -119,10 +207,72 @@ internal static partial class AssEffectCodec
 
     private static void AppendMove(StringBuilder tags, MoveEffect move)
     {
-        tags.Append("\\move(").Append(F(move.FromX)).Append(',').Append(F(move.FromY)).Append(',')
-            .Append(F(move.ToX)).Append(',').Append(F(move.ToY));
-        if (move.StartTime.HasValue && move.EndTime.HasValue)
-            tags.Append(',').Append(Ms(move.StartTime.Value)).Append(',').Append(Ms(move.EndTime.Value));
+        if (move.Keyframes.Count > 0)
+        {
+            AppendMotionMetadata(tags, move.Keyframes);
+
+            if (move.Keyframes.Count == 1)
+            {
+                MotionKeyframe point = move.Keyframes[0];
+                AppendMoveSegment(tags, point.X, point.Y, point.X, point.Y,
+                    point.RelativeTime, point.RelativeTime);
+                return;
+            }
+
+            // ASS는 각 변을 독립적으로 표현한다. 키프레임 경계를 공유하므로
+            // 출력 구간은 인접하지만 서로 겹치지 않는다.
+            for (int index = 0; index < move.Keyframes.Count - 1; index++)
+            {
+                MotionKeyframe from = move.Keyframes[index];
+                MotionKeyframe to = move.Keyframes[index + 1];
+                AppendMoveSegment(tags, from.X, from.Y, to.X, to.Y,
+                    from.RelativeTime, to.RelativeTime);
+            }
+
+            return;
+        }
+
+        AppendMoveSegment(tags, move.FromX, move.FromY, move.ToX, move.ToY,
+            move.StartTime, move.EndTime);
+    }
+
+    private static void AppendMotionMetadata(
+        StringBuilder tags,
+        IReadOnlyList<MotionKeyframe> keyframes)
+    {
+        MotionMetadataEnvelope metadata = new()
+        {
+            Version = 1,
+            Keyframes = keyframes.Select(keyframe => new MotionMetadataKeyframe
+            {
+                Time = Ms(keyframe.RelativeTime),
+                X = keyframe.X,
+                Y = keyframe.Y,
+                Interpolation = keyframe.Interpolation.ToString(),
+                Acceleration = keyframe.Acceleration,
+            }).ToList(),
+        };
+        byte[] json = JsonSerializer.SerializeToUtf8Bytes(metadata, MotionMetadataJsonOptions);
+        string token = Convert.ToBase64String(json)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+        tags.Append("\\ytmotion(v1.").Append(token).Append(')');
+    }
+
+    private static void AppendMoveSegment(
+        StringBuilder tags,
+        double fromX,
+        double fromY,
+        double toX,
+        double toY,
+        TimeSpan? startTime,
+        TimeSpan? endTime)
+    {
+        tags.Append("\\move(").Append(F(fromX)).Append(',').Append(F(fromY)).Append(',')
+            .Append(F(toX)).Append(',').Append(F(toY));
+        if (startTime.HasValue && endTime.HasValue)
+            tags.Append(',').Append(Ms(startTime.Value)).Append(',').Append(Ms(endTime.Value));
         tags.Append(')');
     }
 
@@ -230,8 +380,78 @@ internal static partial class AssEffectCodec
     private static CueEffect? ParseMove(string arg)
     {
         string[] a = Args(arg);
-        return a.Length >= 4 && D(a[0], out double x1) && D(a[1], out double y1) && D(a[2], out double x2) && D(a[3], out double y2)
-            ? new MoveEffect(x1, y1, x2, y2, a.Length >= 6 ? T(a[4]) : null, a.Length >= 6 ? T(a[5]) : null) : null;
+        if (a.Length < 4 || !D(a[0], out double x1) || !D(a[1], out double y1) ||
+            !D(a[2], out double x2) || !D(a[3], out double y2))
+        {
+            return null;
+        }
+
+        if (a.Length >= 6 && D(a[4], out double start) && D(a[5], out double end))
+        {
+            // 시간 지정 기존 이동은 가져올 때 두 키프레임으로 표현한다.
+            // MoveEffect가 기존 스칼라 속성도 채우므로 기존 호출부도 동작한다.
+            return new MoveEffect(
+            [
+                new MotionKeyframe(T(start), x1, y1),
+                new MotionKeyframe(T(end), x2, y2),
+            ]);
+        }
+
+        return new MoveEffect(x1, y1, x2, y2);
+    }
+
+    private static MoveEffect? ParseMotionMetadata(string arg)
+    {
+        string token = arg.Trim().TrimStart('(').TrimEnd(')');
+        if (!token.StartsWith("v1.", StringComparison.Ordinal) || token.Length <= 3)
+        {
+            return null;
+        }
+
+        try
+        {
+            string encoded = token[3..];
+            encoded = encoded.Replace('-', '+').Replace('_', '/');
+            encoded = encoded.PadRight(encoded.Length + ((4 - encoded.Length % 4) % 4), '=');
+            MotionMetadataEnvelope? metadata = JsonSerializer.Deserialize<MotionMetadataEnvelope>(
+                Convert.FromBase64String(encoded), MotionMetadataJsonOptions);
+            if (metadata is not { Version: 1, Keyframes.Count: > 0 })
+            {
+                return null;
+            }
+
+            List<MotionKeyframe> keyframes = [];
+            foreach (MotionMetadataKeyframe item in metadata.Keyframes)
+            {
+                if (!Enum.TryParse(item.Interpolation, ignoreCase: true, out MotionInterpolation interpolation) ||
+                    !double.IsFinite(item.X) || !double.IsFinite(item.Y) ||
+                    !double.IsFinite(item.Acceleration))
+                {
+                    return null;
+                }
+
+                keyframes.Add(new MotionKeyframe(
+                    TimeSpan.FromMilliseconds(item.Time),
+                    item.X,
+                    item.Y,
+                    interpolation,
+                    item.Acceleration));
+            }
+
+            return new MoveEffect(keyframes);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static CueEffect? ParseFade(string name, string arg)
@@ -310,6 +530,13 @@ internal static partial class AssEffectCodec
     private static string Color(RgbaColor value) => $"&H{value.Blue:X2}{value.Green:X2}{value.Red:X2}&";
     private static int ParseHex(string value) => int.TryParse(value.Trim().Trim('&').TrimStart('H', 'h'), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int n) ? n & 255 : 0;
 
+    private static readonly JsonSerializerOptions MotionMetadataJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = false,
+        WriteIndented = false,
+    };
+
     private static bool TryColor(string value, int alpha, out RgbaColor color)
     {
         string hex = value.Trim().Trim('&').TrimStart('H', 'h');
@@ -325,6 +552,21 @@ internal static partial class AssEffectCodec
     [GeneratedRegex(@"\{([^}]*)\}", RegexOptions.CultureInvariant)]
     private static partial Regex OverrideBlockRegex();
 
-    [GeneratedRegex(@"\\(?<name>fad|fade|move|t|ytshake|ytchroma|ytkt)(?<arg>\([^)]*\)|[^\\}]*)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\\(?<name>fad|fade|move|t|ytshake|ytchroma|ytkt|ytmotion)(?<arg>\([^)]*\)|[^\\}]*)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex EffectTagRegex();
+
+    private sealed class MotionMetadataEnvelope
+    {
+        public int Version { get; set; }
+        public List<MotionMetadataKeyframe> Keyframes { get; set; } = [];
+    }
+
+    private sealed class MotionMetadataKeyframe
+    {
+        public int Time { get; set; }
+        public double X { get; set; }
+        public double Y { get; set; }
+        public string Interpolation { get; set; } = nameof(MotionInterpolation.Linear);
+        public double Acceleration { get; set; } = 1.0;
+    }
 }

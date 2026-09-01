@@ -70,4 +70,6 @@ public sealed partial class MainWindowViewModel
     public AsyncCommand ApplyMpvPathCommand { get; private set; } = null!;
     public DelegateCommand OpenMpvInstallationGuideCommand { get; private set; } = null!;
     public AsyncCommand OpenSettingsCommand { get; private set; } = null!;
+    public AsyncCommand CheckForUpdatesCommand { get; private set; } = null!;
+    public AsyncCommand DownloadUpdateCommand { get; private set; } = null!;
 }

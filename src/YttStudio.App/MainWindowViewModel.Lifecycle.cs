@@ -69,6 +69,7 @@ public sealed partial class MainWindowViewModel
         }
 
         disposed = true;
+        CancelUpdateOperations();
         Loc.LanguageChanged -= OnLanguageChanged;
         settingsWindow?.Close();
         settingsWindow = null;

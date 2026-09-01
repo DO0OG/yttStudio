@@ -16,7 +16,7 @@ namespace YttStudio.Core.Project;
 public static class ProjectPackage
 {
     /// <summary>현재 프로젝트 JSON 과 매니페스트 스키마 버전이다.</summary>
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     /// <summary>매니페스트 항목 이름이다.</summary>
     public const string ManifestEntryName = "manifest.json";

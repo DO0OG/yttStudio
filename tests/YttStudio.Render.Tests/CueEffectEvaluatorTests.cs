@@ -61,6 +61,24 @@ public sealed class CueEffectEvaluatorTests
         Assert.InRange(first.Y, -10, 10);
     }
 
+    [Fact]
+    public void MoveEvaluationDoesNotAllocatePerFrameCollection()
+    {
+        Cue cue = CreateCue();
+        cue.AddEffect(new MoveEffect(100, 100, 200, 300, TimeSpan.Zero, TimeSpan.FromSeconds(1)));
+        for (int index = 0; index < 10; index++)
+            _ = CueEffectEvaluator.Evaluate(cue, TimeSpan.FromMilliseconds(index), index, SKPoint.Empty);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int index = 0; index < 1000; index++)
+            _ = CueEffectEvaluator.Evaluate(cue, TimeSpan.FromMilliseconds(index % 1000), index, SKPoint.Empty);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        // CueEffectState 자체는 참조 record이므로 이 불가피한 객체 외에
+        // 프레임마다 이동 평가 컬렉션이 생기지 않는지 확인한다.
+        Assert.InRange(allocated, 0, 160_000);
+    }
+
     private static Cue CreateCue() => new(Guid.Parse("01234567-89ab-cdef-0123-456789abcdef"))
     {
         Start = TimeSpan.Zero,

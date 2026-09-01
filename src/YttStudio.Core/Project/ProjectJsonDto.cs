@@ -273,6 +273,8 @@ internal sealed class ColorJsonDto
 internal sealed class EffectJsonDto
 {
     public string Kind { get; set; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<KeyframeJsonDto>? Keyframes { get; set; }
     public double? FromX { get; set; }
     public double? FromY { get; set; }
     public double? ToX { get; set; }
@@ -307,7 +309,17 @@ internal sealed class EffectJsonDto
 
     public static EffectJsonDto FromModel(CueEffect effect) => effect switch
     {
-        MoveEffect value => new() { Kind = "move", FromX = value.FromX, FromY = value.FromY, ToX = value.ToX, ToY = value.ToY, StartTime = value.StartTime, EndTime = value.EndTime },
+        MoveEffect value => new()
+        {
+            Kind = "move",
+            Keyframes = value.Keyframes.Select(KeyframeJsonDto.FromModel).ToList(),
+            FromX = value.FromX,
+            FromY = value.FromY,
+            ToX = value.ToX,
+            ToY = value.ToY,
+            StartTime = value.StartTime,
+            EndTime = value.EndTime,
+        },
         FadeEffect value => new() { Kind = "fade", FadeIn = value.FadeIn, FadeOut = value.FadeOut, Alpha1 = value.Alpha1, Alpha2 = value.Alpha2, Alpha3 = value.Alpha3, T1 = value.T1, T2 = value.T2, T3 = value.T3, T4 = value.T4 },
         ShakeEffect value => new() { Kind = "shake", RadiusX = value.RadiusX, RadiusY = value.RadiusY, StartTime = value.StartTime, EndTime = value.EndTime },
         ChromaEffect value => new() { Kind = "chroma", OffsetX = value.OffsetX, OffsetY = value.OffsetY, InTime = value.InTime, OutTime = value.OutTime, CustomColors = value.CustomColors?.Select(ColorJsonDto.FromModel).ToList() },
@@ -316,8 +328,9 @@ internal sealed class EffectJsonDto
         _ => throw new NotSupportedException($"Unsupported cue effect type {effect.GetType().Name}."),
     };
 
-    public CueEffect ToModel() => Kind switch
+    public CueEffect ToModel() => Kind.ToLowerInvariant() switch
     {
+        "move" when Keyframes is { Count: > 0 } => new MoveEffect(Keyframes.Select(keyframe => keyframe.ToModel())),
         "move" => new MoveEffect(FromX ?? 0, FromY ?? 0, ToX ?? 0, ToY ?? 0, StartTime, EndTime),
         "fade" => new FadeEffect(FadeIn ?? TimeSpan.Zero, FadeOut ?? TimeSpan.Zero) { Alpha1 = Alpha1, Alpha2 = Alpha2, Alpha3 = Alpha3, T1 = T1, T2 = T2, T3 = T3, T4 = T4 },
         "shake" => new ShakeEffect(RadiusX ?? 0, RadiusY ?? 0, StartTime, EndTime),
@@ -326,4 +339,24 @@ internal sealed class EffectJsonDto
         "karaoke" => new KaraokeSettings(KaraokeType ?? YttStudio.Core.KaraokeType.Simple) { CursorText = CursorText, CursorInterval = CursorInterval },
         _ => throw new InvalidDataException($"Unknown cue effect kind '{Kind}'."),
     };
+}
+
+internal sealed class KeyframeJsonDto
+{
+    public TimeSpan RelativeTime { get; set; }
+    public double X { get; set; }
+    public double Y { get; set; }
+    public MotionInterpolation Interpolation { get; set; } = MotionInterpolation.Linear;
+    public double Acceleration { get; set; } = 1.0;
+
+    public static KeyframeJsonDto FromModel(MotionKeyframe value) => new()
+    {
+        RelativeTime = value.RelativeTime,
+        X = value.X,
+        Y = value.Y,
+        Interpolation = value.Interpolation,
+        Acceleration = value.Acceleration,
+    };
+
+    public MotionKeyframe ToModel() => new(RelativeTime, X, Y, Interpolation, Acceleration);
 }

@@ -617,6 +617,7 @@ public sealed partial class DocumentEditor
 
     private static CueEffect CloneEffect(CueEffect effect) => effect switch
     {
+        MoveEffect move when move.Keyframes.Count > 0 => new MoveEffect(move.Keyframes),
         MoveEffect move => new MoveEffect(move.FromX, move.FromY, move.ToX, move.ToY, move.StartTime, move.EndTime),
         FadeEffect fade => new FadeEffect(fade.FadeIn, fade.FadeOut)
         {

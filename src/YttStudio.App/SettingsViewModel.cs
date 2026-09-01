@@ -38,12 +38,16 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     private readonly Func<double> getSnapThreshold;
     private readonly Action<double> setSnapThreshold;
     private readonly Action<bool, int> applyAutosaveSettings;
+    private readonly Action<int> setMaxSubtitleLines;
+    private readonly Action<bool>? applyCheckForUpdatesSettings;
     private readonly Func<string> getVideoStatus;
     private readonly Func<IProgress<MpvInstallProgress>, Task<string?>>? installMpv;
     private SettingsOption<AppLanguage>? selectedLanguage;
     private SettingsOption<AppThemeMode>? selectedTheme;
     private SettingsOption<int>? selectedAutosaveInterval;
     private bool autosaveEnabled;
+    private bool checkForUpdatesEnabled;
+    private int maxSubtitleLines;
     private string mpvPath;
     private double snapThreshold;
     private string status = string.Empty;
@@ -65,7 +69,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         Action<double> setSnapThreshold,
         Action<bool, int> applyAutosaveSettings,
         Func<string> getVideoStatus,
-        Func<IProgress<MpvInstallProgress>, Task<string?>>? installMpv = null)
+        Func<IProgress<MpvInstallProgress>, Task<string?>>? installMpv = null,
+        Action<int>? setMaxSubtitleLines = null,
+        Action<bool>? applyCheckForUpdatesSettings = null)
     {
         Loc = localizer;
         this.preferences = preferences;
@@ -76,11 +82,16 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         this.getSnapThreshold = getSnapThreshold;
         this.setSnapThreshold = setSnapThreshold;
         this.applyAutosaveSettings = applyAutosaveSettings;
+        this.setMaxSubtitleLines = setMaxSubtitleLines
+            ?? (value => this.preferences.MaxSubtitleLines = value);
+        this.applyCheckForUpdatesSettings = applyCheckForUpdatesSettings;
         this.getVideoStatus = getVideoStatus;
         this.installMpv = installMpv;
         mpvPath = NormalizePath(preferences.MpvPath);
         snapThreshold = Math.Clamp(getSnapThreshold(), 0, 64);
         autosaveEnabled = preferences.AutosaveEnabled;
+        checkForUpdatesEnabled = preferences.CheckForUpdatesEnabled;
+        maxSubtitleLines = AppPreferences.NormalizeSubtitleLines(preferences.MaxSubtitleLines);
         videoStatus = getVideoStatus();
 
         InitializeSettingsOptions();
@@ -195,6 +206,27 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    public bool CheckForUpdatesEnabled
+    {
+        get => checkForUpdatesEnabled;
+        set
+        {
+            if (!SetField(ref checkForUpdatesEnabled, value))
+            {
+                return;
+            }
+
+            if (applyCheckForUpdatesSettings is null)
+            {
+                preferences.CheckForUpdatesEnabled = value;
+            }
+            else
+            {
+                applyCheckForUpdatesSettings(value);
+            }
+        }
+    }
+
     public SettingsOption<int>? SelectedAutosaveInterval
     {
         get => selectedAutosaveInterval;
@@ -235,6 +267,19 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
             if (SetField(ref snapThreshold, clamped))
             {
                 setSnapThreshold(clamped);
+            }
+        }
+    }
+
+    public int MaxSubtitleLines
+    {
+        get => maxSubtitleLines;
+        set
+        {
+            int normalized = AppPreferences.NormalizeSubtitleLines(value);
+            if (SetField(ref maxSubtitleLines, normalized))
+            {
+                setMaxSubtitleLines(normalized);
             }
         }
     }

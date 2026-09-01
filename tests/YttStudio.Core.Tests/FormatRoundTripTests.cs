@@ -1,4 +1,6 @@
 using System.Text;
+using YTSubConverter.Shared;
+using YTSubConverter.Shared.Formats;
 using YttStudio.Core.Format;
 
 namespace YttStudio.Core.Tests;
@@ -65,6 +67,59 @@ public sealed class FormatRoundTripTests
     }
 
     [Fact]
+    public void YttExportSplitsThreeKeyframeMotionForExternalConverter()
+    {
+        SubtitleProject project = new()
+        {
+            Video = new VideoInfo(1280, 720, TimeSpan.FromSeconds(5), 30),
+        };
+        Cue cue = new(Guid.NewGuid())
+        {
+            Start = TimeSpan.FromSeconds(1),
+            End = TimeSpan.FromSeconds(4),
+        };
+        cue.AddSection(new Section { Text = "motion" });
+        cue.AddEffect(new MoveEffect(
+        [
+            new MotionKeyframe(TimeSpan.Zero, 100, 150),
+            new MotionKeyframe(TimeSpan.FromSeconds(1), 300, 350),
+            new MotionKeyframe(TimeSpan.FromSeconds(2), 500, 550),
+        ]));
+        project.Cues.Add(cue);
+
+        string output = Path.Combine(Path.GetTempPath(), $"yttstudio-{Guid.NewGuid():N}.ytt");
+        try
+        {
+            new SubtitleFileService().Export(project, output);
+
+            YttDocument external = new(output);
+            List<Line> lines = external.Lines
+                .Where(line => line.Text.Contains("motion", StringComparison.Ordinal))
+                .OrderBy(line => line.Start)
+                .ToList();
+
+            Assert.True(lines.Count > 3);
+            Assert.All(lines.Zip(lines.Skip(1)), pair => Assert.True(pair.Second.Start >= pair.First.End));
+            Assert.InRange(
+                Math.Abs((lines.Min(line => line.Start - SubtitleDocument.TimeBase) - cue.Start).TotalMilliseconds),
+                0,
+                50);
+            Assert.InRange(
+                Math.Abs((lines.Max(line => line.End - SubtitleDocument.TimeBase) - cue.End).TotalMilliseconds),
+                0,
+                50);
+
+            Assert.Contains(lines, line => IsNear(line, TimeSpan.FromSeconds(1), 100, 150));
+            Assert.Contains(lines, line => IsNear(line, TimeSpan.FromSeconds(2), 300, 350));
+            Assert.Contains(lines, line => IsNear(line, TimeSpan.FromSeconds(3), 500, 550));
+        }
+        finally
+        {
+            File.Delete(output);
+        }
+    }
+
+    [Fact]
     public void AssRoundTripPreservesSupportedTextAndTiming()
     {
         SubtitleFileService service = new();
@@ -121,6 +176,17 @@ public sealed class FormatRoundTripTests
     }
 
     private static string CueText(Cue cue) => string.Concat(cue.Sections.Select(section => section.Text));
+
+    private static bool IsNear(Line line, TimeSpan relativeTime, float expectedX, float expectedY)
+    {
+        if (line.Position is not System.Drawing.PointF position ||
+            Math.Abs((line.Start - SubtitleDocument.TimeBase - relativeTime).TotalMilliseconds) > 50)
+        {
+            return false;
+        }
+
+        return Math.Abs(position.X - expectedX) <= 15 && Math.Abs(position.Y - expectedY) <= 15;
+    }
 
     private static string FindRepositoryRoot()
     {
