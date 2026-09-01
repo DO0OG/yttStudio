@@ -341,6 +341,40 @@ public sealed class AppUpdateServiceTests
     }
 
     [Fact]
+    public async Task DownloadReadFailureDeletesTheGeneratedTemporaryFile()
+    {
+        byte[] payload = Encoding.UTF8.GetBytes("payload before read failure");
+        using ThrowingAfterFirstReadStream stream = new(payload);
+        RecordingHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(stream),
+        });
+        using HttpClient httpClient = new(handler);
+        AppUpdateService service = new(httpClient, "win-x64");
+        AppUpdateAsset asset = new(
+            "yttStudio-v0.2.0-win-x64.zip",
+            new Uri("https://github.com/DO0OG/yttStudio/releases/download/v0.2.0/update.zip"),
+            null);
+        string destinationDirectory = CreateTemporaryDirectory();
+
+        try
+        {
+            AppUpdateException exception = await Assert.ThrowsAsync<AppUpdateException>(
+                () => service.DownloadAsync(
+                    asset,
+                    destinationDirectory,
+                    cancellationToken: TestContext.Current.CancellationToken));
+
+            Assert.Equal(AppUpdateErrorKind.DownloadFailed, exception.Kind);
+            Assert.Empty(Directory.GetFiles(destinationDirectory));
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(destinationDirectory);
+        }
+    }
+
+    [Fact]
     public void UnsupportedRuntimeIdentifierIsRejected()
     {
         using HttpClient httpClient = new(new RecordingHandler(_ => ReleaseResponse("v0.2.0")));
@@ -486,6 +520,24 @@ public sealed class AppUpdateServiceTests
         {
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             return 0;
+        }
+    }
+
+    private sealed class ThrowingAfterFirstReadStream(byte[] data) : NonSeekableReadStream(data)
+    {
+        private bool firstRead = true;
+
+        public override ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            if (firstRead)
+            {
+                firstRead = false;
+                return base.ReadAsync(buffer, cancellationToken);
+            }
+
+            throw new IOException("fake read failure");
         }
     }
 }

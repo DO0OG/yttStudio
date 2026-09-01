@@ -27,6 +27,42 @@ public sealed class MotionKeyframeEvaluatorTests
     }
 
     [Fact]
+    public void LinearAccelerationAtEitherToleranceBoundaryUsesLinearMidpoint()
+    {
+        double tolerance = YttConstants.MotionAccelerationExponentTolerance;
+        double[] accelerations = [1 - tolerance, 1 + tolerance];
+        foreach (double acceleration in accelerations)
+        {
+            Cue cue = CreateReferenceWidthLinearCue(acceleration);
+            CueEffectState state = CueEffectEvaluator.Evaluate(
+                cue,
+                TimeSpan.FromMilliseconds(500),
+                0,
+                SKPoint.Empty);
+
+            Assert.Equal(YttConstants.ReferenceWidth / 2f, state.Translation.X);
+        }
+    }
+
+    [Fact]
+    public void LinearAccelerationOutsideToleranceUsesPowerAtReferenceWidthMidpoint()
+    {
+        double tolerance = YttConstants.MotionAccelerationExponentTolerance;
+        double acceleration = 1 + (2 * tolerance);
+        Cue cue = CreateReferenceWidthLinearCue(acceleration);
+
+        CueEffectState state = CueEffectEvaluator.Evaluate(
+            cue,
+            TimeSpan.FromMilliseconds(500),
+            0,
+            SKPoint.Empty);
+
+        float expected = (float)(YttConstants.ReferenceWidth * Math.Pow(0.5, acceleration));
+        Assert.Equal(expected, state.Translation.X);
+        Assert.NotEqual(YttConstants.ReferenceWidth / 2f, state.Translation.X);
+    }
+
+    [Fact]
     public void EvaluationUsesOneAdjacentSegmentWithoutAccumulatingEarlierCoordinates()
     {
         Cue cue = CreateCue();
@@ -119,4 +155,15 @@ public sealed class MotionKeyframeEvaluatorTests
         Start = TimeSpan.Zero,
         End = TimeSpan.FromSeconds(3),
     };
+
+    private static Cue CreateReferenceWidthLinearCue(double acceleration)
+    {
+        Cue cue = CreateCue();
+        cue.AddEffect(new MoveEffect(
+        [
+            new MotionKeyframe(TimeSpan.Zero, 0, 0, MotionInterpolation.Linear, acceleration),
+            new MotionKeyframe(TimeSpan.FromSeconds(1), YttConstants.ReferenceWidth, 0),
+        ]));
+        return cue;
+    }
 }

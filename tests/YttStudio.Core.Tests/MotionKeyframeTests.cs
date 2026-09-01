@@ -1,5 +1,8 @@
 using System.IO.Compression;
 using System.Text;
+using System.Drawing;
+using YTSubConverter.Shared;
+using YTSubConverter.Shared.Formats;
 using YttStudio.Core.Editing;
 using YttStudio.Core.Format;
 using YttStudio.Core.Project;
@@ -216,6 +219,31 @@ public sealed class MotionKeyframeTests
         Assert.Equal(10, move.Keyframes[0].X);
     }
 
+    [Fact]
+    public void YttFlattenTreatsAccelerationExponentToleranceBoundaryAsLinear()
+    {
+        double tolerance = YttConstants.MotionAccelerationExponentTolerance;
+        double[] accelerations = [1 - tolerance, 1 + tolerance];
+        double expectedX = ExportFlattenedMidpoint(1.0).X;
+        foreach (double acceleration in accelerations)
+        {
+            PointF midpoint = ExportFlattenedMidpoint(acceleration);
+
+            Assert.InRange(Math.Abs(midpoint.X - expectedX), 0, 1);
+        }
+    }
+
+    [Fact]
+    public void YttFlattenUsesPowerOutsideAccelerationExponentTolerance()
+    {
+        double tolerance = YttConstants.MotionAccelerationExponentTolerance;
+        PointF midpoint = ExportFlattenedMidpoint(1 + (2 * tolerance));
+
+        Assert.True(
+            Math.Abs(midpoint.X - (YttConstants.ReferenceWidth / 2f)) > 5,
+            $"Expected a power-eased midpoint, but got {midpoint.X} px.");
+    }
+
     private static int CountOccurrences(string value, string token)
     {
         int count = 0;
@@ -248,5 +276,62 @@ public sealed class MotionKeyframeTests
         using Stream stream = archive.CreateEntry(name).Open();
         byte[] bytes = Encoding.UTF8.GetBytes(value);
         stream.Write(bytes);
+    }
+
+    private static PointF ExportFlattenedMidpoint(double acceleration)
+    {
+        const double midpoint = YttConstants.ReferenceWidth / 2.0;
+        // YTT는 정수 좌표로 저장하므로 공개 출력에서 경계 밖의 차이를 관찰할 수 있게 경로만 확대한다.
+        const double span = 10_000_000;
+        SubtitleProject project = new()
+        {
+            Video = new VideoInfo(
+                YttConstants.ReferenceWidth,
+                YttConstants.ReferenceHeight,
+                TimeSpan.FromSeconds(2),
+                30),
+        };
+        Cue cue = new(Guid.NewGuid())
+        {
+            Start = TimeSpan.Zero,
+            End = TimeSpan.FromSeconds(2),
+        };
+        cue.AddSection(new Section { Text = "motion" });
+        cue.AddEffect(new MoveEffect(
+        [
+            new MotionKeyframe(
+                TimeSpan.Zero,
+                midpoint - span,
+                midpoint,
+                MotionInterpolation.Linear,
+                acceleration),
+            new MotionKeyframe(TimeSpan.FromSeconds(1), midpoint + span, midpoint),
+        ]));
+        cue.AddEffect(new MoveEffect(
+            midpoint,
+            midpoint,
+            midpoint,
+            midpoint,
+            TimeSpan.FromMilliseconds(500),
+            TimeSpan.FromMilliseconds(1500)));
+        project.Cues.Add(cue);
+
+        string path = Path.Combine(Path.GetTempPath(), $"yttstudio-{Guid.NewGuid():N}.ytt");
+        try
+        {
+            new SubtitleFileService().Export(project, path);
+            YttDocument external = new(path);
+            DateTime expectedStart = SubtitleDocument.TimeBase.AddMilliseconds(500);
+            Line midpointLine = external.Lines
+                .Where(line => line.Text.Contains("motion", StringComparison.Ordinal))
+                .Where(line => Math.Abs((line.Start - expectedStart).TotalMilliseconds) <= 50)
+                .OrderBy(line => Math.Abs((line.Start - expectedStart).TotalMilliseconds))
+                .First();
+            return Assert.IsType<PointF>(midpointLine.Position);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 }

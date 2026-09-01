@@ -86,6 +86,7 @@ public sealed class AppUpdateInstallerTests
             applicationDirectory: root,
             executablePath: setupPath,
             currentProcessId: 1234);
+        string? stagingRoot = null;
 
         try
         {
@@ -96,7 +97,14 @@ public sealed class AppUpdateInstallerTests
                 TestContext.Current.CancellationToken);
 
             AppUpdateProcessRequest request = Assert.Single(runner.Requests);
-            Assert.Equal(setupPath, request.FileName);
+            stagingRoot = Assert.Single(request.TrustedRoots!);
+            Assert.NotEqual(setupPath, request.FileName);
+            Assert.StartsWith(
+                stagingRoot + Path.DirectorySeparatorChar,
+                request.FileName,
+                StringComparison.OrdinalIgnoreCase);
+            Assert.True(File.Exists(request.FileName));
+            Assert.Equal(stagingRoot, request.WorkingDirectory);
             Assert.True(request.UseShellExecute);
             Assert.False(request.WaitForExit);
             Assert.Equal(
@@ -105,6 +113,10 @@ public sealed class AppUpdateInstallerTests
         }
         finally
         {
+            if (stagingRoot is not null)
+            {
+                DeleteTemporaryDirectory(stagingRoot);
+            }
             DeleteTemporaryDirectory(root);
         }
     }
@@ -204,6 +216,163 @@ public sealed class AppUpdateInstallerTests
                     AppUpdateExecutionForm.Installed,
                     TestContext.Current.CancellationToken));
             Assert.Equal(AppUpdateErrorKind.InstallationFailed, exception.Kind);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(root);
+        }
+    }
+
+    [Fact]
+    public async Task MountedImageIsDetachedWhenInstallationBodyFails()
+    {
+        string root = CreateTemporaryDirectory();
+        string executableDirectory = Path.Combine(root, "yttStudio.app", "Contents", "MacOS");
+        Directory.CreateDirectory(executableDirectory);
+        string packagePath = Path.Combine(root, "yttStudio-update.dmg");
+        await File.WriteAllTextAsync(
+            packagePath,
+            "dmg",
+            TestContext.Current.CancellationToken);
+        RecordingProcessRunner runner = new();
+        AppUpdateInstaller installer = new(
+            runner,
+            applicationDirectory: root,
+            executablePath: Path.Combine(executableDirectory, "YttStudio.App"),
+            currentProcessId: 1234);
+
+        try
+        {
+            await Assert.ThrowsAsync<AppUpdateException>(
+                () => installer.InstallAsync(
+                    packagePath,
+                    "osx-arm64",
+                    AppUpdateExecutionForm.Installed,
+                    TestContext.Current.CancellationToken));
+
+            Assert.Equal(
+                ["attach", "detach"],
+                runner.Requests.Select(request => request.Arguments[0]));
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(root);
+        }
+    }
+
+    [Fact]
+    public void ProcessSecurityAllowsOnlyATrustedPayload()
+    {
+        string root = CreateTemporaryDirectory();
+        string payloadPath = Path.Combine(root, "apply.sh");
+        File.WriteAllText(payloadPath, "#!/bin/sh");
+
+        try
+        {
+            AppUpdateProcessRequest request = new(
+                payloadPath,
+                [],
+                WorkingDirectory: root,
+                TrustedRoots: [root]);
+            AppUpdateProcessRequest normalized = AppUpdateProcessSecurity.ValidateAndNormalize(
+                request,
+                AppUpdateProcessPlatform.Linux);
+
+            Assert.Equal(Path.GetFullPath(payloadPath), normalized.FileName);
+            Assert.Equal(Path.GetFullPath(root), normalized.WorkingDirectory);
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(root);
+        }
+    }
+
+    [Fact]
+    public void ProcessSecurityRejectsArbitraryAndTraversalFileNames()
+    {
+        string root = CreateTemporaryDirectory();
+        string payloadPath = Path.Combine(root, "apply.sh");
+        File.WriteAllText(payloadPath, "#!/bin/sh");
+        string traversalPath = Path.Combine(root, "..", "apply.sh");
+        string arbitraryPath = Path.Combine(root, "outside.exe");
+
+        try
+        {
+            Assert.Throws<AppUpdateException>(() =>
+                AppUpdateProcessSecurity.ValidateAndNormalize(
+                    new(arbitraryPath, [], TrustedRoots: [root]),
+                    AppUpdateProcessPlatform.Linux));
+            Assert.Throws<AppUpdateException>(() =>
+                AppUpdateProcessSecurity.ValidateAndNormalize(
+                    new(traversalPath, [], TrustedRoots: [root]),
+                    AppUpdateProcessPlatform.Linux));
+            Assert.Throws<AppUpdateException>(() =>
+                AppUpdateProcessSecurity.ValidateAndNormalize(
+                    new(
+                        payloadPath,
+                        [],
+                        WorkingDirectory: Directory.GetParent(root)!.FullName,
+                        TrustedRoots: [root]),
+                    AppUpdateProcessPlatform.Linux));
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(root);
+        }
+    }
+
+    [Fact]
+    public void ProcessSecurityValidatesInterpreterScriptAndSystemToolWhitelist()
+    {
+        string root = CreateTemporaryDirectory();
+        string scriptPath = Path.Combine(root, "apply.sh");
+        File.WriteAllText(scriptPath, "#!/bin/sh");
+
+        try
+        {
+            AppUpdateProcessRequest request = new(
+                "/bin/sh",
+                [scriptPath],
+                WorkingDirectory: root,
+                TrustedRoots: [root]);
+            AppUpdateProcessRequest normalized = AppUpdateProcessSecurity.ValidateAndNormalize(
+                request,
+                AppUpdateProcessPlatform.Linux);
+
+            Assert.Equal("/bin/sh", normalized.FileName);
+            Assert.Equal("/bin/sh", AppUpdateProcessSecurity.GetSystemToolPath(
+                "/bin/sh",
+                AppUpdateProcessPlatform.Linux));
+            Assert.Throws<AppUpdateException>(() => AppUpdateProcessSecurity.GetSystemToolPath(
+                "not-an-allowed-tool",
+                AppUpdateProcessPlatform.Linux));
+
+            string outsideScript = Path.Combine(root, "..", "outside.sh");
+            Assert.Throws<AppUpdateException>(() => AppUpdateProcessSecurity.ValidateAndNormalize(
+                request with { Arguments = [outsideScript] },
+                AppUpdateProcessPlatform.Linux));
+        }
+        finally
+        {
+            DeleteTemporaryDirectory(root);
+        }
+    }
+
+    [Fact]
+    public void ProcessSecurityRejectsReparsePointFromDeterministicValidatorSeam()
+    {
+        string root = CreateTemporaryDirectory();
+        string payloadPath = Path.Combine(root, "apply.sh");
+        File.WriteAllText(payloadPath, "#!/bin/sh");
+
+        try
+        {
+            Assert.Throws<AppUpdateException>(() => AppUpdateProcessSecurity.ValidateAndNormalize(
+                new(payloadPath, [], TrustedRoots: [root]),
+                AppUpdateProcessPlatform.Linux,
+                path => string.Equals(path, payloadPath, StringComparison.Ordinal)
+                    ? FileAttributes.ReparsePoint
+                    : File.GetAttributes(path)));
         }
         finally
         {

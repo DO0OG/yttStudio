@@ -18,7 +18,8 @@ internal sealed record AppUpdateProcessRequest(
     IReadOnlyList<string> Arguments,
     bool UseShellExecute = false,
     string? WorkingDirectory = null,
-    bool WaitForExit = false);
+    bool WaitForExit = false,
+    IReadOnlyList<string>? TrustedRoots = null);
 
 /// <summary>프로세스 실행 결과다.</summary>
 internal sealed record AppUpdateProcessResult(bool Started, int? ExitCode);
@@ -45,18 +46,19 @@ internal sealed class AppUpdateProcessRunner : IAppUpdateProcessRunner
             throw new ArgumentException("프로세스 파일 이름이 비어 있다.", nameof(request));
         }
 
+        AppUpdateProcessRequest validatedRequest = AppUpdateProcessSecurity.ValidateAndNormalize(request);
         ProcessStartInfo startInfo = new()
         {
-            FileName = request.FileName,
-            UseShellExecute = request.UseShellExecute,
-            CreateNoWindow = !request.UseShellExecute,
+            FileName = validatedRequest.FileName,
+            UseShellExecute = validatedRequest.UseShellExecute,
+            CreateNoWindow = !validatedRequest.UseShellExecute,
         };
-        if (!string.IsNullOrWhiteSpace(request.WorkingDirectory))
+        if (!string.IsNullOrWhiteSpace(validatedRequest.WorkingDirectory))
         {
-            startInfo.WorkingDirectory = request.WorkingDirectory;
+            startInfo.WorkingDirectory = validatedRequest.WorkingDirectory;
         }
 
-        foreach (string argument in request.Arguments)
+        foreach (string argument in validatedRequest.Arguments)
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -227,7 +229,10 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
         AppUpdateExecutionDetector.Validate(runtimeIdentifier, executionForm);
         try
         {
-            string packagePath = ValidateDownloadedPackage(downloadedPath, executionForm);
+            string packagePath = ValidateDownloadedPackage(
+                downloadedPath,
+                runtimeIdentifier,
+                executionForm);
             switch (runtimeIdentifier, executionForm)
             {
                 case ("win-x64", AppUpdateExecutionForm.Installed):
@@ -283,15 +288,33 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
         string packagePath,
         CancellationToken cancellationToken)
     {
-        AppUpdateProcessResult result = await RunProcessAsync(
-                new(
-                    packagePath,
-                    BuildWindowsInstallerArguments(),
-                    UseShellExecute: true),
-                waitForExit: false,
-                cancellationToken)
-            .ConfigureAwait(false);
-        EnsureStarted(result, "Windows 설치 프로그램");
+        string stagingRoot = CreateTrustedStagingRoot();
+        string setupPath = Path.Combine(stagingRoot, Path.GetFileName(packagePath));
+        bool setupStarted = false;
+        Directory.CreateDirectory(stagingRoot);
+        try
+        {
+            File.Copy(packagePath, setupPath, overwrite: false);
+            AppUpdateProcessResult result = await RunProcessAsync(
+                    new(
+                        setupPath,
+                        BuildWindowsInstallerArguments(),
+                        UseShellExecute: true,
+                        WorkingDirectory: stagingRoot,
+                        TrustedRoots: [stagingRoot]),
+                    waitForExit: false,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            EnsureStarted(result, "Windows 설치 프로그램");
+            setupStarted = true;
+        }
+        finally
+        {
+            if (!setupStarted)
+            {
+                AppUpdateArchiveOperations.TryDeleteDirectory(stagingRoot);
+            }
+        }
     }
 
     private async Task InstallWindowsPortableAsync(
@@ -301,11 +324,13 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
         EnsureDirectory(applicationDirectory, "Windows 포터블 설치 위치");
         string parent = GetParentDirectory(applicationDirectory, "Windows 포터블 설치 위치");
         string token = Guid.NewGuid().ToString("N");
-        string stagingDirectory = Path.Combine(parent, $".yttstudio-update-{token}");
-        string helperPath = Path.Combine(parent, $".yttstudio-update-{token}.cmd");
+        string updateRoot = Path.Combine(parent, $".yttstudio-update-{token}");
+        string stagingDirectory = Path.Combine(updateRoot, "payload");
+        string helperPath = Path.Combine(updateRoot, "apply.cmd");
         bool helperStarted = false;
         try
         {
+            Directory.CreateDirectory(updateRoot);
             Directory.CreateDirectory(stagingDirectory);
             await AppUpdateArchiveOperations.ExtractAsync(
                     packagePath,
@@ -333,7 +358,8 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
                     new(
                         "cmd.exe",
                         ["/d", "/c", helperPath],
-                        WorkingDirectory: parent),
+                        WorkingDirectory: updateRoot,
+                        TrustedRoots: [updateRoot]),
                     waitForExit: false,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -344,8 +370,7 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
         {
             if (!helperStarted)
             {
-                AppUpdateArchiveOperations.TryDeleteDirectory(stagingDirectory);
-                AppUpdateArchiveOperations.TryDeleteFile(helperPath);
+                AppUpdateArchiveOperations.TryDeleteDirectory(updateRoot);
             }
         }
     }
@@ -362,7 +387,7 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
         Directory.CreateDirectory(mountPoint);
         string? backupPath = null;
         string? stagedApp = null;
-        bool mounted = false;
+        string? mountedPath = null;
         try
         {
             await RunCheckedAsync(
@@ -372,20 +397,30 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
                     "macOS 디스크 이미지 연결",
                     cancellationToken)
                 .ConfigureAwait(false);
-            mounted = true;
-            string mountedApp = AppUpdatePathOperations.FindSingleAppBundle(mountPoint);
-            stagedApp = Path.Combine(parent, $".yttstudio-app-{Guid.NewGuid():N}.app");
-            AppUpdateArchiveOperations.CopyDirectory(mountedApp, stagedApp);
-            AppUpdatePathOperations.MakeExecutable(
-                Path.Combine(stagedApp, "Contents", "MacOS", "YttStudio.App"));
-            backupPath = AppUpdateArchiveOperations.MoveDirectoryWithBackup(currentApp, stagedApp);
+            mountedPath = mountPoint;
+            try
+            {
+                string mountedApp = AppUpdatePathOperations.FindSingleAppBundle(mountPoint);
+                stagedApp = Path.Combine(parent, $".yttstudio-app-{Guid.NewGuid():N}.app");
+                AppUpdateArchiveOperations.CopyDirectory(mountedApp, stagedApp);
+                AppUpdatePathOperations.MakeExecutable(
+                    Path.Combine(stagedApp, "Contents", "MacOS", "YttStudio.App"));
+                backupPath = AppUpdateArchiveOperations.MoveDirectoryWithBackup(currentApp, stagedApp);
 
-            await RunCheckedAsync(
-                    new("hdiutil", ["detach", mountPoint]),
-                    "macOS 디스크 이미지 분리",
-                    cancellationToken)
-                .ConfigureAwait(false);
-            mounted = false;
+                await RunCheckedAsync(
+                        new("hdiutil", ["detach", mountPoint]),
+                        "macOS 디스크 이미지 분리",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                mountedPath = null;
+            }
+            finally
+            {
+                if (mountedPath is not null)
+                {
+                    await TryDetachAsync(mountedPath).ConfigureAwait(false);
+                }
+            }
 
             await RunCheckedAsync(
                     new("open", BuildMacOpenArguments(currentApp)),
@@ -404,11 +439,6 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
         }
         catch (Exception exception)
         {
-            if (mounted)
-            {
-                await TryDetachAsync(mountPoint).ConfigureAwait(false);
-            }
-
             if (backupPath is not null)
             {
                 AppUpdateRollbackResult rollback = AppUpdateArchiveOperations.RollbackDirectory(
@@ -426,7 +456,6 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
                                 CancellationToken.None)
                             .ConfigureAwait(false);
                         relaunched = true;
-                        backupPath = null;
                     }
                     catch (Exception launchFailure)
                     {
@@ -469,11 +498,13 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
             : applicationDirectory;
         string parent = GetParentDirectory(targetDirectory, "tar.gz 설치 위치");
         string token = Guid.NewGuid().ToString("N");
-        string stagingRoot = Path.Combine(parent, $".yttstudio-update-{token}");
-        string helperPath = Path.Combine(parent, $".yttstudio-update-{token}.sh");
+        string updateRoot = Path.Combine(parent, $".yttstudio-update-{token}");
+        string stagingRoot = Path.Combine(updateRoot, "payload");
+        string helperPath = Path.Combine(updateRoot, "apply.sh");
         bool helperStarted = false;
         try
         {
+            Directory.CreateDirectory(updateRoot);
             Directory.CreateDirectory(stagingRoot);
             await AppUpdateArchiveOperations.ExtractAsync(
                     packagePath,
@@ -515,7 +546,11 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
                     cancellationToken)
                 .ConfigureAwait(false);
             AppUpdateProcessResult result = await RunProcessAsync(
-                    new("/bin/sh", [helperPath], WorkingDirectory: parent),
+                    new(
+                        "/bin/sh",
+                        [helperPath],
+                        WorkingDirectory: updateRoot,
+                        TrustedRoots: [updateRoot]),
                     waitForExit: false,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -526,8 +561,7 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
         {
             if (!helperStarted)
             {
-                AppUpdateArchiveOperations.TryDeleteDirectory(stagingRoot);
-                AppUpdateArchiveOperations.TryDeleteFile(helperPath);
+                AppUpdateArchiveOperations.TryDeleteDirectory(updateRoot);
             }
         }
     }
@@ -554,11 +588,13 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
 
         string parent = GetParentDirectory(targetPath, "AppImage 설치 위치");
         string token = Guid.NewGuid().ToString("N");
-        string stagingPath = Path.Combine(parent, $".yttstudio-update-{token}.AppImage");
-        string helperPath = Path.Combine(parent, $".yttstudio-update-{token}.sh");
+        string updateRoot = Path.Combine(parent, $".yttstudio-update-{token}");
+        string stagingPath = Path.Combine(updateRoot, "payload.AppImage");
+        string helperPath = Path.Combine(updateRoot, "apply.sh");
         bool helperStarted = false;
         try
         {
+            Directory.CreateDirectory(updateRoot);
             File.Copy(packagePath, stagingPath, overwrite: false);
             AppUpdatePathOperations.MakeExecutable(stagingPath);
             string script = AppUpdateInstallHelpers.BuildUnixFileReplacementScript(
@@ -575,7 +611,11 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
                     cancellationToken)
                 .ConfigureAwait(false);
             AppUpdateProcessResult result = await RunProcessAsync(
-                    new("/bin/sh", [helperPath], WorkingDirectory: parent),
+                    new(
+                        "/bin/sh",
+                        [helperPath],
+                        WorkingDirectory: updateRoot,
+                        TrustedRoots: [updateRoot]),
                     waitForExit: false,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -586,8 +626,7 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
         {
             if (!helperStarted)
             {
-                AppUpdateArchiveOperations.TryDeleteFile(stagingPath);
-                AppUpdateArchiveOperations.TryDeleteFile(helperPath);
+                AppUpdateArchiveOperations.TryDeleteDirectory(updateRoot);
             }
         }
     }
@@ -695,6 +734,7 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
 
     private static string ValidateDownloadedPackage(
         string downloadedPath,
+        string runtimeIdentifier,
         AppUpdateExecutionForm executionForm)
     {
         if (string.IsNullOrWhiteSpace(downloadedPath))
@@ -713,12 +753,15 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
         }
 
         string extension = Path.GetExtension(path);
-        bool valid = executionForm switch
+        bool valid = (runtimeIdentifier, executionForm) switch
         {
-            AppUpdateExecutionForm.Installed => extension.Equals(".exe", StringComparison.OrdinalIgnoreCase),
-            AppUpdateExecutionForm.Portable => extension.Equals(".zip", StringComparison.OrdinalIgnoreCase),
-            AppUpdateExecutionForm.AppImage => extension.Equals(".AppImage", StringComparison.OrdinalIgnoreCase),
-            AppUpdateExecutionForm.TarGz => path.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase),
+            ("win-x64", AppUpdateExecutionForm.Installed) =>
+                extension.Equals(".exe", StringComparison.OrdinalIgnoreCase),
+            ("osx-arm64", AppUpdateExecutionForm.Installed) =>
+                extension.Equals(".dmg", StringComparison.OrdinalIgnoreCase),
+            (_, AppUpdateExecutionForm.Portable) => extension.Equals(".zip", StringComparison.OrdinalIgnoreCase),
+            (_, AppUpdateExecutionForm.AppImage) => extension.Equals(".AppImage", StringComparison.OrdinalIgnoreCase),
+            (_, AppUpdateExecutionForm.TarGz) => path.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase),
             _ => false,
         };
         if (!valid)
@@ -730,6 +773,11 @@ internal sealed class AppUpdateInstaller : IAppUpdateInstaller
 
         return path;
     }
+
+    private static string CreateTrustedStagingRoot()
+        => Path.Combine(
+            Path.GetTempPath(),
+            $".yttstudio-update-{Guid.NewGuid():N}");
 
     private static string GetParentDirectory(string path, string description)
         => Directory.GetParent(path)?.FullName

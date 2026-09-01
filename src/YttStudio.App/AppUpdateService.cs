@@ -222,15 +222,16 @@ public sealed class AppUpdateService
                 .ReadAsStreamAsync(cancellationToken)
                 .ConfigureAwait(false);
             long transferred = 0;
-            await using (FileStream output = new(
+            FileStream output = new(
                 temporaryPath!,
                 FileMode.CreateNew,
                 FileAccess.Write,
                 FileShare.None,
                 BufferSize,
-                FileOptions.Asynchronous | FileOptions.SequentialScan))
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            temporaryFileCreated = true;
+            try
             {
-                temporaryFileCreated = true;
                 byte[] buffer = new byte[BufferSize];
                 while (true)
                 {
@@ -249,6 +250,10 @@ public sealed class AppUpdateService
                 }
 
                 await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                await output.DisposeAsync().ConfigureAwait(false);
             }
 
             ValidateDownloadedLength(contentLength, asset.SizeBytes, transferred);
@@ -560,4 +565,3 @@ internal sealed class AppUpdateReleaseAssetDto
     [JsonPropertyName("content_type")]
     public string? ContentType { get; set; }
 }
-

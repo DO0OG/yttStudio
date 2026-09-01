@@ -193,7 +193,10 @@ public static class CueEffectEvaluator
             MotionInterpolation.EaseInOut => progress < 0.5
                 ? 0.5 * Math.Pow(progress * 2, exponent)
                 : 1 - (0.5 * Math.Pow((1 - progress) * 2, exponent)),
-            _ => exponent == 1 ? progress : Math.Pow(progress, exponent),
+            _ => exponent >= 1.0 - YttConstants.MotionAccelerationExponentTolerance &&
+                exponent <= 1.0 + YttConstants.MotionAccelerationExponentTolerance
+                ? progress
+                : Math.Pow(progress, exponent),
         };
     }
 
